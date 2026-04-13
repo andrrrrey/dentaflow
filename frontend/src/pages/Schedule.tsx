@@ -1,11 +1,12 @@
-import Card from "../components/ui/Card";
 import StatCard from "../components/ui/StatCard";
 import Pill from "../components/ui/Pill";
+import Card from "../components/ui/Card";
 import { CalendarDays, CheckCircle, Clock } from "lucide-react";
 
 /* ---------- types ---------- */
 
 interface Appointment {
+  id: number;
   time: string;
   doctor: string;
   patient: string;
@@ -16,26 +17,28 @@ interface Appointment {
 /* ---------- mock data ---------- */
 
 const appointments: Appointment[] = [
-  { time: "09:00", doctor: "Иванова Е.А.", patient: "Кузнецов А.В.", service: "Терапия", status: "completed" },
-  { time: "09:30", doctor: "Петров С.В.", patient: "Морозова И.П.", service: "Протезирование", status: "completed" },
-  { time: "10:00", doctor: "Сидорова М.К.", patient: "Волков Д.С.", service: "Удаление зуба", status: "completed" },
-  { time: "10:30", doctor: "Козлов Д.И.", patient: "Попова Н.А.", service: "Брекеты — коррекция", status: "confirmed" },
-  { time: "11:00", doctor: "Иванова Е.А.", patient: "Лебедев М.Ю.", service: "Пломбирование", status: "confirmed" },
-  { time: "11:30", doctor: "Новикова А.П.", patient: "Семёнова Т.Л.", service: "Чистка", status: "confirmed" },
-  { time: "12:00", doctor: "Петров С.В.", patient: "Григорьев О.К.", service: "Виниры — консультация", status: "scheduled" },
-  { time: "13:00", doctor: "Сидорова М.К.", patient: "Фёдоров В.Н.", service: "Имплантация", status: "scheduled" },
-  { time: "14:00", doctor: "Козлов Д.И.", patient: "Андреева Е.В.", service: "Ортодонтия — осмотр", status: "scheduled" },
-  { time: "14:30", doctor: "Иванова Е.А.", patient: "Белов П.С.", service: "Лечение кариеса", status: "cancelled" },
-  { time: "15:00", doctor: "Новикова А.П.", patient: "Захарова Л.Д.", service: "Отбеливание", status: "no_show" },
-  { time: "16:00", doctor: "Петров С.В.", patient: "Орлов И.И.", service: "Коронка — установка", status: "scheduled" },
+  { id: 1, time: "09:00", doctor: "Иванова Е.А.", patient: "Кузнецов Алексей", service: "Осмотр + чистка", status: "completed" },
+  { id: 2, time: "09:30", doctor: "Петров С.В.", patient: "Сидорова Мария", service: "Протезирование", status: "completed" },
+  { id: 3, time: "10:00", doctor: "Иванова Е.А.", patient: "Волков Дмитрий", service: "Лечение кариеса", status: "completed" },
+  { id: 4, time: "10:30", doctor: "Козлов Д.И.", patient: "Морозова Анна", service: "Установка брекетов", status: "confirmed" },
+  { id: 5, time: "11:00", doctor: "Сидорова М.К.", patient: "Николаев Игорь", service: "Удаление зуба", status: "confirmed" },
+  { id: 6, time: "11:30", doctor: "Новикова А.П.", patient: "Попова Елена", service: "Отбеливание", status: "scheduled" },
+  { id: 7, time: "12:00", doctor: "Иванова Е.А.", patient: "Лебедев Сергей", service: "Пломбирование", status: "scheduled" },
+  { id: 8, time: "13:30", doctor: "Петров С.В.", patient: "Козлова Ирина", service: "Виниры", status: "cancelled" },
+  { id: 9, time: "14:00", doctor: "Козлов Д.И.", patient: "Фёдоров Андрей", service: "Коррекция брекетов", status: "confirmed" },
+  { id: 10, time: "14:30", doctor: "Сидорова М.К.", patient: "Егорова Ольга", service: "Имплантация", status: "no_show" },
+  { id: 11, time: "15:00", doctor: "Новикова А.П.", patient: "Смирнов Павел", service: "Осмотр", status: "scheduled" },
+  { id: 12, time: "16:00", doctor: "Иванова Е.А.", patient: "Васильева Татьяна", service: "Лечение пульпита", status: "scheduled" },
 ];
 
+/* ---------- status config ---------- */
+
 const statusConfig: Record<Appointment["status"], { label: string; variant: "blue" | "green" | "purple" | "red" | "yellow" }> = {
-  scheduled: { label: "Запланировано", variant: "blue" },
-  confirmed: { label: "Подтверждено", variant: "green" },
-  completed: { label: "Завершено", variant: "purple" },
-  cancelled: { label: "Отменено", variant: "red" },
-  no_show: { label: "Неявка", variant: "yellow" },
+  scheduled: { label: "Запланирован", variant: "blue" },
+  confirmed: { label: "Подтверждён", variant: "green" },
+  completed: { label: "Завершён", variant: "purple" },
+  cancelled: { label: "Отменён", variant: "red" },
+  no_show: { label: "Не явился", variant: "yellow" },
 };
 
 /* ---------- component ---------- */
@@ -52,60 +55,57 @@ export default function Schedule() {
         <StatCard
           label="Всего записей"
           value={String(totalAppointments)}
-          icon={<CalendarDays size={20} className="text-accent2" />}
+          icon={<CalendarDays size={18} className="text-accent2" />}
           delta="+3 к вчера"
           deltaType="up"
         />
         <StatCard
           label="Подтверждено"
           value={String(confirmed)}
-          icon={<CheckCircle size={20} className="text-accent3" />}
+          icon={<CheckCircle size={18} className="text-accent3" />}
         />
         <StatCard
           label="Свободных слотов"
           value={String(freeSlots)}
-          icon={<Clock size={20} className="text-yellow-500" />}
+          icon={<Clock size={18} className="text-accent2" />}
         />
       </div>
 
       {/* Schedule table */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[15px] font-bold">Расписание на сегодня</h2>
+          <h2 className="text-[15px] font-bold text-text-main">Расписание на сегодня</h2>
           <span className="text-[12px] text-text-muted font-medium">13 апреля 2026</span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wider">
-                <th className="pb-3 pr-4">Время</th>
-                <th className="pb-3 pr-4">Врач</th>
-                <th className="pb-3 pr-4">Пациент</th>
-                <th className="pb-3 pr-4">Услуга</th>
-                <th className="pb-3">Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {appointments.map((apt, i) => {
-                const cfg = statusConfig[apt.status];
-                return (
-                  <tr
-                    key={i}
-                    className="border-t border-[rgba(91,76,245,0.06)] hover:bg-[rgba(91,76,245,0.03)] transition-colors"
-                  >
-                    <td className="py-[10px] pr-4 font-semibold">{apt.time}</td>
-                    <td className="py-[10px] pr-4">{apt.doctor}</td>
-                    <td className="py-[10px] pr-4">{apt.patient}</td>
-                    <td className="py-[10px] pr-4 text-text-muted">{apt.service}</td>
-                    <td className="py-[10px]">
-                      <Pill variant={cfg.variant}>{cfg.label}</Pill>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* Header */}
+          <div className="hidden md:grid grid-cols-[70px_1fr_1fr_1fr_130px] gap-3 px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
+            {(["Время", "Врач", "Пациент", "Услуга", "Статус"] as const).map((h) => (
+              <span key={h} className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                {h}
+              </span>
+            ))}
+          </div>
+
+          {/* Rows */}
+          {appointments.map((apt) => {
+            const cfg = statusConfig[apt.status];
+            return (
+              <div
+                key={apt.id}
+                className="md:grid md:grid-cols-[70px_1fr_1fr_1fr_130px] gap-3 px-[14px] py-[11px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors flex flex-col"
+              >
+                <span className="text-[13px] font-bold text-accent2">{apt.time}</span>
+                <span className="text-[13px] text-text-main font-medium">{apt.doctor}</span>
+                <span className="text-[13px] text-text-main">{apt.patient}</span>
+                <span className="text-[12.5px] text-text-muted">{apt.service}</span>
+                <span>
+                  <Pill variant={cfg.variant}>{cfg.label}</Pill>
+                </span>
+              </div>
+            );
+          })}
         </div>
       </Card>
     </div>
