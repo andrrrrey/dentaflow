@@ -1,45 +1,49 @@
-import Card from "../components/ui/Card";
 import StatCard from "../components/ui/StatCard";
 import Pill from "../components/ui/Pill";
-import { RefreshCw, UserCheck, Users } from "lucide-react";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import { RefreshCw, UserCheck, Clock, Phone, MessageSquare } from "lucide-react";
 
 /* ---------- types ---------- */
 
 interface InactivePatient {
+  id: number;
   name: string;
   lastVisit: string;
-  daysSince: number;
+  daysInactive: number;
   reason: string;
-  status: "pending" | "in_progress" | "reactivated" | "declined";
+  status: "pending" | "in_progress" | "success" | "failed";
 }
 
 /* ---------- mock data ---------- */
 
 const patients: InactivePatient[] = [
-  { name: "Кузнецов Алексей В.", lastVisit: "12.01.2026", daysSince: 91, reason: "Не записался повторно", status: "pending" },
-  { name: "Белова Татьяна С.", lastVisit: "05.12.2025", daysSince: 129, reason: "Переезд", status: "declined" },
-  { name: "Орлов Сергей М.", lastVisit: "18.01.2026", daysSince: 85, reason: "Забыл записаться", status: "in_progress" },
-  { name: "Фёдорова Елена А.", lastVisit: "22.11.2025", daysSince: 142, reason: "Финансовые причины", status: "pending" },
-  { name: "Морозов Дмитрий И.", lastVisit: "03.01.2026", daysSince: 100, reason: "Нет жалоб", status: "reactivated" },
-  { name: "Захарова Людмила К.", lastVisit: "14.12.2025", daysSince: 120, reason: "Плохой опыт", status: "pending" },
-  { name: "Григорьев Олег Н.", lastVisit: "28.12.2025", daysSince: 106, reason: "Не записался повторно", status: "in_progress" },
-  { name: "Попова Наталья В.", lastVisit: "09.11.2025", daysSince: 155, reason: "Сменила клинику", status: "declined" },
-  { name: "Семёнов Павел Д.", lastVisit: "20.01.2026", daysSince: 83, reason: "Забыл записаться", status: "reactivated" },
-  { name: "Андреева Екатерина Р.", lastVisit: "01.12.2025", daysSince: 133, reason: "Финансовые причины", status: "pending" },
+  { id: 1, name: "Григорьев Антон", lastVisit: "15.12.2025", daysInactive: 119, reason: "Не завершил лечение", status: "pending" },
+  { id: 2, name: "Белова Светлана", lastVisit: "02.01.2026", daysInactive: 101, reason: "Пропустила профосмотр", status: "in_progress" },
+  { id: 3, name: "Орлов Владимир", lastVisit: "10.11.2025", daysInactive: 154, reason: "Не записался на продолжение", status: "pending" },
+  { id: 4, name: "Семёнова Наталья", lastVisit: "28.12.2025", daysInactive: 106, reason: "Откладывает протезирование", status: "success" },
+  { id: 5, name: "Титов Максим", lastVisit: "05.10.2025", daysInactive: 190, reason: "Ушёл к конкуренту", status: "failed" },
+  { id: 6, name: "Кравцова Екатерина", lastVisit: "20.01.2026", daysInactive: 83, reason: "Не закончила ортодонтию", status: "in_progress" },
+  { id: 7, name: "Жуков Артём", lastVisit: "15.09.2025", daysInactive: 210, reason: "Нет контакта", status: "pending" },
+  { id: 8, name: "Данилова Юлия", lastVisit: "08.12.2025", daysInactive: 126, reason: "Финансовые трудности", status: "in_progress" },
+  { id: 9, name: "Поляков Роман", lastVisit: "22.11.2025", daysInactive: 142, reason: "Забыл про приём", status: "pending" },
+  { id: 10, name: "Филатова Алина", lastVisit: "03.01.2026", daysInactive: 100, reason: "Переехала", status: "pending" },
 ];
 
-const statusConfig: Record<InactivePatient["status"], { label: string; variant: "blue" | "green" | "yellow" | "red" | "purple" }> = {
+/* ---------- helpers ---------- */
+
+const statusConfig: Record<InactivePatient["status"], { label: string; variant: "blue" | "yellow" | "green" | "red" }> = {
   pending: { label: "Ожидает", variant: "blue" },
   in_progress: { label: "В работе", variant: "yellow" },
-  reactivated: { label: "Реактивирован", variant: "green" },
-  declined: { label: "Отказ", variant: "red" },
+  success: { label: "Реактивирован", variant: "green" },
+  failed: { label: "Отказ", variant: "red" },
 };
 
 /* ---------- component ---------- */
 
 export default function Reactivation() {
   const totalInactive = patients.length;
-  const reactivated = patients.filter((p) => p.status === "reactivated").length;
+  const reactivated = patients.filter((p) => p.status === "success").length;
   const inProgress = patients.filter((p) => p.status === "in_progress").length;
 
   return (
@@ -49,86 +53,66 @@ export default function Reactivation() {
         <StatCard
           label="Всего неактивных"
           value={String(totalInactive)}
-          icon={<Users size={20} className="text-accent2" />}
+          icon={<RefreshCw size={18} className="text-accent2" />}
           delta="+2 за неделю"
-          deltaType="up"
+          deltaType="down"
         />
         <StatCard
           label="Успешно реактивировано"
           value={String(reactivated)}
-          icon={<UserCheck size={20} className="text-accent3" />}
-          delta="+1 сегодня"
+          icon={<UserCheck size={18} className="text-accent3" />}
+          delta="+1 за неделю"
           deltaType="up"
         />
         <StatCard
           label="В работе"
           value={String(inProgress)}
-          icon={<RefreshCw size={20} className="text-yellow-500" />}
+          icon={<Clock size={18} className="text-accent2" />}
         />
       </div>
 
-      {/* Patients table */}
+      {/* Table */}
       <Card>
-        <h2 className="text-[15px] font-bold mb-4">Реактивация пациентов</h2>
+        <h2 className="text-[15px] font-bold text-text-main mb-4">Неактивные пациенты</h2>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wider">
-                <th className="pb-3 pr-4">Пациент</th>
-                <th className="pb-3 pr-4">Последний визит</th>
-                <th className="pb-3 pr-4">Дней без визита</th>
-                <th className="pb-3 pr-4">Причина</th>
-                <th className="pb-3 pr-4">Статус</th>
-                <th className="pb-3">Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patients.map((pt, i) => {
-                const cfg = statusConfig[pt.status];
-                return (
-                  <tr
-                    key={i}
-                    className="border-t border-[rgba(91,76,245,0.06)] hover:bg-[rgba(91,76,245,0.03)] transition-colors"
-                  >
-                    <td className="py-[10px] pr-4 font-semibold">{pt.name}</td>
-                    <td className="py-[10px] pr-4 text-text-muted">{pt.lastVisit}</td>
-                    <td className="py-[10px] pr-4">
-                      <span
-                        className="font-bold"
-                        style={{ color: pt.daysSince > 120 ? "#f44b6e" : pt.daysSince > 90 ? "#f5a623" : "#00c9a7" }}
-                      >
-                        {pt.daysSince}
-                      </span>
-                    </td>
-                    <td className="py-[10px] pr-4 text-text-muted">{pt.reason}</td>
-                    <td className="py-[10px] pr-4">
-                      <Pill variant={cfg.variant}>{cfg.label}</Pill>
-                    </td>
-                    <td className="py-[10px]">
-                      <div className="flex gap-2">
-                        <button
-                          className="px-3 py-[5px] text-[11px] font-semibold rounded-lg text-white transition-opacity hover:opacity-80"
-                          style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
-                        >
-                          Позвонить
-                        </button>
-                        <button
-                          className="px-3 py-[5px] text-[11px] font-semibold rounded-lg transition-opacity hover:opacity-80"
-                          style={{
-                            background: "rgba(91,76,245,0.08)",
-                            color: "#5B4CF5",
-                          }}
-                        >
-                          Написать
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* Header */}
+          <div className="hidden md:grid grid-cols-[1fr_100px_100px_1fr_100px_140px] gap-3 px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
+            {(["Пациент", "Последний визит", "Дней", "Причина", "Статус", "Действие"] as const).map((h) => (
+              <span key={h} className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                {h}
+              </span>
+            ))}
+          </div>
+
+          {/* Rows */}
+          {patients.map((p) => {
+            const cfg = statusConfig[p.status];
+            return (
+              <div
+                key={p.id}
+                className="md:grid md:grid-cols-[1fr_100px_100px_1fr_100px_140px] gap-3 px-[14px] py-[11px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors flex flex-col items-start"
+              >
+                <span className="text-[13px] text-text-main font-bold">{p.name}</span>
+                <span className="text-[12.5px] text-text-muted">{p.lastVisit}</span>
+                <span className="text-[13px] font-bold" style={{ color: p.daysInactive > 150 ? "#f44b6e" : p.daysInactive > 100 ? "#f5a623" : "#1a55b0" }}>
+                  {p.daysInactive}
+                </span>
+                <span className="text-[12.5px] text-text-muted">{p.reason}</span>
+                <span>
+                  <Pill variant={cfg.variant}>{cfg.label}</Pill>
+                </span>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm">
+                    <Phone size={12} className="mr-1" /> Позвонить
+                  </Button>
+                  <Button variant="ghost" size="sm">
+                    <MessageSquare size={12} className="mr-1" /> Написать
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
     </div>
