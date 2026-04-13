@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DentaFlow — Умный дашборд клиники</title>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #eef2f7;
+  --glass: rgba(255,255,255,0.65);
+  --glass-border: rgba(255,255,255,0.85);
+  --glass-shadow: rgba(120,140,180,0.18);
+  --accent: #3B7FED;
+  --accent2: #5B4CF5;
+  --accent3: #00C9A7;
+  --danger: #F44B6E;
+  --warn: #F5A623;
+  --text: #1a2340;
+  --text-muted: #7a8aab;
+  --sidebar-w: 248px;
+  --header-h: 64px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Raleway',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(ellipse at 10% 20%,rgba(91,76,245,.12) 0%,transparent 50%),
+    radial-gradient(ellipse at 90% 80%,rgba(59,127,237,.1) 0%,transparent 50%),
+    radial-gradient(ellipse at 55% 55%,rgba(0,201,167,.06) 0%,transparent 60%);
+  background-attachment:fixed;}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(91,76,245,.25);border-radius:4px}
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);height:100vh;flex-shrink:0;background:rgba(255,255,255,.75);
+  backdrop-filter:blur(24px);border-right:1px solid var(--glass-border);display:flex;
+  flex-direction:column;z-index:100;box-shadow:4px 0 24px rgba(91,76,245,.07)}
+.logo{padding:22px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(91,76,245,.08)}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent2),var(--accent));
+  border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.logo-text{font-size:17px;font-weight:800;letter-spacing:-.5px}
+.logo-text span{color:var(--accent2)}
+.logo-sub{font-size:10px;color:var(--text-muted);font-weight:500;margin-top:1px}
+.nav{flex:1;padding:14px 10px;overflow-y:auto}
+.nav-section{margin-bottom:20px}
+.nav-label{font-size:10px;font-weight:700;letter-spacing:1.3px;color:var(--text-muted);text-transform:uppercase;padding:0 10px;margin-bottom:5px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;cursor:pointer;
+  transition:all .18s;font-size:13px;font-weight:500;color:var(--text-muted);position:relative}
+.nav-item:hover{background:rgba(91,76,245,.07);color:var(--text)}
+.nav-item.active{background:linear-gradient(135deg,rgba(91,76,245,.14),rgba(59,127,237,.10));color:var(--accent2);font-weight:700}
+.nav-item .icon{font-size:15px;width:20px;text-align:center}
+.nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px}
+.nav-badge.blue{background:var(--accent2)}
+.nav-badge.green{background:var(--accent3)}
+.sidebar-user{padding:12px 14px;border-top:1px solid rgba(91,76,245,.08);display:flex;align-items:center;gap:10px}
+.user-ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#5B4CF5,#3B7FED);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0}
+.user-name{font-size:12.5px;font-weight:700}
+.user-role{font-size:11px;color:var(--text-muted)}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.header{height:var(--header-h);background:rgba(255,255,255,.62);backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--glass-border);display:flex;align-items:center;padding:0 24px;gap:14px;flex-shrink:0;z-index:50}
+.header-title{font-size:16px;font-weight:800;flex:1}
+.header-title span{color:var(--text-muted);font-weight:400;font-size:13px;margin-left:8px}
+.period-tabs{display:flex;gap:3px;background:rgba(91,76,245,.07);padding:4px;border-radius:12px}
+.period-tab{padding:5px 13px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:var(--text-muted)}
+.period-tab.active{background:#fff;color:var(--accent2);box-shadow:0 2px 8px rgba(91,76,245,.15)}
+.header-actions{display:flex;gap:7px}
+.btn-icon{width:36px;height:36px;border-radius:10px;background:rgba(91,76,245,.08);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .15s;position:relative}
+.btn-icon:hover{background:rgba(91,76,245,.15)}
+.notif-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--danger);border:1.5px solid #fff}
+.role-switcher{display:flex;gap:3px;background:rgba(91,76,245,.07);padding:4px;border-radius:12px}
+.role-tab{padding:5px 12px;border-radius:9px;font-size:12px;font-weight:600;cursor:pointer;transition:all .18s;color:var(--text-muted)}
+.role-tab.active{background:#fff;color:var(--accent2);box-shadow:0 2px 10px rgba(91,76,245,.15)}
+.content{flex:1;overflow-y:auto;padding:22px 26px}
+.screen{display:none}
+.screen.active{display:block}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.screen.active>*{animation:fadeSlide .3s ease forwards}
+
+/* CARDS & GRIDS */
+.card{background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--glass-border);
+  border-radius:20px;padding:20px 22px;box-shadow:0 4px 20px var(--glass-shadow)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:14px;font-weight:700}
+.card-action{font-size:12px;color:var(--accent2);cursor:pointer;font-weight:600}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}
+.stats-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:13px;margin-bottom:20px}
+.stats-grid-6{display:grid;grid-template-columns:repeat(6,1fr);gap:11px;margin-bottom:20px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.col-23{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.col-32{display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px}
+.col-13{display:grid;grid-template-columns:1fr 3fr;gap:16px;margin-bottom:16px}
+
+/* STAT CARD */
+.stat-card{padding:16px 18px;border-radius:18px;background:var(--glass);backdrop-filter:blur(18px);
+  border:1px solid var(--glass-border);box-shadow:0 4px 18px var(--glass-shadow);transition:transform .18s}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-label{font-size:11px;color:var(--text-muted);font-weight:500;margin-bottom:5px}
+.stat-value{font-size:24px;font-weight:800;letter-spacing:-.5px}
+.stat-delta{font-size:11px;margin-top:3px;font-weight:600}
+.delta-up{color:var(--accent3)}
+.delta-down{color:var(--danger)}
+.stat-icon{font-size:20px;margin-bottom:7px}
+.stat-trend{display:flex;align-items:flex-end;gap:2px;height:28px;margin-top:6px}
+.trend-bar{width:6px;border-radius:3px 3px 0 0;background:rgba(91,76,245,.2)}
+.trend-bar.hi{background:linear-gradient(180deg,var(--accent2),var(--accent))}
+
+/* AI BANNER */
+.ai-banner{background:linear-gradient(135deg,rgba(91,76,245,.1),rgba(59,127,237,.07));
+  border:1px solid rgba(91,76,245,.18);border-radius:20px;padding:16px 20px;margin-bottom:20px;
+  display:flex;gap:14px;align-items:flex-start}
+.ai-icon{width:38px;height:38px;border-radius:11px;flex-shrink:0;background:linear-gradient(135deg,#5B4CF5,#3B7FED);
+  display:flex;align-items:center;justify-content:center;font-size:18px}
+.ai-label{font-size:10.5px;font-weight:700;letter-spacing:1px;color:var(--accent2);text-transform:uppercase;margin-bottom:3px}
+.ai-text{font-size:13px;color:var(--text);line-height:1.55}
+.ai-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.ai-chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+.chip-warn{background:rgba(245,166,35,.14);color:#b87200}
+.chip-danger{background:rgba(244,75,110,.11);color:#c52048}
+.chip-ok{background:rgba(0,201,167,.11);color:#007d6e}
+.chip-blue{background:rgba(59,127,237,.11);color:#1a55b0}
+.chip-purple{background:rgba(91,76,245,.11);color:#4834d4}
+
+/* FUNNEL */
+.funnel{display:flex;flex-direction:column;gap:9px}
+.funnel-item{display:flex;align-items:center;gap:10px}
+.funnel-label{font-size:12px;color:var(--text-muted);width:150px;flex-shrink:0}
+.funnel-bar-wrap{flex:1;background:rgba(91,76,245,.07);border-radius:6px;height:8px;overflow:hidden}
+.funnel-bar{height:100%;border-radius:6px;transition:width .5s ease}
+.funnel-val{font-size:12px;font-weight:700;width:38px;text-align:right}
+.funnel-pct{font-size:11px;color:var(--text-muted);width:32px;text-align:right}
+
+/* TABLE */
+.table{width:100%;border-collapse:collapse}
+.table th{font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;
+  padding:0 12px 10px;text-align:left;border-bottom:1px solid rgba(91,76,245,.08)}
+.table td{padding:10px 12px;font-size:13px;border-bottom:1px solid rgba(91,76,245,.05)}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:rgba(91,76,245,.03)}
+
+/* PILLS & BADGES */
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.pill-green{background:rgba(0,201,167,.12);color:#007d6e}
+.pill-red{background:rgba(244,75,110,.12);color:#c52048}
+.pill-yellow{background:rgba(245,166,35,.12);color:#b87200}
+.pill-blue{background:rgba(59,127,237,.12);color:#1a55b0}
+.pill-purple{background:rgba(91,76,245,.12);color:#4834d4}
+.pill-gray{background:rgba(120,140,180,.12);color:#5a6a8a}
+
+/* BUTTONS */
+.btn{padding:9px 18px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all .15s}
+.btn-primary{background:linear-gradient(135deg,#5B4CF5,#3B7FED);color:#fff;box-shadow:0 4px 14px rgba(91,76,245,.3)}
+.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+.btn-outline{background:rgba(91,76,245,.08);color:var(--accent2);border:1px solid rgba(91,76,245,.18)}
+.btn-outline:hover{background:rgba(91,76,245,.14)}
+.btn-sm{padding:6px 14px;font-size:12px;border-radius:10px}
+.mini-btn{padding:5px 12px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.mini-btn-blue{background:rgba(91,76,245,.1);color:var(--accent2)}
+.mini-btn-red{background:rgba(244,75,110,.1);color:var(--danger)}
+.mini-btn-green{background:rgba(0,201,167,.1);color:#007d6e}
+
+/* AVATARS */
+.mini-ava{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.admin-row{display:flex;align-items:center;gap:8px}
+
+/* PROGRESS */
+.progress-wrap{background:rgba(91,76,245,.08);border-radius:6px;height:6px;overflow:hidden}
+.progress-bar{height:100%;border-radius:6px}
+
+/* MISC */
+.sep{height:1px;background:rgba(91,76,245,.08);margin:14px 0}
+.section-title{font-size:15px;font-weight:800;margin-bottom:14px;letter-spacing:-.2px}
+.section-subtitle{font-size:12px;color:var(--text-muted);font-weight:400;margin-left:8px}
+.mono{font-family:'JetBrains Mono',monospace}
+.big-money{font-size:26px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,#5B4CF5,#3B7FED);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.info-text{font-size:12px;color:var(--text-muted);margin-top:4px}
+
+/* TIMELINE */
+.timeline{position:relative;padding-left:20px}
+.timeline::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:2px;background:rgba(91,76,245,.1);border-radius:2px}
+.tl-item{position:relative;margin-bottom:14px}
+.tl-dot{position:absolute;left:-17px;top:3px;width:11px;height:11px;border-radius:50%;border:2px solid #fff}
+.tl-date{font-size:11px;color:var(--text-muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace}
+.tl-text{font-size:12.5px}
+
+/* CHAT STREAM */
+.chat-item{display:flex;gap:11px;align-items:flex-start;padding:11px;border-radius:14px;
+  margin-bottom:7px;cursor:pointer;transition:all .15s;border:1px solid transparent}
+.chat-item:hover{background:rgba(91,76,245,.04);border-color:rgba(91,76,245,.1)}
+.chat-item.unread{background:rgba(91,76,245,.04)}
+.chat-ava{width:40px;height:40px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:17px}
+.chat-body{flex:1;min-width:0}
+.chat-top{display:flex;justify-content:space-between;align-items:baseline}
+.chat-name{font-size:13px;font-weight:700}
+.chat-time{font-size:10.5px;color:var(--text-muted)}
+.chat-preview{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-meta{display:flex;gap:5px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.priority-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+/* SLOT GRID */
+.slot-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.slot{padding:7px;border-radius:10px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.slot-free{background:rgba(0,201,167,.09);color:#007d6e;border:1px solid rgba(0,201,167,.18)}
+.slot-busy{background:rgba(244,75,110,.07);color:#a03050;border:1px solid rgba(244,75,110,.12)}
+.slot-selected{background:linear-gradient(135deg,#5B4CF5,#3B7FED);color:#fff;box-shadow:0 4px 12px rgba(91,76,245,.3)}
+
+/* FORM */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-label{font-size:11.5px;font-weight:700;color:var(--text-muted)}
+.form-input{padding:9px 13px;border-radius:12px;border:1px solid rgba(91,76,245,.15);
+  background:rgba(255,255,255,.7);font-family:inherit;font-size:13px;color:var(--text);outline:none;transition:border-color .15s}
+.form-input:focus{border-color:rgba(91,76,245,.4)}
+.form-select{padding:9px 13px;border-radius:12px;border:1px solid rgba(91,76,245,.15);
+  background:rgba(255,255,255,.7);font-family:inherit;font-size:13px;color:var(--text);outline:none}
+
+/* SCRIPT COMPLIANCE */
+.script-item{padding:14px 16px;border-radius:14px;margin-bottom:9px;cursor:pointer;transition:all .15s;
+  border:1px solid rgba(91,76,245,.08);background:rgba(255,255,255,.45)}
+.script-item:hover{background:rgba(255,255,255,.75)}
+.script-check{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(91,76,245,.05)}
+.script-check:last-child{border-bottom:none}
+.check-icon{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.check-ok{background:rgba(0,201,167,.15);color:#007d6e}
+.check-fail{background:rgba(244,75,110,.15);color:#c52048}
+.check-warn{background:rgba(245,166,35,.15);color:#b87200}
+.check-label{font-size:12px;flex:1}
+.check-time{font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+
+/* SCORE RING */
+.score-circle{display:inline-flex;align-items:center;justify-content:center;
+  width:48px;height:48px;border-radius:50%;font-size:15px;font-weight:800;border:3px solid;flex-shrink:0}
+
+/* KANBAN / PIPELINE */
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.kanban::-webkit-scrollbar{height:4px}
+.kb-col{min-width:200px;flex-shrink:0}
+.kb-header{padding:10px 12px;border-radius:12px 12px 0 0;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.kb-body{display:flex;flex-direction:column;gap:7px;padding:8px 0}
+.kb-card{padding:11px 13px;border-radius:12px;background:var(--glass);backdrop-filter:blur(12px);
+  border:1px solid var(--glass-border);box-shadow:0 2px 10px rgba(120,140,180,.12);cursor:pointer;transition:all .15s}
+.kb-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(91,76,245,.12)}
+.kb-name{font-size:12.5px;font-weight:700;margin-bottom:3px}
+.kb-detail{font-size:11.5px;color:var(--text-muted)}
+.kb-footer{display:flex;justify-content:space-between;align-items:center;margin-top:7px}
+
+/* MARKETING */
+.channel-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid rgba(91,76,245,.06)}
+.channel-row:last-child{border-bottom:none}
+.channel-icon-box{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.channel-info{flex:1}
+.channel-name{font-size:13.5px;font-weight:700}
+.channel-meta{font-size:12px;color:var(--text-muted)}
+.channel-stats{display:flex;gap:16px;text-align:right}
+.ch-stat-val{font-size:14px;font-weight:800}
+.ch-stat-lbl{font-size:10.5px;color:var(--text-muted)}
+
+/* CALL ROW */
+.call-row{display:flex;gap:11px;align-items:center;padding:12px 15px;border-radius:14px;
+  border:1px solid rgba(91,76,245,.07);background:rgba(255,255,255,.45);margin-bottom:8px;cursor:pointer;transition:all .15s}
+.call-row:hover{background:rgba(255,255,255,.75)}
+
+/* REACTIV */
+.reactiv-card{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:13px;
+  background:rgba(255,255,255,.48);border:1px solid rgba(91,76,245,.07);margin-bottom:9px;cursor:pointer;transition:all .15s}
+.reactiv-card:hover{background:rgba(255,255,255,.78)}
+.reactiv-score{width:42px;height:42px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+
+/* NOTIF */
+.notif-item{display:flex;gap:11px;align-items:flex-start;padding:12px 14px;border-radius:13px;
+  border:1px solid rgba(91,76,245,.07);background:rgba(255,255,255,.45);margin-bottom:8px}
+
+/* BAR CHART */
+.bar-chart{display:flex;align-items:flex-end;gap:6px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bar-col .bar{width:100%;border-radius:7px 7px 0 0}
+.bar-lbl{font-size:10px;color:var(--text-muted);text-align:center}
+
+/* DOCTOR */
+.doctor-card{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.07)}
+.doctor-card:last-child{border-bottom:none}
+.doctor-ava{width:38px;height:38px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff}
+
+/* TOGGLE */
+.toggle{width:40px;height:22px;border-radius:11px;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s}
+.toggle.on{background:var(--accent3)}
+.toggle.off{background:rgba(91,76,245,.2)}
+.toggle-thumb{width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:2px;transition:left .2s}
+.toggle.on .toggle-thumb{left:20px}
+.toggle.off .toggle-thumb{left:2px}
+
+/* SOURCE DOT */
+.source-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🦷</div>
+    <div>
+      <div class="logo-text">Denta<span>Flow</span></div>
+      <div class="logo-sub">Умная система клиники</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav-section">
+      <div class="nav-label">Обзор</div>
+      <div class="nav-item active" onclick="showScreen('overview')"><span class="icon">📊</span>Главная</div>
+      <div class="nav-item" onclick="showScreen('communications')"><span class="icon">💬</span>Коммуникации<span class="nav-badge">12</span></div>
+      <div class="nav-item" onclick="showScreen('patient')"><span class="icon">🗂️</span>Карточка пациента</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">CRM</div>
+      <div class="nav-item" onclick="showScreen('pipeline')"><span class="icon">🔀</span>Воронка пациентов</div>
+      <div class="nav-item" onclick="showScreen('schedule')"><span class="icon">📅</span>Умная запись</div>
+      <div class="nav-item" onclick="showScreen('reactivation')"><span class="icon">🔄</span>Реактивация базы<span class="nav-badge green">148</span></div>
+      <div class="nav-item" onclick="showScreen('referral')"><span class="icon">🎁</span>Реферальная программа<span class="nav-badge blue">7</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Контроль качества</div>
+      <div class="nav-item" onclick="showScreen('calls')"><span class="icon">📞</span>ОКК · Звонки<span class="nav-badge">3</span></div>
+      <div class="nav-item" onclick="showScreen('scripts')"><span class="icon">📋</span>Скрипты продаж</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Аналитика</div>
+      <div class="nav-item" onclick="showScreen('analytics')"><span class="icon">📈</span>Финансы & KPI</div>
+      <div class="nav-item" onclick="showScreen('marketing')"><span class="icon">🎯</span>Маркетинг</div>
+      <div class="nav-item" onclick="showScreen('staff')"><span class="icon">👥</span>Персонал</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Система</div>
+      <div class="nav-item" onclick="showScreen('settings')"><span class="icon">⚙️</span>Настройки</div>
+    </div>
+  </nav>
+  <div class="sidebar-user">
+    <div class="user-ava">АК</div>
+    <div style="flex:1">
+      <div class="user-name">Алексей Крылов</div>
+      <div class="user-role">Собственник</div>
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);cursor:pointer">⋯</div>
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="main">
+  <div class="header">
+    <div class="header-title" id="screen-title">Главная <span>— Обзор клиники</span></div>
+    <div class="period-tabs">
+      <div class="period-tab active">День</div>
+      <div class="period-tab" onclick="switchPeriod(this)">Неделя</div>
+      <div class="period-tab" onclick="switchPeriod(this)">Месяц</div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon">🔔<span class="notif-dot"></span></button>
+      <button class="btn-icon" title="Синхронизация">🔁</button>
+      <button class="btn-icon">📤</button>
+    </div>
+    <div class="role-switcher">
+      <div class="role-tab active" onclick="switchRole(this)">Собственник</div>
+      <div class="role-tab" onclick="switchRole(this)">Управляющий</div>
+      <div class="role-tab" onclick="switchRole(this)">Администратор</div>
+      <div class="role-tab" onclick="switchRole(this)">Маркетолог</div>
+    </div>
+  </div>
+
+  <div class="content">
+
+<!-- ══════════════════════════════════════════
+     SCREEN 1 · OVERVIEW
+══════════════════════════════════════════ -->
+<div class="screen active" id="screen-overview">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-аналитика · Сегодня, 23 марта</div>
+      <div class="ai-text">Основная потеря — повторный контакт после пропущенного: <strong>34% не перезванивают в 15 мин</strong>. Администратор Марина С. конверсия 28% (ср. 51%) — слабая отработка ценового возражения. Реактивация даёт <strong>64% конверсии</strong> против 31% у холодных лидов.</div>
+      <div class="ai-chips">
+        <span class="ai-chip chip-danger">⚡ 8 звонков без ответа</span>
+        <span class="ai-chip chip-warn">⚠️ 5 пациентов с риском неявки</span>
+        <span class="ai-chip chip-ok">✓ 12 пациентов к реактивации</span>
+        <span class="ai-chip chip-blue">📈 Имплантация: высокий спрос</span>
+        <span class="ai-chip chip-purple">📋 Марина С. нарушает скрипт</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 1: 6 ключевых KPI -->
+  <div class="stats-grid-6">
+    <div class="stat-card">
+      <div class="stat-icon">📥</div>
+      <div class="stat-label">Новых обращений</div>
+      <div class="stat-value">47</div>
+      <div class="stat-delta delta-up">↑ +12% к вчера</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:40%"></div><div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:50%"></div><div class="trend-bar" style="height:70%"></div><div class="trend-bar hi" style="height:90%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Записей создано</div>
+      <div class="stat-value">31</div>
+      <div class="stat-delta" style="color:var(--text-muted)">66% конверсия</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:60%"></div><div class="trend-bar" style="height:45%"></div><div class="trend-bar" style="height:75%"></div><div class="trend-bar" style="height:55%"></div><div class="trend-bar hi" style="height:80%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🚶</div>
+      <div class="stat-label">Доходимость</div>
+      <div class="stat-value" style="color:var(--accent3)">81%</div>
+      <div class="stat-delta delta-up">↑ +4% к норме</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:70%"></div><div class="trend-bar" style="height:65%"></div><div class="trend-bar" style="height:80%"></div><div class="trend-bar" style="height:75%"></div><div class="trend-bar hi" style="height:88%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">❌</div>
+      <div class="stat-label">Лидов потеряно</div>
+      <div class="stat-value" style="color:var(--danger)">9</div>
+      <div class="stat-delta delta-down">↑ +3 к вчера</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:30%"></div><div class="trend-bar" style="height:50%"></div><div class="trend-bar" style="height:35%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar hi" style="height:70%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">💰</div>
+      <div class="stat-label">Выручка дня</div>
+      <div class="stat-value" style="font-size:20px">342K</div>
+      <div class="stat-delta delta-up">↑ +18% к плану</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar" style="height:70%"></div><div class="trend-bar" style="height:65%"></div><div class="trend-bar hi" style="height:85%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📋</div>
+      <div class="stat-label">Планы лечения</div>
+      <div class="stat-value">1.2M</div>
+      <div class="stat-delta" style="color:var(--text-muted)">8 согласовано</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:50%"></div><div class="trend-bar" style="height:70%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar" style="height:80%"></div><div class="trend-bar hi" style="height:75%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="two-col">
+    <!-- FUNNEL -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Воронка пациентов · Сегодня</span><span class="card-action" onclick="showScreen('pipeline')">Воронка CRM →</span></div>
+      <div class="funnel">
+        <div class="funnel-item">
+          <div class="funnel-label">📥 Обращения</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:100%;background:linear-gradient(90deg,#5B4CF5,#3B7FED)"></div></div>
+          <div class="funnel-val">47</div><div class="funnel-pct">100%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label">📞 Первый контакт</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:83%;background:#3B7FED"></div></div>
+          <div class="funnel-val">39</div><div class="funnel-pct">83%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label">📝 Записались</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:66%;background:#00C9A7"></div></div>
+          <div class="funnel-val">31</div><div class="funnel-pct">66%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label">✅ Подтвердили</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:51%;background:#F5A623"></div></div>
+          <div class="funnel-val">24</div><div class="funnel-pct">51%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label">🚶 Пришли</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:36%;background:#F44B6E"></div></div>
+          <div class="funnel-val">17</div><div class="funnel-pct">36%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label">💳 Лечение начато</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:28%;background:#a020a0"></div></div>
+          <div class="funnel-val">13</div><div class="funnel-pct">28%</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text-muted)">Общая конверсия лид → лечение</span>
+        <span style="font-size:16px;font-weight:800;color:var(--accent2)">27.7%</span>
+      </div>
+    </div>
+
+    <!-- SOURCES + DOCTORS -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Источники лидов</span><span class="card-action" onclick="showScreen('marketing')">Детали →</span></div>
+        <table class="table">
+          <thead><tr><th>Источник</th><th>Лидов</th><th>Конв.</th><th>CPL</th><th>Качество</th></tr></thead>
+          <tbody>
+            <tr><td><span class="source-dot" style="background:#0088cc"></span>Telegram</td><td>18</td><td style="font-weight:700;color:var(--accent3)">58%</td><td>820₽</td><td><span class="pill pill-green">Горячий</span></td></tr>
+            <tr><td><span class="source-dot" style="background:#F5A623"></span>Звонки вх.</td><td>14</td><td style="font-weight:700;color:var(--accent2)">43%</td><td>—</td><td><span class="pill pill-blue">Хорошо</span></td></tr>
+            <tr><td><span class="source-dot" style="background:#00C9A7"></span>Сайт</td><td>9</td><td style="font-weight:700;color:var(--warn)">31%</td><td>2100₽</td><td><span class="pill pill-yellow">Слабый</span></td></tr>
+            <tr><td><span class="source-dot" style="background:#F44B6E"></span>Max</td><td>6</td><td style="font-weight:700;color:var(--danger)">17%</td><td>3400₽</td><td><span class="pill pill-red">Плохой</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Загрузка врачей</span><span class="card-action" onclick="showScreen('schedule')">Расписание →</span></div>
+        <div class="doctor-card">
+          <div class="doctor-ava" style="background:#5B4CF5">ИИ</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Иванов И.И. · Имплантолог</div>
+            <div class="progress-wrap" style="margin-top:4px"><div class="progress-bar" style="width:88%;background:linear-gradient(90deg,#5B4CF5,#3B7FED)"></div></div></div>
+          <div style="font-size:15px;font-weight:800;color:var(--accent2)">88%</div>
+        </div>
+        <div class="doctor-card">
+          <div class="doctor-ava" style="background:#00C9A7">ПМ</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Петрова М.В. · Ортодонт</div>
+            <div class="progress-wrap" style="margin-top:4px"><div class="progress-bar" style="width:72%;background:#00C9A7"></div></div></div>
+          <div style="font-size:15px;font-weight:800;color:var(--accent3)">72%</div>
+        </div>
+        <div class="doctor-card">
+          <div class="doctor-ava" style="background:#F5A623">СА</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Сидоров А.П. · Терапевт</div>
+            <div class="progress-wrap" style="margin-top:4px"><div class="progress-bar" style="width:45%;background:#F5A623"></div></div></div>
+          <div style="font-size:15px;font-weight:800;color:var(--warn)">45%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3 -->
+  <div class="three-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Администраторы · KPI</span><span class="card-action" onclick="showScreen('staff')">Все →</span></div>
+      <table class="table">
+        <thead><tr><th>Имя</th><th>Конв.</th><th>Скрипт</th></tr></thead>
+        <tbody>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#00C9A7">ЕМ</div>Елена М.</div></td><td style="font-weight:700;color:var(--accent3)">64%</td><td><span class="pill pill-green">97%</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#3B7FED">АС</div>Андрей С.</div></td><td style="font-weight:700;color:var(--accent2)">51%</td><td><span class="pill pill-blue">82%</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#F44B6E">МС</div>Марина С.</div></td><td style="font-weight:700;color:var(--danger)">28%</td><td><span class="pill pill-red">44%</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#5B4CF5">ОК</div>Ольга К.</div></td><td style="font-weight:700;color:var(--accent2)">49%</td><td><span class="pill pill-blue">78%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Выручка · Часы дня</span></div>
+      <div class="bar-chart" style="height:90px;margin-top:4px">
+        <div class="bar-col"><div class="bar" style="height:30%;background:rgba(91,76,245,.2)"></div><div class="bar-lbl">9</div></div>
+        <div class="bar-col"><div class="bar" style="height:55%;background:rgba(91,76,245,.3)"></div><div class="bar-lbl">10</div></div>
+        <div class="bar-col"><div class="bar" style="height:80%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">11</div></div>
+        <div class="bar-col"><div class="bar" style="height:70%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">12</div></div>
+        <div class="bar-col"><div class="bar" style="height:45%;background:rgba(91,76,245,.25)"></div><div class="bar-lbl">13</div></div>
+        <div class="bar-col"><div class="bar" style="height:90%;background:linear-gradient(180deg,#3B7FED,#00C9A7)"></div><div class="bar-lbl">14</div></div>
+        <div class="bar-col"><div class="bar" style="height:75%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">15</div></div>
+        <div class="bar-col"><div class="bar" style="height:60%;background:rgba(91,76,245,.25)"></div><div class="bar-lbl">16</div></div>
+        <div class="bar-col"><div class="bar" style="height:40%;background:rgba(91,76,245,.2)"></div><div class="bar-lbl">17</div></div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px">
+        <span style="color:var(--text-muted)">Пик: 14:00</span>
+        <span style="font-weight:700">88 700 ₽</span>
+        <span style="color:var(--text-muted)">Сред. чек:</span>
+        <span style="font-weight:700">6 800 ₽</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Быстрые действия</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <button class="btn btn-primary" onclick="showScreen('patient')" style="text-align:left">➕ Новый пациент</button>
+        <button class="btn btn-outline" onclick="showScreen('communications')" style="text-align:left">💬 Входящие (12)</button>
+        <button class="btn btn-outline" onclick="showScreen('pipeline')" style="text-align:left">🔀 Воронка CRM</button>
+        <button class="btn btn-outline" onclick="showScreen('reactivation')" style="text-align:left">🔄 Реактивация (148)</button>
+        <button class="btn btn-outline" onclick="showScreen('calls')" style="text-align:left">📞 ОКК · Звонки (3 ⚠️)</button>
+        <button class="btn btn-outline" onclick="showScreen('referral')" style="text-align:left">🎁 Реферальная программа</button>
+      </div>
+      <div class="sep"></div>
+      <div style="font-size:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text-muted)">1Denta</span><strong style="color:var(--accent3)">● Синхр.</strong></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text-muted)">Телефония</span><strong style="color:var(--accent3)">● Подкл.</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">ИИ-модули</span><strong style="color:var(--accent3)">● Активны</strong></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 2 · COMMUNICATIONS
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-communications">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-приоритизация входящих</div>
+      <div class="ai-text">8 обращений требуют срочной обработки. Коваленко Д. без ответа 23 минуты — горячий интерес к имплантации. 3 пациента готовы к записи.</div>
+      <div class="ai-chips">
+        <span class="ai-chip chip-danger">🔥 8 срочных</span>
+        <span class="ai-chip chip-warn">⏱ 3 зависших &gt;15 мин</span>
+        <span class="ai-chip chip-ok">✓ 3 готовы к записи</span>
+      </div>
+    </div>
+  </div>
+  <div class="two-col" style="margin-bottom:0;align-items:start">
+    <div>
+      <div style="display:flex;gap:5px;margin-bottom:13px;flex-wrap:wrap">
+        <span class="pill pill-red" style="padding:5px 11px;cursor:pointer">🔥 Срочные (8)</span>
+        <span class="pill pill-purple" style="padding:5px 11px;cursor:pointer">🆕 Лиды (5)</span>
+        <span class="pill pill-yellow" style="padding:5px 11px;cursor:pointer">⏱ Зависшие (3)</span>
+        <span class="pill pill-blue" style="padding:5px 11px;cursor:pointer">📞 Пропущенные (4)</span>
+        <span class="pill pill-gray" style="padding:5px 11px;cursor:pointer">✓ Все (47)</span>
+      </div>
+      <div class="chat-item unread" onclick="showScreen('patient')">
+        <div class="chat-ava" style="background:rgba(244,75,110,.1)">🔴</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">Коваленко Дмитрий</div><div class="chat-time mono">09:17</div></div>
+          <div class="chat-preview">Интересует имплантация, спрашивает про стоимость и сроки</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--danger)"></span><span class="pill pill-blue" style="font-size:10px">Telegram</span><span class="pill pill-red" style="font-size:10px">Срочно</span><span style="font-size:11px;color:var(--danger)">Без ответа 23 мин</span></div>
+        </div>
+      </div>
+      <div class="chat-item unread">
+        <div class="chat-ava" style="background:rgba(245,166,35,.1)">📞</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">+7 (921) 445-67-88</div><div class="chat-time mono">09:31</div></div>
+          <div class="chat-preview">Пропущенный звонок — не определён в базе</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--warn)"></span><span class="pill pill-yellow" style="font-size:10px">Телефония</span><span class="pill pill-yellow" style="font-size:10px">Перезвонить</span></div>
+        </div>
+      </div>
+      <div class="chat-item" onclick="showScreen('patient')">
+        <div class="chat-ava" style="background:rgba(0,201,167,.1)">💬</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">Смирнова Анна Петровна</div><div class="chat-time mono">10:05</div></div>
+          <div class="chat-preview">Хочу перезаписаться — у дочери ортодонт 15 марта</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--accent2)"></span><span class="pill pill-purple" style="font-size:10px">Max</span><span class="pill pill-blue" style="font-size:10px">Перенос</span></div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="chat-ava" style="background:rgba(59,127,237,.1)">🌐</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">Новая заявка с сайта</div><div class="chat-time mono">10:22</div></div>
+          <div class="chat-preview">Форма: консультация. Услуга: лечение кариеса. Взрослый.</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--accent3)"></span><span class="pill pill-green" style="font-size:10px">Сайт</span><span class="pill pill-green" style="font-size:10px">Горячий лид</span></div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="chat-ava" style="background:rgba(244,75,110,.08)">❌</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">Захарова Ирина</div><div class="chat-time mono">11:14</div></div>
+          <div class="chat-preview">Отменила запись на 13:00 — просит перенести на следующую неделю</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--danger)"></span><span class="pill pill-blue" style="font-size:10px">Telegram</span><span class="pill pill-red" style="font-size:10px">Отмена</span></div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="chat-ava" style="background:rgba(91,76,245,.1)">🔄</div>
+        <div class="chat-body">
+          <div class="chat-top"><div class="chat-name">Морозов Виктор — Реактивация</div><div class="chat-time mono">11:00</div></div>
+          <div class="chat-preview">ИИ: последний визит 8 мес. Незавершённый план лечения (имплант)</div>
+          <div class="chat-meta"><span class="priority-dot" style="background:var(--accent2)"></span><span class="pill pill-purple" style="font-size:10px">База</span><span class="pill pill-purple" style="font-size:10px">Реактивация</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- Quick reply panel -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Коваленко Дмитрий</span><span class="pill pill-blue">Telegram</span></div>
+      <div style="background:rgba(91,76,245,.07);border-radius:11px;padding:11px;margin-bottom:13px">
+        <div style="font-size:10.5px;font-weight:700;color:var(--accent2);margin-bottom:4px">🤖 ИИ-подсказка</div>
+        <div style="font-size:12.5px">Горячий лид, имплантация. Главный барьер — стоимость. Рекомендация: консультация + рассрочка 0%. Высокая вероятность записи при быстром ответе.</div>
+      </div>
+      <div style="background:rgba(255,255,255,.5);border-radius:11px;padding:11px;margin-bottom:13px;min-height:80px">
+        <div style="text-align:right;margin-bottom:6px">
+          <div style="display:inline-block;background:rgba(91,76,245,.1);border-radius:11px 11px 3px 11px;padding:7px 11px;font-size:12.5px;max-width:220px">Добрый день! Интересует имплантация зуба, сколько стоит?</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">09:17</div>
+        </div>
+      </div>
+      <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.8px">Шаблоны ответов</div>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+        <div style="padding:8px 11px;border-radius:10px;background:rgba(255,255,255,.6);border:1px solid rgba(91,76,245,.1);font-size:12px;cursor:pointer" onmouseenter="this.style.background='rgba(91,76,245,.07)'" onmouseleave="this.style.background='rgba(255,255,255,.6)'">
+          Добрый день! Стоимость зависит от клиники — предлагаю бесплатную консультацию → определим план и стоимость с рассрочкой 0%.
+        </div>
+        <div style="padding:8px 11px;border-radius:10px;background:rgba(255,255,255,.6);border:1px solid rgba(91,76,245,.1);font-size:12px;cursor:pointer" onmouseenter="this.style.background='rgba(91,76,245,.07)'" onmouseleave="this.style.background='rgba(255,255,255,.6)'">
+          Здравствуйте! Имплантация от 35 000 ₽, есть рассрочка 0%. Когда удобно записаться?
+        </div>
+      </div>
+      <div style="display:flex;gap:7px">
+        <input class="form-input" style="flex:1" placeholder="Написать ответ..."/>
+        <button class="btn btn-primary">↑</button>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="showScreen('schedule')">📅 Записать</button>
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="showScreen('patient')">🗂 Карточка</button>
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="showScreen('pipeline')">🔀 В воронку</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 3 · PATIENT CARD
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-patient">
+  <div style="display:flex;gap:18px;margin-bottom:18px;align-items:flex-start">
+    <div style="width:58px;height:58px;border-radius:17px;background:linear-gradient(135deg,#5B4CF5,#3B7FED);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0">СА</div>
+    <div style="flex:1">
+      <div style="font-size:19px;font-weight:800;margin-bottom:3px">Смирнова Анна Петровна</div>
+      <div style="font-size:12.5px;color:var(--text-muted);display:flex;gap:14px;flex-wrap:wrap">
+        <span>📞 +7 (916) 234-56-78</span><span>🎂 34 года</span><span>📍 Москва</span><span>🦷 Центральный филиал</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:7px">
+        <span class="pill pill-blue">Постоянный пациент</span><span class="pill pill-purple">Telegram</span><span class="pill pill-green">Высокий LTV</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:7px">
+      <button class="btn btn-primary btn-sm" onclick="showScreen('schedule')">📅 Записать</button>
+      <button class="btn btn-outline btn-sm">📞 Позвонить</button>
+      <button class="btn btn-outline btn-sm">💬 Написать</button>
+    </div>
+  </div>
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-анализ пациента</div>
+      <div class="ai-text">Интересовалась ортодонтией для дочери. Пропустила консультацию 12 дней назад. В последнем звонке — возражение по цене. <strong>Вероятность записи 74%</strong> при предложении рассрочки. Рекомендуется позвонить сегодня до 13:00.</div>
+      <div class="ai-chips"><span class="ai-chip chip-warn">📞 Позвонить до 13:00</span><span class="ai-chip chip-blue">💳 Предложить рассрочку</span><span class="ai-chip chip-ok">✓ Вероятность 74%</span></div>
+    </div>
+  </div>
+  <div class="three-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">🦷 1Denta · История</span><span class="pill pill-green" style="font-size:10px">Синхр.</span></div>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot" style="background:#00C9A7"></div><div class="tl-date">12.01.2025</div><div class="tl-text">Профгигиена. Петрова М.В. <span class="pill pill-green">Завершено</span></div></div>
+        <div class="tl-item"><div class="tl-dot" style="background:#3B7FED"></div><div class="tl-date">05.11.2024</div><div class="tl-text">Консультация ортодонта. План согласован.</div></div>
+        <div class="tl-item"><div class="tl-dot" style="background:#F44B6E"></div><div class="tl-date">08.03.2025</div><div class="tl-text">Запись отменена. Не перезаписалась. <span class="pill pill-red">Пропуск</span></div></div>
+      </div>
+      <div class="sep"></div>
+      <div style="font-size:13px;margin-bottom:4px"><span style="color:var(--text-muted)">Всего лечения:</span> <strong>87 400 ₽</strong></div>
+      <div style="font-size:13px"><span style="color:var(--text-muted)">Незавершённый план:</span> <span class="pill pill-yellow">Брекеты 120K</span></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">📊 CRM · Воронка</span></div>
+      <div style="background:rgba(91,76,245,.07);border-radius:11px;padding:11px;margin-bottom:11px">
+        <div style="font-size:11.5px;font-weight:700;color:var(--accent2)">Сделка #4821 · Ортодонтия дочери</div>
+        <div style="font-size:13px;margin:4px 0;font-weight:600">120 000 ₽</div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span class="pill pill-yellow">Переговоры</span>
+          <span style="font-size:11px;color:var(--text-muted)">Открыта 14 дней</span>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Этапы воронки</div>
+      <div style="display:flex;gap:3px;margin-bottom:12px">
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--accent3)"></div>
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--accent3)"></div>
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--accent3)"></div>
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--warn)"></div>
+        <div style="flex:1;height:5px;border-radius:3px;background:rgba(91,76,245,.15)"></div>
+        <div style="flex:1;height:5px;border-radius:3px;background:rgba(91,76,245,.15)"></div>
+      </div>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot" style="background:#F5A623"></div><div class="tl-date mono">20.03 09:42</div><div class="tl-text">Входящий Telegram. Перенос.</div></div>
+        <div class="tl-item"><div class="tl-dot" style="background:#3B7FED"></div><div class="tl-date mono">08.03 14:15</div><div class="tl-text">Звонок 4:32. Возражение: дорого.</div></div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="showScreen('pipeline')">🔀 В воронку</button>
+        <button class="btn btn-outline btn-sm" style="flex:1">📝 Задача</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">💬 Коммуникации</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center;padding:8px;border-radius:10px;background:rgba(0,136,204,.07)">
+          <span style="font-size:17px">✈️</span>
+          <div style="flex:1"><div style="font-size:12.5px;font-weight:600">Telegram</div><div style="font-size:11.5px;color:var(--text-muted)">Сегодня 09:42 · Активен</div></div>
+          <button class="mini-btn mini-btn-blue">Открыть</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;padding:8px;border-radius:10px;background:rgba(244,75,110,.07)">
+          <span style="font-size:17px">📞</span>
+          <div style="flex:1"><div style="font-size:12.5px;font-weight:600">Звонок 08.03</div><div style="font-size:11.5px;color:var(--text-muted)">4:32 · Возражение по цене</div></div>
+          <button class="mini-btn mini-btn-blue" onclick="showScreen('calls')">🎧</button>
+        </div>
+      </div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-muted);margin-bottom:6px">Комментарии</div>
+      <div style="background:rgba(255,255,255,.5);border-radius:10px;padding:10px;font-size:12.5px">"Мама интересовалась брекетами для Кати (14 лет). Хочет сначала пройти консультацию сама."</div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary btn-sm" style="flex:1">➕ Задача</button>
+        <button class="btn btn-outline btn-sm" style="flex:1">📝 Комментарий</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 4 · PIPELINE (CRM)
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-pipeline">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ · Воронка пациентов</div>
+      <div class="ai-text">7 пациентов зависли на этапе «Переговоры» более 3 дней. Коваленко Д. — горячий лид, ждёт ответа 23 мин. Потенциальная выручка открытых сделок: <strong>1 640 000 ₽</strong>.</div>
+      <div class="ai-chips"><span class="ai-chip chip-warn">7 зависших сделок</span><span class="ai-chip chip-ok">Потенциал 1.64M ₽</span><span class="ai-chip chip-danger">🔥 1 горячий без ответа</span></div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">📥</div><div class="stat-label">Новые лиды</div><div class="stat-value">14</div><div class="stat-delta" style="color:var(--accent2)">Сегодня +5</div></div>
+    <div class="stat-card"><div class="stat-icon">💬</div><div class="stat-label">В работе</div><div class="stat-value">31</div><div class="stat-delta" style="color:var(--text-muted)">Переговоры</div></div>
+    <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-label">Записаны</div><div class="stat-value">22</div><div class="stat-delta delta-up">↑ +3 сегодня</div></div>
+    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">Закрыто (месяц)</div><div class="stat-value">87</div><div class="stat-delta" style="color:var(--accent3)">2.4M ₽</div></div>
+  </div>
+
+  <!-- KANBAN -->
+  <div class="card" style="padding:18px 20px">
+    <div class="card-header"><span class="card-title">Воронка CRM · Все пациенты</span><button class="btn btn-primary btn-sm">+ Новый лид</button></div>
+    <div class="kanban">
+      <!-- НОВЫЕ -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(91,76,245,.1);color:var(--accent2)"><span>📥 Новые</span><span class="pill pill-purple">14</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Коваленко Дмитрий</div>
+            <div class="kb-detail">Имплантация · Telegram</div>
+            <div class="kb-footer"><span class="pill pill-red" style="font-size:10px">🔥 Срочно</span><span style="font-size:11px;color:var(--text-muted)">23 мин</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-name">Новая заявка #219</div>
+            <div class="kb-detail">Кариес · Сайт</div>
+            <div class="kb-footer"><span class="pill pill-blue" style="font-size:10px">Новый</span><span style="font-size:11px;color:var(--text-muted)">10 мин</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-name">+7 921 445-67-88</div>
+            <div class="kb-detail">Пропущенный звонок</div>
+            <div class="kb-footer"><span class="pill pill-yellow" style="font-size:10px">Перезвонить</span><span style="font-size:11px;color:var(--text-muted)">1ч 20м</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- ПЕРВЫЙ КОНТАКТ -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(59,127,237,.1);color:#1a55b0"><span>📞 Контакт</span><span class="pill pill-blue">9</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Орлова Наталья</div>
+            <div class="kb-detail">Отбеливание · Max</div>
+            <div class="kb-footer"><span class="pill pill-blue" style="font-size:10px">Позвонить</span><span style="font-size:11px;color:var(--text-muted)">2ч</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-name">Федоров А.В.</div>
+            <div class="kb-detail">Протезирование · Звонок</div>
+            <div class="kb-footer"><span class="pill pill-blue" style="font-size:10px">Консультация</span><span style="font-size:11px;color:var(--text-muted)">вчера</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- ПЕРЕГОВОРЫ -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(245,166,35,.1);color:#b87200"><span>💬 Переговоры</span><span class="pill pill-yellow">12</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Смирнова Анна П.</div>
+            <div class="kb-detail">Брекеты дочери · 120K</div>
+            <div class="kb-footer"><span class="pill pill-yellow" style="font-size:10px">Рассрочка</span><span style="font-size:11px;color:var(--text-muted)">14 дней</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-name">Андреев Кирилл</div>
+            <div class="kb-detail">Ортодонтия · 85K</div>
+            <div class="kb-footer"><span class="pill pill-yellow" style="font-size:10px">Думает</span><span style="font-size:11px;color:var(--text-muted)">7 дней</span></div>
+          </div>
+          <div class="kb-card" style="border-color:rgba(244,75,110,.2)">
+            <div class="kb-name">Карпов Илья</div>
+            <div class="kb-detail">Имплант · 95K</div>
+            <div class="kb-footer"><span class="pill pill-red" style="font-size:10px">⚠️ 5 дней</span><span style="font-size:11px;color:var(--danger)">Риск потери</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- ЗАПИСАН -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(0,201,167,.1);color:#007d6e"><span>📅 Записан</span><span class="pill pill-green">22</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Морозов Виктор</div>
+            <div class="kb-detail">Ретейнеры · 25 мар 10:00</div>
+            <div class="kb-footer"><span class="pill pill-green" style="font-size:10px">✓ Подтверждён</span></div>
+          </div>
+          <div class="kb-card">
+            <div class="kb-name">Кузнецова М.</div>
+            <div class="kb-detail">Брекеты · 25 мар 13:00</div>
+            <div class="kb-footer"><span class="pill pill-green" style="font-size:10px">✓ Подтверждён</span></div>
+          </div>
+          <div class="kb-card" style="border-color:rgba(245,166,35,.2)">
+            <div class="kb-name">Николаев П.</div>
+            <div class="kb-detail">Консультация · 25 мар 14:00</div>
+            <div class="kb-footer"><span class="pill pill-yellow" style="font-size:10px">Не подтверждён</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- НА ПРИЁМЕ -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(91,76,245,.1);color:var(--accent2)"><span>🦷 На приёме</span><span class="pill pill-purple">4</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Белова Ирина</div>
+            <div class="kb-detail">Терапия · Сидоров А.П.</div>
+            <div class="kb-footer"><span class="pill pill-purple" style="font-size:10px">Сейчас</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- ЗАВЕРШЕНО -->
+      <div class="kb-col">
+        <div class="kb-header" style="background:rgba(0,201,167,.1);color:#007d6e"><span>✅ Завершено</span><span class="pill pill-green">87</span></div>
+        <div class="kb-body">
+          <div class="kb-card">
+            <div class="kb-name">Захарова Т.В.</div>
+            <div class="kb-detail">Имплант · 140K</div>
+            <div class="kb-footer"><span class="pill pill-green" style="font-size:10px">Оплачено</span><span style="font-size:11px;color:var(--text-muted)">вчера</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 5 · SCHEDULE
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-schedule">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-рекомендации расписания</div>
+      <div class="ai-text">У д-ра Сидорова 3 пустых окна во вторник — рекомендую направить первичку. Коваленко Д. высокий риск неявки — ставить с двойным подтверждением за 24ч и 2ч.</div>
+      <div class="ai-chips"><span class="ai-chip chip-warn">⚡ 3 пустых окна у Сидорова</span><span class="ai-chip chip-danger">⚠️ 2 пациента с риском неявки</span><span class="ai-chip chip-ok">✓ Загрузка 82% в среднем</span></div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">📅 Запись пациента</span></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Пациент</label><input class="form-input" value="Смирнова Анна Петровна"/></div>
+        <div class="form-group"><label class="form-label">Телефон</label><input class="form-input" value="+7 (916) 234-56-78"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Услуга</label>
+          <select class="form-select"><option>Консультация ортодонта</option><option>Имплантация</option><option>Профгигиена</option><option>Лечение кариеса</option></select></div>
+        <div class="form-group"><label class="form-label">Врач</label>
+          <select class="form-select"><option>Петрова М.В. — Ортодонт</option><option>Иванов И.И. — Имплантолог</option><option>Сидоров А.П. — Терапевт</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Дата</label><input class="form-input" type="date" value="2025-03-25"/></div>
+        <div class="form-group"><label class="form-label">Филиал</label>
+          <select class="form-select"><option>Центральный</option><option>Северный</option><option>Западный</option></select></div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.8px">Доступные слоты</div>
+      <div class="slot-grid">
+        <div class="slot slot-free">09:00</div><div class="slot slot-busy">10:00</div><div class="slot slot-busy">11:00</div>
+        <div class="slot slot-selected">12:00</div><div class="slot slot-free">13:00</div><div class="slot slot-free">14:00</div>
+        <div class="slot slot-busy">15:00</div><div class="slot slot-free">16:00</div><div class="slot slot-free">17:00</div><div class="slot slot-busy">18:00</div>
+      </div>
+      <div style="background:rgba(91,76,245,.07);border-radius:11px;padding:10px;margin-top:12px;font-size:12.5px">
+        🤖 Рекомендован слот 12:00. Риск неявки: <strong style="color:var(--warn)">44%</strong> — поставить подтверждение за 24ч и 2ч автоматически.
+      </div>
+      <div style="display:flex;gap:7px;margin-top:12px">
+        <button class="btn btn-primary" style="flex:1">✓ Создать запись</button>
+        <button class="btn btn-outline">📤 Подтверждение</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Расписание · 25 марта · Петрова М.В.</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">09:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:rgba(244,75,110,.09);border-left:3px solid var(--danger);font-size:12.5px"><strong>Захарова И.</strong> — Консультация <span class="pill pill-red" style="float:right;font-size:10px">⚠️ Риск неявки</span></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">10:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:rgba(0,201,167,.07);border-left:3px solid var(--accent3);font-size:12.5px"><strong>Морозов В.</strong> — Ретейнеры <span class="pill pill-green" style="float:right;font-size:10px">✓ Подтв.</span></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">11:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:rgba(91,76,245,.05);border:1px dashed rgba(91,76,245,.2);font-size:12.5px;color:var(--text-muted)">Свободно <strong style="color:var(--accent2);cursor:pointer">+ Записать</strong></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">12:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:linear-gradient(135deg,rgba(91,76,245,.1),rgba(59,127,237,.07));border-left:3px solid var(--accent2);font-size:12.5px"><strong>Смирнова А.П.</strong> — Консультация <span style="color:var(--accent2)">[Новая]</span></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">13:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:rgba(0,201,167,.07);border-left:3px solid var(--accent3);font-size:12.5px"><strong>Кузнецова М.</strong> — Брекеты <span class="pill pill-green" style="float:right;font-size:10px">✓ Подтв.</span></div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center">
+          <div class="mono" style="font-size:11px;color:var(--text-muted);width:38px">14:00</div>
+          <div style="flex:1;padding:8px 11px;border-radius:10px;background:rgba(245,166,35,.07);border-left:3px solid var(--warn);font-size:12.5px"><strong>Николаев П.</strong> — Консультация <span class="pill pill-yellow" style="float:right;font-size:10px">Не подтв.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 6 · CALLS (ОКК)
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-calls">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ОКК · ИИ-аналитика звонков · Неделя</div>
+      <div class="ai-text">37% незаписавшихся ушли после вопроса о цене. Марина С. — скрипт соблюдается только на 44%. Рекомендую совместное прослушивание и обучение. Администратор Елена М. — эталон: 97% соблюдения скрипта, конверсия 64%.</div>
+      <div class="ai-chips"><span class="ai-chip chip-danger">37% потерь на цене</span><span class="ai-chip chip-warn">📋 Марина С.: скрипт 44%</span><span class="ai-chip chip-ok">⭐ Елена М.: лучший</span><span class="ai-chip chip-blue">3 звонка требуют разбора</span></div>
+    </div>
+  </div>
+  <div class="stats-grid-5">
+    <div class="stat-card"><div class="stat-icon">📞</div><div class="stat-label">Всего звонков</div><div class="stat-value">142</div></div>
+    <div class="stat-card"><div class="stat-icon">📵</div><div class="stat-label">Пропущенных</div><div class="stat-value" style="color:var(--danger)">23</div><div class="stat-delta delta-down">16.2%</div></div>
+    <div class="stat-card"><div class="stat-icon">📝</div><div class="stat-label">Конверсия в запись</div><div class="stat-value">48%</div><div class="stat-delta delta-up">↑ +3%</div></div>
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-label">Соблюдение скрипта</div><div class="stat-value" style="color:var(--warn)">71%</div><div class="stat-delta delta-down">↓ Ниже нормы</div></div>
+    <div class="stat-card"><div class="stat-icon">⚡</div><div class="stat-label">Проблемных</div><div class="stat-value" style="color:var(--danger)">11</div><div class="stat-delta" style="color:var(--text-muted)">7.7%</div></div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Причины потерь лидов</span></div>
+      <div class="funnel">
+        <div class="funnel-item"><div class="funnel-label">Возражение по цене</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:74%;background:var(--danger)"></div></div><div class="funnel-val" style="color:var(--danger)">37%</div></div>
+        <div class="funnel-item"><div class="funnel-label">Долгий ответ (&gt;15м)</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:44%;background:var(--warn)"></div></div><div class="funnel-val">22%</div></div>
+        <div class="funnel-item"><div class="funnel-label">Нет нужного врача</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:30%;background:#F5A623"></div></div><div class="funnel-val">15%</div></div>
+        <div class="funnel-item"><div class="funnel-label">Неудобное время</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:26%;background:var(--accent2)"></div></div><div class="funnel-val">13%</div></div>
+        <div class="funnel-item"><div class="funnel-label">Прочее</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:26%;background:var(--text-muted)"></div></div><div class="funnel-val">13%</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Рейтинг администраторов</span></div>
+      <table class="table">
+        <thead><tr><th>Администратор</th><th>Звонков</th><th>Конверсия</th><th>Скрипт</th><th>ИИ-оценка</th></tr></thead>
+        <tbody>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#00C9A7">ЕМ</div>Елена М.</div></td><td>42</td><td style="font-weight:700;color:var(--accent3)">64%</td><td><span class="pill pill-green">97%</span></td><td style="font-weight:800;color:#00C9A7">4.8</td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#3B7FED">АС</div>Андрей С.</div></td><td>38</td><td style="font-weight:700;color:var(--accent2)">51%</td><td><span class="pill pill-blue">82%</span></td><td style="font-weight:800;color:#3B7FED">4.2</td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#5B4CF5">ОК</div>Ольга К.</div></td><td>27</td><td style="font-weight:700;color:var(--accent2)">49%</td><td><span class="pill pill-blue">78%</span></td><td style="font-weight:800;color:#5B4CF5">4.0</td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#F44B6E">МС</div>Марина С.</div></td><td>35</td><td style="font-weight:700;color:var(--danger)">28%</td><td><span class="pill pill-red">44%</span></td><td style="font-weight:800;color:var(--danger)">3.1</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="section-title">Разбор звонков · Требуют внимания <span class="section-subtitle">— ИИ-анализ</span></div>
+  <div class="call-row">
+    <div style="font-size:18px;width:32px;text-align:center">🔴</div>
+    <div style="flex:1">
+      <div style="font-size:13.5px;font-weight:700">Коваленко Дмитрий — Имплантация</div>
+      <div style="font-size:12px;color:var(--text-muted)">Марина С. · 20 мар 09:17 · 2:14 · <strong style="color:var(--danger)">Не отработала ценовое возражение, не предложила рассрочку</strong></div>
+    </div>
+    <div style="text-align:center;width:48px"><div style="font-size:17px;font-weight:800;color:var(--danger)">2.4</div><div style="font-size:10px;color:var(--text-muted)">/5.0</div></div>
+    <div style="display:flex;gap:5px"><button class="mini-btn mini-btn-blue" onclick="showScreen('scripts')">📋 Скрипт</button><button class="mini-btn mini-btn-red">⚠️ Разобрать</button></div>
+  </div>
+  <div class="call-row">
+    <div style="font-size:18px;width:32px;text-align:center">🟡</div>
+    <div style="flex:1">
+      <div style="font-size:13.5px;font-weight:700">Захарова Ирина — Брекеты</div>
+      <div style="font-size:12px;color:var(--text-muted)">Андрей С. · 19 мар 14:31 · 5:02 · Долго не предлагал запись, слабое закрытие</div>
+    </div>
+    <div style="text-align:center;width:48px"><div style="font-size:17px;font-weight:800;color:var(--warn)">3.2</div><div style="font-size:10px;color:var(--text-muted)">/5.0</div></div>
+    <div style="display:flex;gap:5px"><button class="mini-btn mini-btn-blue">🎧 Слушать</button></div>
+  </div>
+  <div class="call-row">
+    <div style="font-size:18px;width:32px;text-align:center">🟢</div>
+    <div style="flex:1">
+      <div style="font-size:13.5px;font-weight:700">Смирнова Анна — Ортодонт для дочери</div>
+      <div style="font-size:12px;color:var(--text-muted)">Елена М. · 19 мар 11:00 · 4:32 · Отличная работа: выявила потребность, предложила план лечения</div>
+    </div>
+    <div style="text-align:center;width:48px"><div style="font-size:17px;font-weight:800;color:var(--accent3)">4.6</div><div style="font-size:10px;color:var(--text-muted)">/5.0</div></div>
+    <div style="display:flex;gap:5px"><button class="mini-btn mini-btn-blue">🎧 Слушать</button><button class="mini-btn mini-btn-green">⭐ Эталон</button></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 7 · SCRIPTS (Анализ скриптов)
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-scripts">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ · Анализ соблюдения скриптов продаж</div>
+      <div class="ai-text">Среднее соблюдение скрипта по клинике: <strong>71%</strong> (норма 85%). Критичные отклонения: этап «Работа с возражением по цене» — выполняется только в 48% звонков. Этап «Предложение рассрочки» — 34%. Рекомендую внеплановое обучение для Марины С.</div>
+      <div class="ai-chips">
+        <span class="ai-chip chip-danger">⚠️ Возражение по цене: 48%</span>
+        <span class="ai-chip chip-danger">Рассрочка: только 34%</span>
+        <span class="ai-chip chip-ok">Приветствие: 96% ✓</span>
+        <span class="ai-chip chip-warn">Закрытие на запись: 61%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-label">Ср. соблюдение скрипта</div><div class="stat-value" style="color:var(--warn)">71%</div><div class="stat-delta delta-down">Норма 85%</div></div>
+    <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-label">Этапов пройдено верно</div><div class="stat-value">68%</div><div class="stat-delta" style="color:var(--text-muted)">из 7 этапов</div></div>
+    <div class="stat-card"><div class="stat-icon">❌</div><div class="stat-label">Пропущено этапов</div><div class="stat-value" style="color:var(--danger)">312</div><div class="stat-delta delta-down">За неделю</div></div>
+    <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-label">Связь скрипт → конв.</div><div class="stat-value">+28%</div><div class="stat-delta delta-up">при 90%+ скрипта</div></div>
+  </div>
+
+  <div class="two-col">
+    <!-- Script stages compliance -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Этапы скрипта · Соблюдение</span><span class="card-action" style="font-size:11px">Все звонки</span></div>
+      <div class="funnel" style="gap:11px">
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">1. Приветствие</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:96%;background:var(--accent3)"></div></div>
+          <div class="funnel-val" style="color:var(--accent3)">96%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">2. Выявление потребности</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:84%;background:#3B7FED"></div></div>
+          <div class="funnel-val" style="color:#3B7FED">84%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">3. Презентация услуги</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:78%;background:#5B4CF5"></div></div>
+          <div class="funnel-val" style="color:#5B4CF5">78%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">4. Работа с возражением</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:48%;background:var(--danger)"></div></div>
+          <div class="funnel-val" style="color:var(--danger)">48%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">5. Предложение рассрочки</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:34%;background:var(--danger)"></div></div>
+          <div class="funnel-val" style="color:var(--danger)">34%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">6. Закрытие на запись</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:61%;background:var(--warn)"></div></div>
+          <div class="funnel-val" style="color:var(--warn)">61%</div>
+        </div>
+        <div class="funnel-item">
+          <div class="funnel-label" style="font-size:12px">7. Подтверждение + доп. контакт</div>
+          <div class="funnel-bar-wrap"><div class="funnel-bar" style="width:73%;background:var(--warn)"></div></div>
+          <div class="funnel-val" style="color:var(--warn)">73%</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="background:rgba(244,75,110,.07);border-radius:11px;padding:11px;font-size:12.5px">
+        <strong>🤖 ИИ-вывод:</strong> Критические провалы на этапах 4 и 5 — именно там 37% пациентов уходят после вопроса о цене. Этапы выполняются реже всего у Марины С. (18% и 11% соответственно).
+      </div>
+    </div>
+
+    <!-- Admin by admin breakdown -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Скрипт по администраторам</span></div>
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;border-radius:12px;background:rgba(0,201,167,.07);border:1px solid rgba(0,201,167,.15)">
+          <div class="mini-ava" style="background:#00C9A7;width:36px;height:36px;font-size:13px">ЕМ</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Елена Миронова — Эталон</div>
+            <div class="progress-wrap" style="margin-top:4px;height:7px"><div class="progress-bar" style="width:97%;background:var(--accent3)"></div></div></div>
+          <div style="font-size:18px;font-weight:800;color:var(--accent3)">97%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;border-radius:12px;background:rgba(59,127,237,.06)">
+          <div class="mini-ava" style="background:#3B7FED;width:36px;height:36px;font-size:13px">АС</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Андрей Соколов</div>
+            <div class="progress-wrap" style="margin-top:4px;height:7px"><div class="progress-bar" style="width:82%;background:#3B7FED"></div></div></div>
+          <div style="font-size:18px;font-weight:800;color:#3B7FED">82%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;border-radius:12px;background:rgba(91,76,245,.06)">
+          <div class="mini-ava" style="background:#5B4CF5;width:36px;height:36px;font-size:13px">ОК</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Ольга Крылова</div>
+            <div class="progress-wrap" style="margin-top:4px;height:7px"><div class="progress-bar" style="width:78%;background:#5B4CF5"></div></div></div>
+          <div style="font-size:18px;font-weight:800;color:#5B4CF5">78%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:rgba(244,75,110,.08);border:1px solid rgba(244,75,110,.2)">
+          <div class="mini-ava" style="background:#F44B6E;width:36px;height:36px;font-size:13px">МС</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">Марина Сомова ⚠️ Внимание</div>
+            <div class="progress-wrap" style="margin-top:4px;height:7px"><div class="progress-bar" style="width:44%;background:var(--danger)"></div></div></div>
+          <div style="font-size:18px;font-weight:800;color:var(--danger)">44%</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-primary btn-sm" style="flex:1">📋 Детальный разбор Марины С.</button>
+        <button class="btn btn-outline btn-sm" style="flex:1">📥 Экспорт отчёта</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detailed call script analysis -->
+  <div class="section-title">Детальный анализ звонка · Марина С. · 20 марта <span class="section-subtitle">— Коваленко Дмитрий</span></div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Разбор по скрипту</span><span class="pill pill-red">Оценка 2.4/5.0</span></div>
+      <div style="display:flex;flex-direction:column">
+        <div class="script-check">
+          <div class="check-icon check-ok">✓</div>
+          <div class="check-label">1. Приветствие и представление</div>
+          <div class="check-time">0:00–0:12</div>
+          <span class="pill pill-green" style="font-size:10px">Выполнено</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-ok">✓</div>
+          <div class="check-label">2. Уточнение запроса пациента</div>
+          <div class="check-time">0:12–0:45</div>
+          <span class="pill pill-green" style="font-size:10px">Выполнено</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-warn">~</div>
+          <div class="check-label">3. Презентация услуги и преимуществ</div>
+          <div class="check-time">0:45–1:10</div>
+          <span class="pill pill-yellow" style="font-size:10px">Частично</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-fail">✗</div>
+          <div class="check-label"><strong>4. Работа с возражением по цене</strong></div>
+          <div class="check-time">1:10–1:40</div>
+          <span class="pill pill-red" style="font-size:10px">Пропущено</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-fail">✗</div>
+          <div class="check-label"><strong>5. Предложение рассрочки / акции</strong></div>
+          <div class="check-time">—</div>
+          <span class="pill pill-red" style="font-size:10px">Не предложено</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-fail">✗</div>
+          <div class="check-label"><strong>6. Закрытие на запись</strong></div>
+          <div class="check-time">1:40–2:14</div>
+          <span class="pill pill-red" style="font-size:10px">Не закрыто</span>
+        </div>
+        <div class="script-check">
+          <div class="check-icon check-fail">✗</div>
+          <div class="check-label">7. Подтверждение и прощание</div>
+          <div class="check-time">—</div>
+          <span class="pill pill-red" style="font-size:10px">Некорректно</span>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="background:rgba(244,75,110,.07);border-radius:11px;padding:11px;font-size:12.5px">
+        <strong>🤖 ИИ-рекомендация:</strong> Пациент сказал "дорого" в 1:12, администратор не использовала ни один контр-аргумент из скрипта. Нужно проработать этапы 4–6 на тренинге. Эталонный пример — звонок Елены М. от 19 марта.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Транскрипция · Ключевые моменты</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(0,136,204,.07)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:3px">МАРИНА С. · 0:00</div>
+          <div style="font-size:12.5px">Стоматология "Добрый Доктор", добрый день, меня зовут Марина, чем могу помочь?</div>
+        </div>
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(59,127,237,.07)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:3px">ПАЦИЕНТ · 0:15</div>
+          <div style="font-size:12.5px">Здравствуйте, меня интересует имплантация. Сколько это будет стоить?</div>
+        </div>
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(0,136,204,.07)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:3px">МАРИНА С. · 0:45</div>
+          <div style="font-size:12.5px">Имплантация у нас стоит от 35 000 рублей, зависит от производителя импланта.</div>
+        </div>
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(59,127,237,.07)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:3px">ПАЦИЕНТ · 1:12 · ⚠️ Ключевой момент</div>
+          <div style="font-size:12.5px;color:var(--danger)"><strong>О, это дорого... Ладно, я подумаю.</strong></div>
+        </div>
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(244,75,110,.07);border:1px solid rgba(244,75,110,.15)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--danger);margin-bottom:3px">МАРИНА С. · 1:20 · ❌ КРИТИЧЕСКАЯ ОШИБКА</div>
+          <div style="font-size:12.5px">Хорошо, если надумаете — звоните. До свидания!</div>
+        </div>
+        <div style="padding:9px 11px;border-radius:11px;background:rgba(0,201,167,.07);border:1px solid rgba(0,201,167,.15)">
+          <div style="font-size:10.5px;font-weight:700;color:var(--accent3);margin-bottom:3px">🤖 ИИ · Как должно быть (по скрипту)</div>
+          <div style="font-size:12px;color:var(--text)">"Понимаю вас! Именно поэтому у нас есть рассрочка 0% на 12 месяцев — получится всего 2 900 ₽/мес. Давайте запишем вас на бесплатную консультацию, там врач точно скажет цену под вашу ситуацию?"</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-primary btn-sm" style="flex:1">📅 Назначить разбор</button>
+        <button class="btn btn-outline btn-sm" style="flex:1">📋 Отправить в обучение</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 8 · REACTIVATION
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-reactivation">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-сегментация базы реактивации</div>
+      <div class="ai-text">Найдено <strong>148 пациентов для реактивации</strong>. Потенциальная выручка: <strong>1 200 000 ₽</strong>. Приоритет 1: профгигиена (48). Приоритет 2: незавершённое лечение (39). Приоритет 3: отменённые консультации (61).</div>
+      <div class="ai-chips"><span class="ai-chip chip-ok">📈 Потенциал 1.2M ₽</span><span class="ai-chip chip-blue">148 пациентов</span><span class="ai-chip chip-ok">Конверсия реакт. 64%</span></div>
+    </div>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-icon">🦷</div><div class="stat-label">Профгигиена (6+ мес)</div><div class="stat-value">48</div><div class="stat-delta" style="color:var(--accent3)">Приоритет 1</div></div>
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-label">Незавершённое лечение</div><div class="stat-value">39</div><div class="stat-delta" style="color:var(--accent2)">Приоритет 2</div></div>
+    <div class="stat-card"><div class="stat-icon">❌</div><div class="stat-label">Отменённые консультации</div><div class="stat-value">61</div><div class="stat-delta" style="color:var(--warn)">Приоритет 3</div></div>
+    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">Потенциал выручки</div><div class="stat-value" style="font-size:20px">1.2M</div><div class="stat-delta delta-up">при 64% конверсии</div></div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Приоритетные пациенты</span>
+        <div style="display:flex;gap:4px"><span class="pill pill-green" style="cursor:pointer;padding:4px 9px;font-size:11px">Профгигиена</span><span class="pill pill-blue" style="cursor:pointer;padding:4px 9px;font-size:11px">Незавершённые</span></div>
+      </div>
+      <div class="reactiv-card">
+        <div class="reactiv-score" style="background:rgba(244,75,110,.1);color:var(--danger)">95</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">Морозов Виктор А. — Имплантация</div><div style="font-size:12px;color:var(--text-muted)">Был 8 мес. назад · Незавершённый план 180K</div></div>
+        <div><div style="font-size:12px;font-weight:700;color:var(--accent2)">Telegram →</div><div style="font-size:11px;color:var(--text-muted)">Онлайн</div></div>
+      </div>
+      <div class="reactiv-card">
+        <div class="reactiv-score" style="background:rgba(245,166,35,.1);color:#b87200">84</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">Белякова Светлана — Профгигиена</div><div style="font-size:12px;color:var(--text-muted)">Не была 7 мес · 3 регулярных визита</div></div>
+        <div><div style="font-size:12px;font-weight:700;color:var(--accent2)">Позвонить →</div></div>
+      </div>
+      <div class="reactiv-card">
+        <div class="reactiv-score" style="background:rgba(91,76,245,.1);color:var(--accent2)">71</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">Андреев Кирилл — Ортодонтия</div><div style="font-size:12px;color:var(--text-muted)">Отменил консультацию 25 дней назад</div></div>
+        <div><div style="font-size:12px;font-weight:700;color:var(--accent2)">Max →</div></div>
+      </div>
+      <div class="reactiv-card">
+        <div class="reactiv-score" style="background:rgba(0,201,167,.1);color:#007d6e">68</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700">Крылова Наталья — Профгигиена</div><div style="font-size:12px;color:var(--text-muted)">Не была 6 мес · Всегда приходила</div></div>
+        <div><div style="font-size:12px;font-weight:700;color:var(--accent2)">Telegram →</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Стратегия по каналам</span></div>
+      <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">
+        <div style="padding:11px;border-radius:12px;background:rgba(0,136,204,.07);border-left:3px solid #0088cc">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:3px">✈️ Telegram — 62 пациента</div>
+          <div style="font-size:12px;color:var(--text-muted)">Активные в мессенджере — высокая открываемость</div>
+        </div>
+        <div style="padding:11px;border-radius:12px;background:rgba(244,75,110,.06);border-left:3px solid #f44b6e">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:3px">📞 Звонок — 41 пациент</div>
+          <div style="font-size:12px;color:var(--text-muted)">Высокий LTV, дорогое лечение</div>
+        </div>
+        <div style="padding:11px;border-radius:12px;background:rgba(91,76,245,.06);border-left:3px solid var(--accent2)">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:3px">💬 Max — 28 пациентов</div>
+          <div style="font-size:12px;color:var(--text-muted)">Предпочитают Max по истории</div>
+        </div>
+        <div style="padding:11px;border-radius:12px;background:rgba(120,140,180,.06);border-left:3px solid var(--text-muted)">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:3px">🚫 Не трогать — 17 пациентов</div>
+          <div style="font-size:12px;color:var(--text-muted)">Негативный отзыв / просьба не беспокоить</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <button class="btn btn-primary">🚀 Запустить Telegram · 62 пациента</button>
+        <button class="btn btn-outline">📞 Задачи на обзвон · 41 пациент</button>
+        <button class="btn btn-outline">💬 Рассылка Max · 28 пациентов</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 9 · ANALYTICS
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-analytics">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ-выводы для собственника · Март 2025</div>
+      <div class="ai-text">Основная потеря — повторный контакт после пропущенного звонка (34% без ответа в 15 мин). По имплантации высокий спрос, но доводка до консультации только 28%. Реактивация базы эффективнее холодных лидов в 2.1 раза.</div>
+      <div class="ai-chips"><span class="ai-chip chip-danger">Потери на повторном контакте</span><span class="ai-chip chip-warn">Имплантация: низкая доводка</span><span class="ai-chip chip-ok">База: конв. 64%</span><span class="ai-chip chip-blue">Сидоров недозагружен</span></div>
+    </div>
+  </div>
+  <div class="stats-grid-6">
+    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">Выручка (месяц)</div><div class="big-money" style="font-size:22px">2.8M</div><div class="stat-delta delta-up">↑ +23%</div></div>
+    <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-label">Новых пациентов</div><div class="stat-value">134</div><div class="stat-delta delta-up">↑ +18</div></div>
+    <div class="stat-card"><div class="stat-icon">🔄</div><div class="stat-label">Повторных визитов</div><div class="stat-value">287</div><div class="stat-delta" style="color:var(--text-muted)">68%</div></div>
+    <div class="stat-card"><div class="stat-icon">💳</div><div class="stat-label">Средний чек</div><div class="stat-value">6 640</div><div class="stat-delta delta-up">↑ +340₽</div></div>
+    <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-label">Конверсия лид→визит</div><div class="stat-value">36%</div><div class="stat-delta delta-up">↑ +4%</div></div>
+    <div class="stat-card"><div class="stat-icon">🔁</div><div class="stat-label">Реактивировано</div><div class="stat-value">24</div><div class="stat-delta" style="color:var(--accent3)">1.1M ₽</div></div>
+  </div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Выручка по неделям (месяц)</span></div>
+      <div class="bar-chart" style="height:110px;margin-top:6px">
+        <div class="bar-col"><div class="bar" style="height:55%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Нед 1</div><div class="bar-lbl" style="font-size:9px">630K</div></div>
+        <div class="bar-col"><div class="bar" style="height:70%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Нед 2</div><div class="bar-lbl" style="font-size:9px">780K</div></div>
+        <div class="bar-col"><div class="bar" style="height:62%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Нед 3</div><div class="bar-lbl" style="font-size:9px">690K</div></div>
+        <div class="bar-col"><div class="bar" style="height:65%;background:linear-gradient(180deg,#3B7FED,#00C9A7)"></div><div class="bar-lbl">Нед 4</div><div class="bar-lbl" style="font-size:9px">700K</div></div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px">
+        <span style="color:var(--text-muted)">Прошлый месяц</span><strong>2.28M</strong>
+        <span style="color:var(--text-muted)">Текущий</span><strong style="color:var(--accent3)">2.80M</strong>
+        <span style="color:var(--text-muted)">Прогноз</span><strong style="color:var(--accent2)">3.1M</strong>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Топ услуг · Выручка</span></div>
+      <div class="funnel">
+        <div class="funnel-item"><div class="funnel-label">Имплантация</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:78%;background:linear-gradient(90deg,#5B4CF5,#3B7FED)"></div></div><div class="funnel-val" style="color:var(--accent2)">780K</div></div>
+        <div class="funnel-item"><div class="funnel-label">Ортодонтия</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:65%;background:#00C9A7"></div></div><div class="funnel-val">650K</div></div>
+        <div class="funnel-item"><div class="funnel-label">Профгигиена</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:44%;background:#F5A623"></div></div><div class="funnel-val">440K</div></div>
+        <div class="funnel-item"><div class="funnel-label">Терапия</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:38%;background:#F44B6E"></div></div><div class="funnel-val">380K</div></div>
+        <div class="funnel-item"><div class="funnel-label">Протезирование</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:33%;background:var(--text-muted)"></div></div><div class="funnel-val">330K</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="three-col">
+    <div class="notif-item" style="flex-direction:column;border-radius:16px">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px"><div style="font-size:20px">📉</div><div><div style="font-size:13px;font-weight:700">Потери на повторном контакте</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">34% не перезваниваем в 15 мин после пропущенного. Главная точка потерь.</div></div></div>
+      <button class="btn btn-outline btn-sm" style="align-self:stretch">Настроить автоответ</button>
+    </div>
+    <div class="notif-item" style="flex-direction:column;border-radius:16px">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px"><div style="font-size:20px">🦷</div><div><div style="font-size:13px;font-weight:700">Имплантация: высокий интерес</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">64 обращения, но только 28% до консультации.</div></div></div>
+      <button class="btn btn-outline btn-sm" style="align-self:stretch" onclick="showScreen('scripts')">Улучшить скрипт</button>
+    </div>
+    <div class="notif-item" style="flex-direction:column;border-radius:16px">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px"><div style="font-size:20px">👨‍⚕️</div><div><div style="font-size:13px;font-weight:700">Сидоров недозагружен</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px">Загрузка 45%, норма 75%. Направлять первичку.</div></div></div>
+      <button class="btn btn-outline btn-sm" style="align-self:stretch" onclick="showScreen('schedule')">Перераспределить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 10 · MARKETING
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-marketing">
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ · Маркетинговая аналитика · Март 2025</div>
+      <div class="ai-text">Telegram — самый эффективный канал (CPL 820₽, конв. 58%). Max даёт холодные лиды с CPL 3 400₽ и конверсией 17% — рекомендуется пересмотреть или отключить. Органика (поиск) растёт +34% без вложений.</div>
+      <div class="ai-chips">
+        <span class="ai-chip chip-ok">✓ Telegram: лучший ROI</span>
+        <span class="ai-chip chip-danger">⚠️ Max: CPL 3 400₽ неэффективно</span>
+        <span class="ai-chip chip-blue">Органика: +34%</span>
+        <span class="ai-chip chip-warn">Google Ads: CPL растёт</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-grid-6">
+    <div class="stat-card"><div class="stat-icon">📥</div><div class="stat-label">Всего лидов</div><div class="stat-value">547</div><div class="stat-delta delta-up">↑ +12%</div></div>
+    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-label">Бюджет (месяц)</div><div class="stat-value" style="font-size:20px">84K</div><div class="stat-delta" style="color:var(--text-muted)">₽</div></div>
+    <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-label">Средний CPL</div><div class="stat-value" style="font-size:20px">1 540</div><div class="stat-delta delta-down">↑ +120₽</div></div>
+    <div class="stat-card"><div class="stat-icon">💳</div><div class="stat-label">ROMI</div><div class="stat-value" style="color:var(--accent3)">x33</div><div class="stat-delta delta-up">↑ +8</div></div>
+    <div class="stat-card"><div class="stat-icon">🔄</div><div class="stat-label">Конверсия лид→запись</div><div class="stat-value">44%</div><div class="stat-delta delta-up">↑ +3%</div></div>
+    <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-label">LTV нового пациента</div><div class="stat-value" style="font-size:20px">18K</div><div class="stat-delta delta-up">↑ +1.2K</div></div>
+  </div>
+
+  <!-- CHANNELS DETAIL -->
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Каналы продвижения · Эффективность</span></div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(0,136,204,.12)">✈️</div>
+        <div class="channel-info">
+          <div class="channel-name">Telegram (бот + канал)</div>
+          <div class="channel-meta">Органика + реклама · Бюджет 12 000 ₽</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:92%;background:linear-gradient(90deg,#5B4CF5,#00C9A7)"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">104</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent3)">58%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent3)">820₽</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-green">⭐ Лучший</span>
+      </div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(245,166,35,.12)">📞</div>
+        <div class="channel-info">
+          <div class="channel-name">Входящие звонки</div>
+          <div class="channel-meta">Сарафан + повторные · Без бюджета</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:78%;background:var(--accent3)"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">87</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent2)">43%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent3)">—</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-green">Органика</span>
+      </div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(59,127,237,.12)">🌐</div>
+        <div class="channel-info">
+          <div class="channel-name">Сайт + SEO</div>
+          <div class="channel-meta">Поисковый трафик · Бюджет 18 000 ₽</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:54%;background:#3B7FED"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">142</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--warn)">31%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent2)">2 100₽</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-blue">Средний</span>
+      </div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(245,166,35,.12)">🎯</div>
+        <div class="channel-info">
+          <div class="channel-name">Google Ads</div>
+          <div class="channel-meta">Контекстная реклама · Бюджет 34 000 ₽</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:46%;background:var(--warn)"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">98</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--warn)">29%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--warn)">2 800₽</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-yellow">Дорогой</span>
+      </div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(244,75,110,.1)">💬</div>
+        <div class="channel-info">
+          <div class="channel-name">Max / ВКонтакте</div>
+          <div class="channel-meta">Таргетированная реклама · Бюджет 20 000 ₽</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:22%;background:var(--danger)"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">59</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--danger)">17%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--danger)">3 400₽</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-red">Неэффективно</span>
+      </div>
+      <div class="channel-row">
+        <div class="channel-icon-box" style="background:rgba(0,201,167,.1)">⭐</div>
+        <div class="channel-info">
+          <div class="channel-name">Сарафанное радио</div>
+          <div class="channel-meta">Рекомендации пациентов · Без бюджета</div>
+          <div class="progress-wrap" style="margin-top:5px"><div class="progress-bar" style="width:87%;background:var(--accent3)"></div></div>
+        </div>
+        <div class="channel-stats">
+          <div><div class="ch-stat-val">57</div><div class="ch-stat-lbl">лидов</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent3)">71%</div><div class="ch-stat-lbl">конв.</div></div>
+          <div><div class="ch-stat-val" style="color:var(--accent3)">—</div><div class="ch-stat-lbl">CPL</div></div>
+        </div>
+        <span class="pill pill-green">Органика</span>
+      </div>
+    </div>
+
+    <!-- RIGHT COL -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Лиды по дням недели</span></div>
+        <div class="bar-chart" style="height:90px">
+          <div class="bar-col"><div class="bar" style="height:55%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Пн</div></div>
+          <div class="bar-col"><div class="bar" style="height:80%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Вт</div></div>
+          <div class="bar-col"><div class="bar" style="height:90%;background:linear-gradient(180deg,#3B7FED,#00C9A7)"></div><div class="bar-lbl">Ср</div></div>
+          <div class="bar-col"><div class="bar" style="height:75%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Чт</div></div>
+          <div class="bar-col"><div class="bar" style="height:65%;background:linear-gradient(180deg,#5B4CF5,#3B7FED)"></div><div class="bar-lbl">Пт</div></div>
+          <div class="bar-col"><div class="bar" style="height:40%;background:rgba(91,76,245,.25)"></div><div class="bar-lbl">Сб</div></div>
+          <div class="bar-col"><div class="bar" style="height:25%;background:rgba(91,76,245,.18)"></div><div class="bar-lbl">Вс</div></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px">Пик активности: <strong>вторник–среда</strong>. Рекомендуется усилить рекламу в эти дни.</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Конверсия по услугам</span></div>
+        <table class="table">
+          <thead><tr><th>Услуга</th><th>Интерес</th><th>Запись</th><th>Дельта</th></tr></thead>
+          <tbody>
+            <tr><td>Профгигиена</td><td>89</td><td style="font-weight:700;color:var(--accent3)">72%</td><td class="delta-up">↑+5%</td></tr>
+            <tr><td>Ортодонтия</td><td>64</td><td style="font-weight:700;color:var(--accent2)">51%</td><td class="delta-up">↑+2%</td></tr>
+            <tr><td>Терапия</td><td>112</td><td style="font-weight:700;color:var(--accent2)">48%</td><td style="color:var(--text-muted)">→</td></tr>
+            <tr><td>Имплантация</td><td>64</td><td style="font-weight:700;color:var(--danger)">28%</td><td class="delta-down">↓-4%</td></tr>
+            <tr><td>Протезирование</td><td>38</td><td style="font-weight:700;color:var(--warn)">34%</td><td class="delta-down">↓-2%</td></tr>
+          </tbody>
+        </table>
+        <div class="info-text" style="margin-top:8px">💡 Имплантация: высокий спрос, низкая доводка. Требует улучшения скрипта.</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Рекомендации ИИ</span></div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="padding:9px 11px;border-radius:11px;background:rgba(244,75,110,.07);border-left:3px solid var(--danger);font-size:12px">Отключить Max как рекламный канал — CPL 3 400₽, конв. 17%. Бюджет 20K перераспределить в Telegram.</div>
+          <div style="padding:9px 11px;border-radius:11px;background:rgba(0,201,167,.07);border-left:3px solid var(--accent3);font-size:12px">Усилить сарафанное радио: ввести реферальную программу (скидка за приведённого пациента).</div>
+          <div style="padding:9px 11px;border-radius:11px;background:rgba(91,76,245,.07);border-left:3px solid var(--accent2);font-size:12px">Среда — пиковый день для лидов. Усилить ставки Google Ads именно в среду 9:00–14:00.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ATTRIBUTION -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">Атрибуция выручки по каналам · Март 2025</span></div>
+    <div style="display:flex;gap:0;height:28px;border-radius:12px;overflow:hidden;margin-bottom:12px">
+      <div style="width:25%;background:linear-gradient(135deg,#5B4CF5,#3B7FED);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">Telegram 25%</div>
+      <div style="width:22%;background:#00C9A7;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">Сарафан 22%</div>
+      <div style="width:20%;background:#3B7FED;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">Сайт 20%</div>
+      <div style="width:18%;background:#F5A623;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">Google 18%</div>
+      <div style="width:11%;background:#F44B6E;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">Max 11%</div>
+      <div style="width:4%;background:var(--text-muted);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">4%</div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,#5B4CF5,#3B7FED);display:inline-block"></span>Telegram: 700K ₽</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:#00C9A7;display:inline-block"></span>Сарафан: 616K ₽</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:#3B7FED;display:inline-block"></span>Сайт/SEO: 560K ₽</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:#F5A623;display:inline-block"></span>Google Ads: 504K ₽</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:10px;height:10px;border-radius:3px;background:#F44B6E;display:inline-block"></span>Max/VK: 308K ₽</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 11 · STAFF
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-staff">
+  <div class="section-title">Персонал <span class="section-subtitle">— Эффективность и контроль качества</span></div>
+  <div class="two-col">
+    <div class="card" style="grid-column:span 1">
+      <div class="card-header"><span class="card-title">Сводная статистика</span></div>
+      <table class="table">
+        <thead><tr><th>Администратор</th><th>Звонков</th><th>Конверсия</th><th>Скрипт</th><th>Потерь</th><th>Статус</th></tr></thead>
+        <tbody>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#00C9A7">ЕМ</div>Елена Миронова</div></td><td>42</td><td style="font-weight:700;color:var(--accent3)">64%</td><td><span class="pill pill-green">97%</span></td><td>4</td><td><span class="pill pill-green">⭐ Лучший</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#3B7FED">АС</div>Андрей Соколов</div></td><td>38</td><td style="font-weight:700;color:var(--accent2)">51%</td><td><span class="pill pill-blue">82%</span></td><td>7</td><td><span class="pill pill-blue">Хорошо</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#5B4CF5">ОК</div>Ольга Крылова</div></td><td>27</td><td style="font-weight:700;color:var(--accent2)">49%</td><td><span class="pill pill-blue">78%</span></td><td>8</td><td><span class="pill pill-blue">Хорошо</span></td></tr>
+          <tr><td><div class="admin-row"><div class="mini-ava" style="background:#F44B6E">МС</div>Марина Сомова</div></td><td>35</td><td style="font-weight:700;color:var(--danger)">28%</td><td><span class="pill pill-red">44%</span></td><td>18</td><td><span class="pill pill-red">⚠️ Внимание</span></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:12px;padding:11px;border-radius:12px;background:rgba(244,75,110,.07);border:1px solid rgba(244,75,110,.15)">
+        <div style="font-size:11.5px;font-weight:700;color:var(--danger);margin-bottom:3px">⚠️ ИИ · Марина С.</div>
+        <div style="font-size:12.5px">Конверсия 28% (ср. 51%), скрипт 44%. Хуже всех отрабатывает ценовое возражение. Рекомендуется совместное прослушивание звонков и тренинг.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Задачи на сегодня</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="padding:9px;border-radius:12px;background:rgba(244,75,110,.07);border-left:3px solid var(--danger)"><div style="font-size:12.5px;font-weight:700">Прослушать 3 звонка — Марина С.</div><div style="font-size:11.5px;color:var(--text-muted)">Возражения по цене · ОКК</div></div>
+        <div style="padding:9px;border-radius:12px;background:rgba(245,166,35,.07);border-left:3px solid var(--warn)"><div style="font-size:12.5px;font-weight:700">Обработать пропущенные (8)</div><div style="font-size:11.5px;color:var(--text-muted)">Без ответа более 15 мин</div></div>
+        <div style="padding:9px;border-radius:12px;background:rgba(0,201,167,.07);border-left:3px solid var(--accent3)"><div style="font-size:12.5px;font-weight:700">Реактивация — 12 пациентов</div><div style="font-size:11.5px;color:var(--text-muted)">Telegram + звонки</div></div>
+        <div style="padding:9px;border-radius:12px;background:rgba(91,76,245,.07);border-left:3px solid var(--accent2)"><div style="font-size:12.5px;font-weight:700">Подтвердить записи на завтра (7)</div><div style="font-size:11.5px;color:var(--text-muted)">Неподтверждённые</div></div>
+      </div>
+      <div class="sep"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="showScreen('scripts')">📋 ОКК · Скрипты</button>
+        <button class="btn btn-outline btn-sm" style="flex:1" onclick="showScreen('calls')">📞 Звонки</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN 12 · SETTINGS
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-settings">
+  <div class="section-title">Настройки <span class="section-subtitle">— Интеграции и ИИ-модули</span></div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Подключённые системы</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;border-radius:13px;background:rgba(0,201,167,.07);border:1px solid rgba(0,201,167,.18)">
+          <div style="font-size:26px">🦷</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:700">1Denta</div><div style="font-size:12px;color:var(--text-muted)">Медицинская система · API v2.1</div></div>
+          <div style="text-align:right"><span class="pill pill-green">✓ Подключено</span><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px">Синхр. 2 мин назад</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;border-radius:13px;background:rgba(0,201,167,.07);border:1px solid rgba(0,201,167,.18)">
+          <div style="font-size:26px">✈️</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:700">Telegram Bot</div><div style="font-size:12px;color:var(--text-muted)">Мессенджер + бот · Bot API</div></div>
+          <div style="text-align:right"><span class="pill pill-green">✓ Активен</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;border-radius:13px;background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.18)">
+          <div style="font-size:26px">📱</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:700">Телефония (UIS)</div><div style="font-size:12px;color:var(--text-muted)">IP-телефония · WebRTC</div></div>
+          <div style="text-align:right"><span class="pill pill-yellow">⚙️ Настройка</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;border-radius:13px;background:rgba(120,140,180,.06)">
+          <div style="font-size:26px">💬</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:700">Max</div><div style="font-size:12px;color:var(--text-muted)">Мессенджер · API</div></div>
+          <div style="text-align:right"><button class="btn btn-outline btn-sm">+ Подключить</button></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:13px;border-radius:13deg;background:rgba(59,127,237,.07);border:1px solid rgba(59,127,237,.15);border-radius:13px">
+          <div style="font-size:26px">🌐</div>
+          <div style="flex:1"><div style="font-size:13.5px;font-weight:700">Сайт (виджет + форма)</div><div style="font-size:12px;color:var(--text-muted)">Веб-форма · JavaScript SDK</div></div>
+          <div style="text-align:right"><span class="pill pill-green">✓ Активен</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">ИИ-модули</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+            <div><div style="font-size:13px;font-weight:600">Анализ звонков + скриптов</div><div style="font-size:11.5px;color:var(--text-muted)">Расшифровка + ОКК + соблюдение скрипта</div></div>
+            <div class="toggle on"><div class="toggle-thumb"></div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+            <div><div style="font-size:13px;font-weight:600">Подсказки администратора</div><div style="font-size:11.5px;color:var(--text-muted)">Реальное время + шаблоны ответов</div></div>
+            <div class="toggle on"><div class="toggle-thumb"></div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+            <div><div style="font-size:13px;font-weight:600">Сегментация базы</div><div style="font-size:11.5px;color:var(--text-muted)">Умная реактивация пациентов</div></div>
+            <div class="toggle on"><div class="toggle-thumb"></div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+            <div><div style="font-size:13px;font-weight:600">Маркетинговая аналитика</div><div style="font-size:11.5px;color:var(--text-muted)">CPL, ROMI, атрибуция по каналам</div></div>
+            <div class="toggle on"><div class="toggle-thumb"></div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0">
+            <div><div style="font-size:13px;font-weight:600">Прогноз доходимости</div><div style="font-size:11.5px;color:var(--text-muted)">Риск неявки пациента</div></div>
+            <div class="toggle off"><div class="toggle-thumb"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Автоматизация</span></div>
+        <div style="font-size:12.5px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;gap:7px;align-items:center"><span style="color:var(--accent3)">✓</span>Подтверждение записи автоматически</div>
+          <div style="display:flex;gap:7px;align-items:center"><span style="color:var(--accent3)">✓</span>Напоминание за 24ч и 2ч</div>
+          <div style="display:flex;gap:7px;align-items:center"><span style="color:var(--accent3)">✓</span>Задача на перезвон после пропущенного</div>
+          <div style="display:flex;gap:7px;align-items:center"><span style="color:var(--accent3)">✓</span>Уведомление руководителя о проблемном звонке</div>
+          <div style="display:flex;gap:7px;align-items:center"><span style="color:var(--text-muted)">○</span>Ежедневный отчёт собственнику</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SCREEN · REFERRAL PROGRAM
+══════════════════════════════════════════ -->
+<div class="screen" id="screen-referral">
+
+  <!-- AI Banner -->
+  <div class="ai-banner">
+    <div class="ai-icon">🤖</div>
+    <div style="flex:1">
+      <div class="ai-label">✦ ИИ · Реферальная программа · Март 2025</div>
+      <div class="ai-text">За месяц пациенты привели <strong>23 новых человека</strong> — конверсия рефералов в лечение <strong>71%</strong>, это лучший канал по качеству лидов. Топ-реферер: Смирнова А.П. — привела 4 пациентов. У 12 участников накоплены бонусы, готовые к списанию.</div>
+      <div class="ai-chips">
+        <span class="ai-chip chip-ok">⭐ 71% конверсия — лучший канал</span>
+        <span class="ai-chip chip-blue">23 реферала за месяц</span>
+        <span class="ai-chip chip-warn">⚠️ 12 пациентов ждут списания бонусов</span>
+        <span class="ai-chip chip-purple">7 новых участников сегодня</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="stats-grid-6">
+    <div class="stat-card">
+      <div class="stat-icon">👥</div>
+      <div class="stat-label">Участников программы</div>
+      <div class="stat-value">347</div>
+      <div class="stat-delta delta-up">↑ +7 сегодня</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:40%"></div><div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:65%"></div><div class="trend-bar" style="height:72%"></div><div class="trend-bar hi" style="height:88%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🎁</div>
+      <div class="stat-label">Рефералов за месяц</div>
+      <div class="stat-value" style="color:var(--accent2)">23</div>
+      <div class="stat-delta delta-up">↑ +8 к прошлому</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:35%"></div><div class="trend-bar" style="height:50%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar" style="height:70%"></div><div class="trend-bar hi" style="height:85%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📈</div>
+      <div class="stat-label">Конверсия реферала</div>
+      <div class="stat-value" style="color:var(--accent3)">71%</div>
+      <div class="stat-delta delta-up">vs 31% у рекламы</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar" style="height:68%"></div><div class="trend-bar" style="height:65%"></div><div class="trend-bar hi" style="height:78%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">🪙</div>
+      <div class="stat-label">Начислено бонусов</div>
+      <div class="stat-value" style="font-size:20px">48 200</div>
+      <div class="stat-delta" style="color:var(--text-muted)">баллов / месяц</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:40%"></div><div class="trend-bar" style="height:52%"></div><div class="trend-bar" style="height:61%"></div><div class="trend-bar" style="height:74%"></div><div class="trend-bar hi" style="height:82%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">💸</div>
+      <div class="stat-label">Списано бонусов</div>
+      <div class="stat-value" style="font-size:20px">31 500</div>
+      <div class="stat-delta" style="color:var(--text-muted)">баллов / месяц</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:30%"></div><div class="trend-bar" style="height:44%"></div><div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:60%"></div><div class="trend-bar hi" style="height:72%"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">💰</div>
+      <div class="stat-label">Выручка с рефералов</div>
+      <div class="stat-value" style="font-size:20px">412K</div>
+      <div class="stat-delta delta-up">↑ CPL = 0 ₽</div>
+      <div class="stat-trend">
+        <div class="trend-bar" style="height:42%"></div><div class="trend-bar" style="height:55%"></div><div class="trend-bar" style="height:68%"></div><div class="trend-bar" style="height:72%"></div><div class="trend-bar hi" style="height:88%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+
+    <!-- LEFT: Program settings + top referrers -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Program card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">⚙️ Параметры программы</span>
+          <button class="btn btn-outline" style="font-size:12px;padding:5px 14px">Редактировать</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.07)">
+            <div>
+              <div style="font-size:13px;font-weight:700">Бонус за приведённого пациента</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Начисляется рефереру после первого визита друга</div>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:var(--accent2)">500 ₽</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.07)">
+            <div>
+              <div style="font-size:13px;font-weight:700">Скидка новому пациенту</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Скидка на первое посещение по реферальной ссылке</div>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:var(--accent3)">10%</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.07)">
+            <div>
+              <div style="font-size:13px;font-weight:700">Срок действия бонусов</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">После начисления, бонусы активны</div>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:var(--warn)">6 мес.</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.07)">
+            <div>
+              <div style="font-size:13px;font-weight:700">Максимум бонусов к списанию</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Доля оплаты бонусами от суммы визита</div>
+            </div>
+            <div style="font-size:18px;font-weight:800;color:var(--text-muted)">30%</div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0">
+            <div>
+              <div style="font-size:13px;font-weight:700">Статус программы</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Реферальные ссылки активны для пациентов</div>
+            </div>
+            <div class="toggle on"><div class="toggle-thumb"></div></div>
+          </div>
+        </div>
+        <div class="sep"></div>
+        <div style="display:flex;gap:7px">
+          <button class="btn btn-primary" style="flex:1;font-size:12px">📤 Отправить ссылки пациентам</button>
+          <button class="btn btn-outline" style="font-size:12px">📋 Условия PDF</button>
+        </div>
+      </div>
+
+      <!-- Referral levels -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">🏆 Уровни участия</span><span class="card-action">Изменить</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:13px;background:rgba(120,140,180,.07);border:1px solid rgba(120,140,180,.12)">
+            <div style="font-size:22px">🥉</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Бронза <span style="color:var(--text-muted);font-weight:500;font-size:12px">· 0–2 реферала</span></div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Стандартный бонус 500 ₽ за реферала</div>
+            </div>
+            <span class="pill pill-gray">214 чел.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:13px;background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.18)">
+            <div style="font-size:22px">🥈</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Серебро <span style="color:var(--text-muted);font-weight:500;font-size:12px">· 3–5 рефералов</span></div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Бонус 750 ₽ + приоритетная запись</div>
+            </div>
+            <span class="pill pill-yellow">98 чел.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:13px;background:rgba(91,76,245,.07);border:1px solid rgba(91,76,245,.16)">
+            <div style="font-size:22px">🥇</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Золото <span style="color:var(--text-muted);font-weight:500;font-size:12px">· 6+ рефералов</span></div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Бонус 1 000 ₽ + скидка 15% на профгигиену</div>
+            </div>
+            <span class="pill pill-purple">35 чел.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Referrer leaderboard + pending -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Top referrers -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🏅 Топ рефереры · Месяц</span>
+          <span class="card-action">Все →</span>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Пациент</th>
+              <th>Рефералов</th>
+              <th>Бонусов</th>
+              <th>Уровень</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight:800;color:var(--warn)">🥇</td>
+              <td><div class="admin-row"><div class="mini-ava" style="background:#5B4CF5">СА</div>Смирнова А.П.</div></td>
+              <td style="font-weight:700;color:var(--accent2)">4</td>
+              <td style="font-weight:700">2 000 ₽</td>
+              <td><span class="pill pill-yellow">Серебро</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:800;color:var(--text-muted)">🥈</td>
+              <td><div class="admin-row"><div class="mini-ava" style="background:#00C9A7">МВ</div>Морозов В.А.</div></td>
+              <td style="font-weight:700;color:var(--accent2)">3</td>
+              <td style="font-weight:700">2 250 ₽</td>
+              <td><span class="pill pill-yellow">Серебро</span></td>
+            </tr>
+            <tr>
+              <td style="font-weight:800;color:var(--text-muted)">🥉</td>
+              <td><div class="admin-row"><div class="mini-ava" style="background:#F5A623">ЗИ</div>Захарова И.В.</div></td>
+              <td style="font-weight:700;color:var(--accent2)">3</td>
+              <td style="font-weight:700">1 500 ₽</td>
+              <td><span class="pill pill-gray">Бронза</span></td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">4</td>
+              <td><div class="admin-row"><div class="mini-ava" style="background:#3B7FED">КН</div>Крылова Н.О.</div></td>
+              <td style="font-weight:700">2</td>
+              <td style="font-weight:700">1 000 ₽</td>
+              <td><span class="pill pill-gray">Бронза</span></td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">5</td>
+              <td><div class="admin-row"><div class="mini-ava" style="background:#F44B6E">АК</div>Андреев К.С.</div></td>
+              <td style="font-weight:700">2</td>
+              <td style="font-weight:700">1 000 ₽</td>
+              <td><span class="pill pill-gray">Бронза</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pending bonuses — ждут списания -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">⏳ Ожидают списания бонусов</span>
+          <span class="pill pill-yellow" style="font-size:11px">12 пациентов</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.14)">
+            <div class="mini-ava" style="background:#5B4CF5;width:32px;height:32px;font-size:12px">БС</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Белякова Светлана</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Накоплено: <strong style="color:var(--accent2)">1 500 ₽</strong> · Истекает через 12 дней</div>
+            </div>
+            <button class="mini-btn mini-btn-blue" style="font-size:11px">Списать</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:rgba(244,75,110,.06);border:1px solid rgba(244,75,110,.14)">
+            <div class="mini-ava" style="background:#F44B6E;width:32px;height:32px;font-size:12px">ОФ</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Орлова Фаина</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Накоплено: <strong style="color:var(--accent2)">750 ₽</strong> · Истекает через <strong style="color:var(--danger)">3 дня</strong></div>
+            </div>
+            <button class="mini-btn mini-btn-red" style="font-size:11px">🔔 Напомнить</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:rgba(91,76,245,.05);border:1px solid rgba(91,76,245,.09)">
+            <div class="mini-ava" style="background:#00C9A7;width:32px;height:32px;font-size:12px">НП</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Никитин Павел</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">Накоплено: <strong style="color:var(--accent2)">500 ₽</strong> · Истекает через 47 дней</div>
+            </div>
+            <button class="mini-btn mini-btn-blue" style="font-size:11px">Списать</button>
+          </div>
+        </div>
+        <div class="sep"></div>
+        <div style="display:flex;gap:7px">
+          <button class="btn btn-outline" style="flex:1;font-size:12px">📋 Все 12 пациентов</button>
+          <button class="btn btn-primary" style="flex:1;font-size:12px">🔔 Напомнить всем</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent referral events -->
+  <div class="section-title" style="margin-top:4px">Последние события <span class="section-subtitle">— история реферальных активностей</span></div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Новые участники программы</span></div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        <div style="display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+          <div class="mini-ava" style="background:#5B4CF5;width:34px;height:34px;font-size:12px">ДК</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">Коваленко Дмитрий</div>
+            <div style="font-size:11.5px;color:var(--text-muted)">Подключился сегодня · Уровень: Бронза</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)" class="mono">09:34</div>
+            <span class="pill pill-green" style="font-size:10px">Новый</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+          <div class="mini-ava" style="background:#3B7FED;width:34px;height:34px;font-size:12px">ФА</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">Фёдоров Алексей</div>
+            <div style="font-size:11.5px;color:var(--text-muted)">Пришёл по ссылке Смирновой А.П.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)" class="mono">Вчера</div>
+            <span class="pill pill-blue" style="font-size:10px">Реферал</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(91,76,245,.06)">
+          <div class="mini-ava" style="background:#00C9A7;width:34px;height:34px;font-size:12px">ТМ</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">Тарасова Мария</div>
+            <div style="font-size:11.5px;color:var(--text-muted)">Пришла по ссылке Морозова В.А.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)" class="mono">22 мар</div>
+            <span class="pill pill-blue" style="font-size:10px">Реферал</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;padding:11px 0">
+          <div class="mini-ava" style="background:#F5A623;width:34px;height:34px;font-size:12px">ВП</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700">Власов Пётр</div>
+            <div style="font-size:11.5px;color:var(--text-muted)">Пришёл по ссылке Захаровой И.В.</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)" class="mono">21 мар</div>
+            <span class="pill pill-blue" style="font-size:10px">Реферал</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Referral link generator -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔗 Реферальная ссылка пациента</span></div>
+
+      <!-- Search patient -->
+      <div style="margin-bottom:14px">
+        <div class="form-label" style="margin-bottom:6px">Найти пациента</div>
+        <div style="display:flex;gap:7px">
+          <input class="form-input" style="flex:1" placeholder="Введите имя или телефон..." value="Смирнова Анна"/>
+          <button class="btn btn-primary btn-sm">Найти</button>
+        </div>
+      </div>
+
+      <!-- Found patient -->
+      <div style="padding:12px;border-radius:13px;background:rgba(91,76,245,.06);border:1px solid rgba(91,76,245,.14);margin-bottom:14px">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+          <div class="mini-ava" style="background:#5B4CF5;width:36px;height:36px;font-size:13px">СА</div>
+          <div>
+            <div style="font-size:13.5px;font-weight:700">Смирнова Анна Петровна</div>
+            <div style="font-size:12px;color:var(--text-muted)">Уровень: 🥈 Серебро · Рефералов: 4 · Бонусов: 2 000 ₽</div>
+          </div>
+        </div>
+        <!-- Personal link -->
+        <div class="form-label" style="margin-bottom:5px">Персональная реферальная ссылка</div>
+        <div style="display:flex;gap:7px;align-items:center">
+          <div style="flex:1;padding:9px 13px;border-radius:11px;background:rgba(255,255,255,.7);border:1px solid rgba(91,76,245,.15);font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--accent2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            dentaflow.clinic/ref/smirnova-ap-4821
+          </div>
+          <button class="mini-btn mini-btn-blue">📋 Копировать</button>
+        </div>
+        <div style="display:flex;gap:7px;margin-top:9px">
+          <button class="btn btn-primary btn-sm" style="flex:1">✈️ Отправить в Telegram</button>
+          <button class="btn btn-outline btn-sm" style="flex:1">💬 Отправить в Max</button>
+        </div>
+      </div>
+
+      <!-- Bonus history -->
+      <div class="form-label" style="margin-bottom:8px">История бонусов Смирновой А.П.</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 11px;border-radius:10px;background:rgba(0,201,167,.07)">
+          <span>🎁 Фёдоров А. совершил визит</span>
+          <strong style="color:var(--accent3)">+500 ₽</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 11px;border-radius:10px;background:rgba(0,201,167,.07)">
+          <span>🎁 Тарасова М. совершила визит</span>
+          <strong style="color:var(--accent3)">+750 ₽</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 11px;border-radius:10px;background:rgba(244,75,110,.06)">
+          <span>💸 Списание на профгигиену 12.01</span>
+          <strong style="color:var(--danger)">−500 ₽</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 11px;border-radius:10px;background:rgba(91,76,245,.06)">
+          <span style="color:var(--text-muted)">Доступно к списанию:</span>
+          <strong style="color:var(--accent2);font-size:14px">2 000 ₽</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- /SCREEN REFERRAL -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+const screens = {
+  'overview':'Главная','communications':'Коммуникации','patient':'Карточка пациента',
+  'pipeline':'Воронка CRM','schedule':'Умная запись','calls':'ОКК · Звонки',
+  'scripts':'ОКК · Скрипты продаж','reactivation':'Реактивация базы',
+  'analytics':'Финансы & KPI','marketing':'Маркетинг','staff':'Персонал',
+  'settings':'Настройки','referral':'Реферальная программа'
+};
+const subtitles = {
+  'overview':'— Обзор клиники','communications':'— Входящие обращения','patient':'— Смирнова Анна Петровна',
+  'pipeline':'— Канбан воронка','schedule':'— Подбор времени','calls':'— Качество звонков',
+  'scripts':'— Анализ скриптов по звонкам','reactivation':'— Умная сегментация',
+  'analytics':'— Управленческая отчётность','marketing':'— Каналы продвижения',
+  'staff':'— Эффективность команды','settings':'— Интеграции и модули',
+  'referral':'— Бонусы и реферальные ссылки'
+};
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const s = document.getElementById('screen-'+name);
+  if(s) s.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(item=>{
+    const oc = item.getAttribute('onclick');
+    if(oc && oc.includes("'"+name+"'")) item.classList.add('active');
+  });
+  const t = document.getElementById('screen-title');
+  if(t) t.innerHTML = (screens[name]||name)+' <span>'+(subtitles[name]||'')+'</span>';
+  document.querySelector('.content').scrollTop = 0;
+}
+function switchPeriod(el){document.querySelectorAll('.period-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active')}
+function switchRole(el){document.querySelectorAll('.role-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active')}
+</script>
+</body>
+</html>
