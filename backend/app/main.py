@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, communications, dashboard, deals
+from app.routers import auth, communications, dashboard, deals, patients, ws
 
 
 @asynccontextmanager
@@ -43,9 +43,10 @@ app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(deals.router)
 app.include_router(communications.router)
+app.include_router(patients.router)
+app.include_router(ws.router)
 
 # --- Future routers ---
-# app.include_router(patients.router, prefix="/api/v1/patients", tags=["patients"])
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])
 # app.include_router(calls.router, prefix="/api/v1/calls", tags=["calls"])
 # app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
