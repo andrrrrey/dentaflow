@@ -61,3 +61,38 @@ export interface DashboardOverview {
   admins_rating: AdminRating[];
   ai_insights: AIInsights;
 }
+
+/* ── Communication types ───────────────────────────────── */
+
+export interface CommunicationItem {
+  id: string;
+  patient_id: string | null;
+  patient_name: string | null;
+  channel: "telegram" | "novofon" | "max" | "site" | "manual";
+  direction: "inbound" | "outbound";
+  type: "message" | "call" | "form" | "missed_call";
+  content: string | null;
+  media_url: string | null;
+  duration_sec: number | null;
+  status: "new" | "in_progress" | "done" | "ignored";
+  priority: "urgent" | "high" | "normal" | "low";
+  ai_tags: string[] | null;
+  ai_summary: string | null;
+  ai_next_action: string | null;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  responded_at: string | null;
+  created_at: string;
+}
+
+export interface CommunicationListResponse {
+  items: CommunicationItem[];
+  total: number;
+  unread_count: number;
+}
+
+export interface CommunicationFilters {
+  status?: string;
+  channel?: string;
+  priority?: string;
+}
