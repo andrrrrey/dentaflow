@@ -1,19 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import Card from "./components/ui/Card";
-
-/* ---------- placeholder pages ---------- */
-
-function Dashboard() {
-  return (
-    <Card>
-      <h2 className="text-lg font-extrabold">Главная — Обзор клиники</h2>
-      <p className="text-sm text-text-muted mt-2">
-        Дашборд с KPI и аналитикой будет здесь.
-      </p>
-    </Card>
-  );
-}
+import Dashboard from "./pages/Dashboard";
 
 function Communications() {
   return (
