@@ -25,7 +25,7 @@ def _dt(days_ago: int, hour: int = 10) -> datetime:
 
 # Stable UUIDs
 def _pid(n: int) -> uuid.UUID:
-    return uuid.UUID(f"p0000000-0000-4000-a000-{n:012d}")
+    return uuid.UUID(f"a0000000-0000-4000-a000-{n:012d}")
 
 
 MOCK_PATIENTS: list[PatientResponse] = [
@@ -329,7 +329,7 @@ _MOCK_DEALS: list[DealBrief] = [
 
 _MOCK_TASKS: list[TaskBrief] = [
     TaskBrief(
-        id=uuid.UUID("t1000000-0000-4000-a000-000000000001"),
+        id=uuid.UUID("b1000000-0000-4000-a000-000000000001"),
         type="confirm_appointment",
         title="Подтвердить визит 16 апреля",
         due_at=_dt(-1, 9),
@@ -338,7 +338,7 @@ _MOCK_TASKS: list[TaskBrief] = [
         created_at=_dt(0),
     ),
     TaskBrief(
-        id=uuid.UUID("t1000000-0000-4000-a000-000000000002"),
+        id=uuid.UUID("b1000000-0000-4000-a000-000000000002"),
         type="followup",
         title="Напомнить о контрольном снимке",
         due_at=_dt(-7, 10),
@@ -347,7 +347,7 @@ _MOCK_TASKS: list[TaskBrief] = [
         created_at=_dt(2),
     ),
     TaskBrief(
-        id=uuid.UUID("t1000000-0000-4000-a000-000000000003"),
+        id=uuid.UUID("b1000000-0000-4000-a000-000000000003"),
         type="callback",
         title="Перезвонить по вопросу рассрочки",
         due_at=_dt(1, 14),

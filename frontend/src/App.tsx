@@ -5,6 +5,8 @@ import Dashboard from "./pages/Dashboard";
 import PipelinePage from "./pages/Pipeline";
 import Communications from "./pages/Communications";
 import Login from "./pages/Login";
+import Patients from "./pages/Patients";
+import PatientCard from "./pages/PatientCard";
 
 /* ---------- app ---------- */
 
@@ -42,6 +44,26 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Воронка пациентов">
                 <PipelinePage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Пациенты">
+                <Patients />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients/:id"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Карточка пациента">
+                <PatientCard />
               </AppLayout>
             </ProtectedRoute>
           }
