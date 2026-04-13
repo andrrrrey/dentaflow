@@ -1,19 +1,8 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
-import Card from "./components/ui/Card";
 import Dashboard from "./pages/Dashboard";
 import PipelinePage from "./pages/Pipeline";
-
-function Communications() {
-  return (
-    <Card>
-      <h2 className="text-lg font-extrabold">Коммуникации</h2>
-      <p className="text-sm text-text-muted mt-2">
-        Чаты и сообщения пациентов.
-      </p>
-    </Card>
-  );
-}
+import Communications from "./pages/Communications";
 
 function Login() {
   return (
