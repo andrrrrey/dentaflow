@@ -1,5 +1,6 @@
 import clsx from "clsx";
-import { Search, Bell, Settings } from "lucide-react";
+import { Search, Settings } from "lucide-react";
+import NotificationBell from "./NotificationBell";
 
 type Period = "day" | "week" | "month";
 
@@ -58,22 +59,7 @@ export default function Header({ title, period, onPeriodChange }: HeaderProps) {
           <Search size={15} />
         </button>
 
-        <button
-          className="w-9 h-9 rounded-[10px] bg-[rgba(91,76,245,0.08)] border-none cursor-pointer flex items-center justify-center text-text-main transition-all duration-150 hover:bg-[rgba(91,76,245,0.15)] relative"
-          aria-label="Notifications"
-        >
-          <Bell size={15} />
-          <span
-            className="absolute rounded-full bg-danger"
-            style={{
-              top: 6,
-              right: 6,
-              width: 7,
-              height: 7,
-              border: "1.5px solid #fff",
-            }}
-          />
-        </button>
+        <NotificationBell />
 
         <button
           className="w-9 h-9 rounded-[10px] bg-[rgba(91,76,245,0.08)] border-none cursor-pointer flex items-center justify-center text-text-main transition-all duration-150 hover:bg-[rgba(91,76,245,0.15)]"

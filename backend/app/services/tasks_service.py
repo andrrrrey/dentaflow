@@ -17,7 +17,7 @@ def _future(days: int, hours: int = 14) -> datetime:
 
 
 # Pre-generated UUIDs for stable mock data
-_task_uuids = [uuid.UUID(f"t0000000-0000-4000-a000-{i:012d}") for i in range(12)]
+_task_uuids = [uuid.UUID(f"a1000000-0000-4000-a000-{i:012d}") for i in range(12)]
 _patient_uuids = [uuid.UUID(f"00000000-0000-4000-a000-{i:012d}") for i in range(20, 30)]
 _assigned_uuids = [
     uuid.UUID("a0000000-0000-4000-a000-000000000001"),

@@ -1,3 +1,8 @@
+# ============================================================
+# DentaFlow Frontend — Production multi-stage build
+# Результат: собранная статика в nginx-контейнере
+# ============================================================
+
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

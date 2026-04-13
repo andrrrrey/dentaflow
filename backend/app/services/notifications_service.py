@@ -12,7 +12,7 @@ def _dt(days_ago: int, hours: int = 0) -> datetime:
     return _now - timedelta(days=days_ago, hours=hours)
 
 
-_notif_uuids = [uuid.UUID(f"n0000000-0000-4000-a000-{i:012d}") for i in range(10)]
+_notif_uuids = [uuid.UUID(f"b1000000-0000-4000-a000-{i:012d}") for i in range(10)]
 _user_id = uuid.UUID("a0000000-0000-4000-a000-000000000001")
 
 MOCK_NOTIFICATIONS: list[NotificationResponse] = [

@@ -1,3 +1,8 @@
+# ============================================================
+# DentaFlow — Production Docker Compose
+# Запуск: docker compose -f docker-compose.prod.yml up -d
+# ============================================================
+
 services:
   nginx:
     image: nginx:alpine
