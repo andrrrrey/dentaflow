@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth
+from app.routers import auth, dashboard, deals
 
 
 @asynccontextmanager
@@ -40,6 +40,8 @@ async def health_check():
 
 # --- Routers ---
 app.include_router(auth.router)
+app.include_router(dashboard.router)
+app.include_router(deals.router)
 
 # --- Future routers ---
 # app.include_router(patients.router, prefix="/api/v1/patients", tags=["patients"])
