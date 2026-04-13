@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routers import auth
 
 
 @asynccontextmanager
@@ -37,9 +38,10 @@ async def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
+# --- Routers ---
+app.include_router(auth.router)
+
 # --- Future routers ---
-# from app.routers import auth, patients, appointments, calls, analytics, telegram
-# app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 # app.include_router(patients.router, prefix="/api/v1/patients", tags=["patients"])
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])
 # app.include_router(calls.router, prefix="/api/v1/calls", tags=["calls"])

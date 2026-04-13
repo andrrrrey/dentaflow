@@ -1,6 +1,43 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AppLayout from "./components/layout/AppLayout";
+import Card from "./components/ui/Card";
 
-function Home() {
+/* ---------- placeholder pages ---------- */
+
+function Dashboard() {
+  return (
+    <Card>
+      <h2 className="text-lg font-extrabold">Главная — Обзор клиники</h2>
+      <p className="text-sm text-text-muted mt-2">
+        Дашборд с KPI и аналитикой будет здесь.
+      </p>
+    </Card>
+  );
+}
+
+function Communications() {
+  return (
+    <Card>
+      <h2 className="text-lg font-extrabold">Коммуникации</h2>
+      <p className="text-sm text-text-muted mt-2">
+        Чаты и сообщения пациентов.
+      </p>
+    </Card>
+  );
+}
+
+function Pipeline() {
+  return (
+    <Card>
+      <h2 className="text-lg font-extrabold">Воронка пациентов</h2>
+      <p className="text-sm text-text-muted mt-2">
+        Канбан-доска воронки продаж.
+      </p>
+    </Card>
+  );
+}
+
+function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div
@@ -17,18 +54,47 @@ function Home() {
           </span>
         </h1>
         <p className="mt-3 text-text-muted text-lg font-medium">
-          Dental Clinic Management Dashboard
+          Вход в систему
         </p>
       </div>
     </div>
   );
 }
 
+/* ---------- app ---------- */
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        {/* Login renders without AppLayout */}
+        <Route path="/login" element={<Login />} />
+
+        {/* All other routes use AppLayout */}
+        <Route
+          path="/"
+          element={
+            <AppLayout title="Главная">
+              <Dashboard />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/communications"
+          element={
+            <AppLayout title="Коммуникации">
+              <Communications />
+            </AppLayout>
+          }
+        />
+        <Route
+          path="/pipeline"
+          element={
+            <AppLayout title="Воронка пациентов">
+              <Pipeline />
+            </AppLayout>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
