@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, communications, dashboard, deals, patients, ws
+from app.routers import auth, communications, dashboard, deals, notifications, patients, tasks, ws
 
 
 @asynccontextmanager
@@ -45,6 +45,8 @@ app.include_router(deals.router)
 app.include_router(communications.router)
 app.include_router(patients.router)
 app.include_router(ws.router)
+app.include_router(tasks.router)
+app.include_router(notifications.router)
 
 # --- Future routers ---
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])

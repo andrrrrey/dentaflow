@@ -1,10 +1,12 @@
 """
-Seed script to create the initial owner user.
+Seed-скрипт для создания начальных пользователей.
 
-Run:
+Запуск:
     python -m app.utils.seed
 
-Creates: owner@dentaflow.ru / admin123  (role=owner)
+Создаёт:
+    - owner@dentaflow.ru / admin123  (роль: owner)
+    - admin@dentaflow.ru / admin123  (роль: admin)
 """
 
 import asyncio
@@ -15,34 +17,58 @@ from app.database import async_session_factory
 from app.models.user import User
 from app.utils.security import hash_password
 
-OWNER_EMAIL = "owner@dentaflow.ru"
-OWNER_PASSWORD = "admin123"
-OWNER_NAME = "Owner"
-OWNER_ROLE = "owner"
+# ── Начальные пользователи ────────────────────────────────────────────
+
+SEED_USERS = [
+    {
+        "email": "owner@dentaflow.ru",
+        "name": "Owner",
+        "role": "owner",
+        "password": "admin123",
+    },
+    {
+        "email": "admin@dentaflow.ru",
+        "name": "Admin",
+        "role": "admin",
+        "password": "admin123",
+    },
+]
 
 
 async def seed() -> None:
+    """Создание начальных пользователей, если они ещё не существуют."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(User).where(User.email == OWNER_EMAIL)
-        )
-        existing = result.scalar_one_or_none()
+        for user_data in SEED_USERS:
+            result = await session.execute(
+                select(User).where(User.email == user_data["email"])
+            )
+            existing = result.scalar_one_or_none()
 
-        if existing is not None:
-            print(f"User {OWNER_EMAIL} already exists, skipping.")
-            return
+            if existing is not None:
+                print(f"[seed] Пользователь {user_data['email']} уже существует — пропуск.")
+                continue
 
-        user = User(
-            email=OWNER_EMAIL,
-            name=OWNER_NAME,
-            role=OWNER_ROLE,
-            password_hash=hash_password(OWNER_PASSWORD),
-            is_active=True,
-        )
-        session.add(user)
-        await session.commit()
-        print(f"Created owner user: {OWNER_EMAIL} / {OWNER_PASSWORD}")
+            user = User(
+                email=user_data["email"],
+                name=user_data["name"],
+                role=user_data["role"],
+                password_hash=hash_password(user_data["password"]),
+                is_active=True,
+            )
+            session.add(user)
+            await session.commit()
+            print(
+                f"[seed] Создан пользователь: {user_data['email']} / {user_data['password']} "
+                f"(роль: {user_data['role']})"
+            )
+
+    print("[seed] Готово.")
+
+
+def main() -> None:
+    """Точка входа для запуска через python -m app.utils.seed."""
+    asyncio.run(seed())
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    main()
