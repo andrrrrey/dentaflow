@@ -5,14 +5,11 @@ import {
   CalendarDays,
   PhoneCall,
   ClipboardList,
-  RefreshCw,
   BarChart3,
   MessageSquare,
   GitBranch,
-  Megaphone,
   Users,
   Settings,
-  Gift,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -27,7 +24,6 @@ interface NavItem {
 }
 
 interface NavSection {
-  title: string;
   items: NavItem[];
 }
 
@@ -39,42 +35,36 @@ interface SidebarProps {
 
 const sections: NavSection[] = [
   {
-    title: "\u041C\u041E\u0414\u0423\u041B\u042C 1",
     items: [
-      { label: "\u041E\u0431\u0437\u043E\u0440", icon: <LayoutDashboard size={15} />, path: "/" },
-      { label: "\u0420\u0430\u0441\u043F\u0438\u0441\u0430\u043D\u0438\u0435", icon: <CalendarDays size={15} />, path: "/schedule" },
-      { label: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u0437\u0432\u043E\u043D\u043A\u043E\u0432", icon: <PhoneCall size={15} />, path: "/calls" },
-      { label: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u0441\u043A\u0440\u0438\u043F\u0442\u043E\u0432", icon: <ClipboardList size={15} />, path: "/scripts" },
-      { label: "\u0420\u0435\u0430\u043A\u0442\u0438\u0432\u0430\u0446\u0438\u044F", icon: <RefreshCw size={15} />, path: "/reactivation" },
-      { label: "\u0410\u043D\u0430\u043B\u0438\u0442\u0438\u043A\u0430", icon: <BarChart3 size={15} />, path: "/analytics" },
+      { label: "Обзор", icon: <LayoutDashboard size={15} />, path: "/" },
+      { label: "Расписание", icon: <CalendarDays size={15} />, path: "/schedule" },
+      { label: "Контроль звонков", icon: <PhoneCall size={15} />, path: "/calls" },
+      { label: "Контроль скриптов", icon: <ClipboardList size={15} />, path: "/scripts" },
+      { label: "Аналитика", icon: <BarChart3 size={15} />, path: "/analytics" },
     ],
   },
   {
-    title: "\u041C\u041E\u0414\u0423\u041B\u042C 2",
     items: [
       {
-        label: "\u041A\u043E\u043C\u043C\u0443\u043D\u0438\u043A\u0430\u0446\u0438\u0438",
+        label: "Коммуникации",
         icon: <MessageSquare size={15} />,
         path: "/communications",
         badge: "12",
         badgeColor: "red",
       },
       {
-        label: "\u0412\u043E\u0440\u043E\u043D\u043A\u0430",
+        label: "Воронка",
         icon: <GitBranch size={15} />,
         path: "/pipeline",
         badge: "24",
         badgeColor: "blue",
       },
-      { label: "\u041C\u0430\u0440\u043A\u0435\u0442\u0438\u043D\u0433", icon: <Megaphone size={15} />, path: "/marketing" },
     ],
   },
   {
-    title: "\u0421\u0418\u0421\u0422\u0415\u041C\u0410",
     items: [
-      { label: "\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A\u0438", icon: <Users size={15} />, path: "/staff" },
-      { label: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438", icon: <Settings size={15} />, path: "/settings" },
-      { label: "\u0420\u0435\u0444\u0435\u0440\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430", icon: <Gift size={15} />, path: "/referral" },
+      { label: "Сотрудники", icon: <Users size={15} />, path: "/staff" },
+      { label: "Настройки", icon: <Settings size={15} />, path: "/settings" },
     ],
   },
 ];
@@ -128,18 +118,18 @@ export default function Sidebar({ currentUser }: SidebarProps) {
             Denta<span className="text-accent2">Flow</span>
           </div>
           <div className="text-[10px] text-text-muted font-medium mt-px">
-            {"\u0423\u043C\u043D\u0430\u044F \u0441\u0438\u0441\u0442\u0435\u043C\u0430 \u043A\u043B\u0438\u043D\u0438\u043A\u0438"}
+            Умная система клиники
           </div>
         </div>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-[14px] px-[10px]">
-        {sections.map((section) => (
-          <div key={section.title} className="mb-5">
-            <div className="text-[10px] font-bold tracking-[1.3px] text-text-muted uppercase px-[10px] mb-[5px]">
-              {section.title}
-            </div>
+        {sections.map((section, idx) => (
+          <div
+            key={idx}
+            className={clsx("mb-1", idx > 0 && "mt-2 pt-2 border-t border-[rgba(91,76,245,0.1)]")}
+          >
             {section.items.map((item) => {
               const active = location.pathname === item.path;
               return (

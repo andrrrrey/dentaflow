@@ -28,15 +28,19 @@ celery_app.conf.enable_utc = True
 celery_app.conf.beat_schedule = {
     "sync-1denta-patients": {
         "task": "app.tasks.sync_1denta.sync_patients",
-        "schedule": 900.0,  # every 15 minutes
+        "schedule": 300.0,  # every 5 minutes
     },
     "sync-1denta-appointments": {
         "task": "app.tasks.sync_1denta.sync_appointments",
-        "schedule": 900.0,  # every 15 minutes
+        "schedule": 300.0,  # every 5 minutes
     },
     "check-stale-leads": {
         "task": "app.tasks.alerts.check_stale_leads",
         "schedule": 300.0,  # every 5 minutes
+    },
+    "refresh-ai-insights": {
+        "task": "app.tasks.ai_insights.refresh_insights",
+        "schedule": 3600.0,  # every hour
     },
     "daily-report": {
         "task": "app.tasks.daily_report.send_daily_report",

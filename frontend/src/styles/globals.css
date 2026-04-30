@@ -33,3 +33,12 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(91,76,245,.25); border-radius: 4px; }
+
+/* Page entry animation */
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter > * {
+  animation: fadeSlide 0.3s ease forwards;
+}

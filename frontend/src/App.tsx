@@ -10,12 +10,9 @@ import PatientCard from "./pages/PatientCard";
 import Schedule from "./pages/Schedule";
 import CallsQC from "./pages/CallsQC";
 import ScriptsQC from "./pages/ScriptsQC";
-import Reactivation from "./pages/Reactivation";
 import Analytics from "./pages/Analytics";
-import Marketing from "./pages/Marketing";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
-import Referral from "./pages/Referral";
 
 /* ---------- app ---------- */
 
@@ -26,7 +23,6 @@ function App() {
         {/* Login renders without AppLayout */}
         <Route path="/login" element={<Login />} />
 
-        {/* All other routes use AppLayout + ProtectedRoute */}
         <Route
           path="/"
           element={
@@ -81,7 +77,7 @@ function App() {
           path="/schedule"
           element={
             <ProtectedRoute>
-              <AppLayout title="Расписание">
+              <AppLayout title="Умная запись">
                 <Schedule />
               </AppLayout>
             </ProtectedRoute>
@@ -108,31 +104,11 @@ function App() {
           }
         />
         <Route
-          path="/reactivation"
-          element={
-            <ProtectedRoute>
-              <AppLayout title="Реактивация пациентов">
-                <Reactivation />
-              </AppLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/analytics"
           element={
             <ProtectedRoute>
-              <AppLayout title="Аналитика">
+              <AppLayout title="Финансы & KPI">
                 <Analytics />
-              </AppLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/marketing"
-          element={
-            <ProtectedRoute>
-              <AppLayout title="Маркетинг">
-                <Marketing />
               </AppLayout>
             </ProtectedRoute>
           }
@@ -153,16 +129,6 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Настройки">
                 <Settings />
-              </AppLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/referral"
-          element={
-            <ProtectedRoute>
-              <AppLayout title="Реферальная программа">
-                <Referral />
               </AppLayout>
             </ProtectedRoute>
           }

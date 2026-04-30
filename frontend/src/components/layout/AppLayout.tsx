@@ -22,7 +22,7 @@ export default function AppLayout({ title, children }: AppLayoutProps) {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title={title} period={period} onPeriodChange={setPeriod} />
 
-        <main className="flex-1 overflow-y-auto p-[22px_26px] pb-20 md:pb-[22px]">
+        <main className="flex-1 overflow-y-auto p-[22px_26px] pb-20 md:pb-[22px] page-enter">
           {children}
         </main>
       </div>

@@ -12,11 +12,13 @@ import {
   ArrowDownLeft,
   Clock,
   User,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import type { CommunicationItem } from "../../types";
 import Button from "../ui/Button";
+import { getAiSuggestion } from "../../api/ai";
 
 interface Props {
   item: CommunicationItem;
@@ -52,36 +54,30 @@ function formatDuration(sec: number): string {
   return `${min}:${s.toString().padStart(2, "0")}`;
 }
 
-/* ── AI-suggested replies based on context ── */
-function getSuggestedReplies(item: CommunicationItem): string[] {
-  if (item.ai_tags?.includes("возражение_цена")) {
-    return [
-      "Мы используем премиальные материалы с гарантией 10 лет. Также доступна рассрочка 0% на 12 месяцев.",
-      "Давайте запишу вас на бесплатную консультацию, чтобы доктор составил индивидуальный план лечения.",
-    ];
-  }
-  if (item.ai_tags?.includes("горячий_лид")) {
-    return [
-      "Здравствуйте! Спасибо за обращение. Ближайшее свободное время: завтра в 14:00 или послезавтра в 10:00. Какое удобнее?",
-      "Добрый день! Консультация бесплатная. Могу записать вас на эту неделю. Подскажите удобный день?",
-    ];
-  }
-  if (item.ai_tags?.includes("жалоба")) {
-    return [
-      "Чувствительность после лечения каналов может сохраняться до 5-7 дней. Если боль усилится, запишем вас на осмотр.",
-      "Давайте запишу вас на контрольный осмотр к доктору. Ближайшее время: завтра в 16:00.",
-    ];
-  }
-  return [
-    "Спасибо за обращение! Подскажите удобное время для записи?",
-    "Добрый день! Как могу помочь? Готова ответить на ваши вопросы.",
-  ];
-}
-
 export default function ChatPanel({ item, onClose }: Props) {
   const [replyText, setReplyText] = useState("");
-  const suggestedReplies = getSuggestedReplies(item);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState(false);
   const status = statusLabels[item.status];
+
+  async function handleGetSuggestions() {
+    setSuggestionsLoading(true);
+    setSuggestionsError(false);
+    try {
+      const result = await getAiSuggestion({
+        channel: item.channel,
+        patient_name: item.patient_name ?? undefined,
+        last_message: item.content ?? "",
+        history: [],
+      });
+      setSuggestions(result);
+    } catch {
+      setSuggestionsError(true);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -241,20 +237,47 @@ export default function ChatPanel({ item, onClose }: Props) {
             <div className="flex items-center gap-1.5 mb-2">
               <Sparkles size={12} className="text-accent2" />
               <span className="text-[10px] font-semibold text-accent2">
-                Предложенные ответы
+                Подсказки ИИ
               </span>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {suggestedReplies.map((reply, i) => (
+              {suggestions.length === 0 && !suggestionsLoading && (
                 <button
-                  key={i}
-                  onClick={() => setReplyText(reply)}
-                  className="text-left p-2 rounded-[10px] text-[11px] text-text-secondary hover:bg-[rgba(91,76,245,0.06)] transition-colors duration-150 cursor-pointer border-none bg-[rgba(91,76,245,0.03)] leading-[1.4]"
+                  onClick={handleGetSuggestions}
+                  className="ml-auto text-[10px] font-semibold text-accent2 bg-[rgba(91,76,245,0.08)] hover:bg-[rgba(91,76,245,0.15)] px-2 py-[3px] rounded-[8px] border-none cursor-pointer transition-colors"
                 >
-                  {reply}
+                  Получить подсказку
                 </button>
-              ))}
+              )}
             </div>
+            {suggestionsLoading && (
+              <div className="flex items-center gap-2 py-2 text-[11px] text-text-muted">
+                <Loader2 size={12} className="animate-spin" />
+                ИИ генерирует подсказки...
+              </div>
+            )}
+            {suggestionsError && (
+              <div className="text-[11px] text-[#F44B6E] py-1">
+                Не удалось получить подсказку. <button onClick={handleGetSuggestions} className="underline cursor-pointer bg-transparent border-none text-[#F44B6E]">Повторить</button>
+              </div>
+            )}
+            {suggestions.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {suggestions.map((reply, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setReplyText(reply)}
+                    className="text-left p-2 rounded-[10px] text-[11px] text-text-secondary hover:bg-[rgba(91,76,245,0.06)] transition-colors duration-150 cursor-pointer border-none bg-[rgba(91,76,245,0.03)] leading-[1.4]"
+                  >
+                    {reply}
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setSuggestions([]); handleGetSuggestions(); }}
+                  className="text-[10px] text-text-muted hover:text-accent2 bg-transparent border-none cursor-pointer text-left pt-1 transition-colors"
+                >
+                  Обновить подсказки
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Reply textarea */}
