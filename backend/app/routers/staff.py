@@ -121,12 +121,12 @@ async def update_staff(
     return {"id": str(user.id), "name": user.name, "email": user.email, "role": user.role, "is_active": user.is_active}
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{user_id}")
 async def delete_staff(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(role_required("owner", "manager")),
-) -> None:
+) -> dict:
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -138,3 +138,4 @@ async def delete_staff(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     await db.delete(user)
     await db.commit()
+    return {"detail": "Deleted"}
