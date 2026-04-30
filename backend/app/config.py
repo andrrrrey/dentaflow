@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://dentaflow:dentaflow@postgres:5432/dentaflow"
     REDIS_URL: str = "redis://redis:6379/0"
 
-    ONE_DENTA_API_URL: str = ""
-    ONE_DENTA_API_KEY: str = ""
+    ONE_DENTA_API_URL: str = "https://crmexchange.1denta.ru"
+    ONE_DENTA_EMAIL: str = ""
+    ONE_DENTA_PASSWORD: str = ""
 
     NOVOFON_API_KEY: str = ""
     NOVOFON_WEBHOOK_SECRET: str = ""
