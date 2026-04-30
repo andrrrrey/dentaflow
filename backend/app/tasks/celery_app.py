@@ -15,6 +15,9 @@ celery_app = Celery("dentaflow")
 celery_app.conf.broker_url = settings.REDIS_URL
 celery_app.conf.result_backend = settings.REDIS_URL
 
+# Queue routing — worker listens on default,ai,sync; use "default" as the base queue
+celery_app.conf.task_default_queue = "default"
+
 # Serialisation
 celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"
