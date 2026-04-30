@@ -92,6 +92,70 @@ async def list_schedule(
     }
 
 
+@router.get("/{appointment_id}")
+async def get_appointment_detail(
+    appointment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Return full appointment detail with patient info."""
+    stmt = (
+        select(Appointment, Patient)
+        .outerjoin(Patient, Appointment.patient_id == Patient.id)
+        .where(Appointment.id == appointment_id)
+    )
+    result = await db.execute(stmt)
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    appt, patient = row.Appointment, row.Patient
+    response: dict = {
+        "appointment": {
+            "id": str(appt.id),
+            "external_id": appt.external_id,
+            "doctor_name": appt.doctor_name,
+            "doctor_id": appt.doctor_id,
+            "service": appt.service,
+            "branch": appt.branch,
+            "scheduled_at": appt.scheduled_at.isoformat() if appt.scheduled_at else None,
+            "duration_min": appt.duration_min,
+            "status": appt.status,
+            "revenue": float(appt.revenue) if appt.revenue else 0,
+        },
+        "patient": None,
+    }
+    if patient:
+        response["patient"] = {
+            "id": str(patient.id),
+            "external_id": patient.external_id,
+            "name": patient.name,
+            "phone": patient.phone,
+            "email": patient.email,
+            "birth_date": str(patient.birth_date) if patient.birth_date else None,
+            "source_channel": patient.source_channel,
+            "is_new_patient": patient.is_new_patient,
+            "last_visit_at": patient.last_visit_at.isoformat() if patient.last_visit_at else None,
+            "total_revenue": float(patient.total_revenue),
+            "ltv_score": patient.ltv_score,
+            "tags": patient.tags,
+            "raw_1denta_data": patient.raw_1denta_data,
+        }
+    return response
+
+
+@router.post("/sync")
+async def trigger_sync(
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Manually trigger 1Denta sync for patients and appointments."""
+    from app.tasks.sync_1denta import _sync_patients_async, _sync_appointments_async
+
+    p_result = await _sync_patients_async()
+    a_result = await _sync_appointments_async()
+    return {"patients": p_result, "appointments": a_result}
+
+
 class CreateAppointmentBody(BaseModel):
     patient_name: str
     patient_phone: str

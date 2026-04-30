@@ -154,6 +154,13 @@ class OneDentaService:
         data = await self._request("GET", "/api/v2/resource")
         return data.get("resources", [])
 
+    async def get_commodities(self) -> list[dict]:
+        """Return commodities/products list."""
+        if settings.APP_ENV == "development":
+            return []
+        items = await self._fetch_all_pages("/api/v2/commodity")
+        return items
+
     async def get_available_dates(
         self,
         resource_id: str,

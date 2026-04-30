@@ -1,7 +1,9 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.patient import (
@@ -26,19 +28,19 @@ async def list_patients(
     search: str | None = Query(None, description="Search by name, phone, email"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientListResponse:
-    """Return paginated patient list with optional search."""
-    return await get_patients(search=search, page=page, limit=limit)
+    return await get_patients(db=db, search=search, page=page, limit=limit)
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)
 async def read_patient(
     patient_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientDetailResponse:
-    """Return full 360 patient card."""
-    detail = await get_patient_detail(patient_id)
+    detail = await get_patient_detail(patient_id, db=db)
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -50,10 +52,11 @@ async def read_patient(
 @router.post("/", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_patient(
     body: PatientCreate,
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientResponse:
-    """Create a new patient."""
     return await create_patient(
+        db=db,
         name=body.name,
         phone=body.phone,
         email=body.email,
@@ -67,10 +70,11 @@ async def create_new_patient(
 async def patch_patient(
     patient_id: uuid.UUID,
     body: PatientUpdate,
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientResponse:
-    """Update patient fields."""
     updated = await update_patient(
+        db=db,
         patient_id=patient_id,
         name=body.name,
         phone=body.phone,

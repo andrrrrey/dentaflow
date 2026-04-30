@@ -41,6 +41,61 @@ export function useSchedule(params: { date_from?: string; date_to?: string; doct
   });
 }
 
+export interface AppointmentDetailResponse {
+  appointment: {
+    id: string;
+    external_id: string | null;
+    doctor_name: string | null;
+    doctor_id: string | null;
+    service: string | null;
+    branch: string | null;
+    scheduled_at: string | null;
+    duration_min: number;
+    status: string | null;
+    revenue: number;
+  };
+  patient: {
+    id: string;
+    external_id: string | null;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    birth_date: string | null;
+    source_channel: string | null;
+    is_new_patient: boolean;
+    last_visit_at: string | null;
+    total_revenue: number;
+    ltv_score: number | null;
+    tags: string[] | null;
+    raw_1denta_data: Record<string, unknown> | null;
+  } | null;
+}
+
+export function useAppointmentDetail(id: string | null) {
+  return useQuery<AppointmentDetailResponse>({
+    queryKey: ["appointment-detail", id],
+    queryFn: async () => {
+      const { data } = await api.get(`/schedule/${id}`);
+      return data;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useSyncSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post("/schedule/sync");
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["patients"] });
+    },
+  });
+}
+
 export interface CreateAppointmentData {
   patient_name: string;
   patient_phone: string;

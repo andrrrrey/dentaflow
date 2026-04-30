@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Clock, ArrowRight, MessageSquare, Send } from "lucide-react";
 import Button from "../ui/Button";
 import { STAGES, useUpdateDeal, useDealHistory, useDealNotes, useAddDealNote } from "../../api/deals";
@@ -86,7 +87,7 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
     { key: "notes", label: "Заметки" },
   ];
 
-  return (
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[200]" style={{ background: "rgba(26,35,64,0.35)", backdropFilter: "blur(6px)" }} onClick={onClose} />
 
@@ -230,6 +231,7 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   );
 }

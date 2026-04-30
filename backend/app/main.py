@@ -12,11 +12,13 @@ from app.routers import (
     communications,
     dashboard,
     deals,
+    directories,
     doctors,
     integrations,
     notifications,
     patients,
     pipeline_ext,
+    reports,
     schedule,
     scripts,
     search,
@@ -74,6 +76,8 @@ app.include_router(ai.router)
 app.include_router(staff.router)
 app.include_router(integrations.router)
 app.include_router(scripts.router)
+app.include_router(directories.router)
+app.include_router(reports.router)
 
 # --- Future routers ---
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])

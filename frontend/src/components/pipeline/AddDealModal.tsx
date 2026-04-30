@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Plus } from "lucide-react";
 import Button from "../ui/Button";
 import { useCreateDeal, STAGES } from "../../api/deals";
@@ -46,8 +47,8 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
         className="w-full max-w-[500px] rounded-[20px] p-6 flex flex-col gap-4"
         style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(24px)", boxShadow: "0 8px 32px rgba(91,76,245,0.15)" }}
@@ -127,6 +128,7 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -1,13 +1,15 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { format, startOfWeek, addDays, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import { CalendarDays, List, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { CalendarDays, List, ChevronLeft, ChevronRight, Plus, X, RefreshCw } from "lucide-react";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
 import StatCard from "../components/ui/StatCard";
 import Button from "../components/ui/Button";
-import { useSchedule, useCreateAppointment, useDoctorsList } from "../api/schedule";
+import { useSchedule, useCreateAppointment, useDoctorsList, useSyncSchedule } from "../api/schedule";
 import type { Appointment, CreateAppointmentData } from "../api/schedule";
+import AppointmentDetailModal from "../components/schedule/AppointmentDetailModal";
 
 /* -- Status helpers -- */
 
@@ -38,7 +40,7 @@ function timeOf(isoStr: string | null): string {
 
 const HOURS = Array.from({ length: 12 }, (_, i) => 8 + i);
 
-function CalendarView({ appointments, weekStart }: { appointments: Appointment[]; weekStart: Date }) {
+function CalendarView({ appointments, weekStart, onSelectAppointment }: { appointments: Appointment[]; weekStart: Date; onSelectAppointment: (id: string) => void }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   function getAppts(day: Date, hour: number): Appointment[] {
@@ -75,12 +77,13 @@ function CalendarView({ appointments, weekStart }: { appointments: Appointment[]
                   {appts.map((a) => (
                     <div
                       key={a.id}
-                      className="text-[10.5px] p-1 rounded-[6px] mb-[2px] truncate font-medium"
+                      className="text-[10.5px] p-1 rounded-[6px] mb-[2px] truncate font-medium cursor-pointer hover:opacity-80"
                       style={{
                         background: a.status === "confirmed" ? "rgba(0,201,167,0.15)" : a.status === "cancelled" ? "rgba(244,75,110,0.12)" : "rgba(91,76,245,0.12)",
                         color: a.status === "confirmed" ? "#007d6e" : a.status === "cancelled" ? "#c52048" : "#4834d4",
                       }}
                       title={`${a.patient_name} — ${a.service}`}
+                      onClick={() => onSelectAppointment(a.id)}
                     >
                       {a.patient_name}
                     </div>
@@ -97,7 +100,7 @@ function CalendarView({ appointments, weekStart }: { appointments: Appointment[]
 
 /* -- Table view -- */
 
-function TableView({ appointments }: { appointments: Appointment[] }) {
+function TableView({ appointments, onSelectAppointment }: { appointments: Appointment[]; onSelectAppointment: (id: string) => void }) {
   if (!appointments.length) {
     return <div className="text-center text-text-muted py-12 text-[13px]">Нет записей на выбранный период</div>;
   }
@@ -114,7 +117,7 @@ function TableView({ appointments }: { appointments: Appointment[] }) {
       </thead>
       <tbody>
         {appointments.map((a) => (
-          <tr key={a.id} className="hover:bg-[rgba(91,76,245,0.03)]" style={{ borderBottom: "1px solid rgba(91,76,245,0.05)" }}>
+          <tr key={a.id} className="hover:bg-[rgba(91,76,245,0.03)] cursor-pointer" style={{ borderBottom: "1px solid rgba(91,76,245,0.05)" }} onClick={() => onSelectAppointment(a.id)}>
             <td className="py-[10px] px-[12px] font-mono text-[12.5px] font-semibold">{timeOf(a.scheduled_at)}</td>
             <td className="py-[10px] px-[12px] text-[13px]">{a.doctor_name || "—"}</td>
             <td className="py-[10px] px-[12px]">
@@ -176,8 +179,8 @@ function AddAppointmentModal({ onClose, doctors }: { onClose: () => void; doctor
     background: "rgba(255,255,255,0.5)",
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
         className="w-full max-w-[480px] rounded-[20px] p-6 flex flex-col gap-4"
         style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(24px)", boxShadow: "0 8px 32px rgba(91,76,245,0.15)" }}
@@ -234,7 +237,8 @@ function AddAppointmentModal({ onClose, doctors }: { onClose: () => void; doctor
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -246,12 +250,14 @@ export default function Schedule() {
   const [filterDoctor, setFilterDoctor] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
 
   const dateFrom = format(weekStart, "yyyy-MM-dd");
   const dateTo = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
   const { data, isLoading } = useSchedule({ date_from: dateFrom, date_to: dateTo, doctor: filterDoctor || undefined, status: filterStatus || undefined });
   const { data: doctorsData } = useDoctorsList();
+  const syncMutation = useSyncSchedule();
 
   const appointments = data?.appointments ?? [];
   const stats = data?.stats;
@@ -277,6 +283,12 @@ export default function Schedule() {
           <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
             <Plus size={14} className="mr-[5px]" />
             Добавить запись
+          </Button>
+
+          {/* Sync button */}
+          <Button variant="secondary" size="sm" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
+            <RefreshCw size={14} className={`mr-[5px] ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать"}
           </Button>
 
           {/* View toggle */}
@@ -320,9 +332,9 @@ export default function Schedule() {
         {isLoading ? (
           <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных...</div>
         ) : view === "table" ? (
-          <TableView appointments={appointments} />
+          <TableView appointments={appointments} onSelectAppointment={setSelectedAppointmentId} />
         ) : (
-          <CalendarView appointments={appointments} weekStart={weekStart} />
+          <CalendarView appointments={appointments} weekStart={weekStart} onSelectAppointment={setSelectedAppointmentId} />
         )}
       </Card>
 
@@ -331,6 +343,14 @@ export default function Schedule() {
         <AddAppointmentModal
           onClose={() => setShowAddModal(false)}
           doctors={doctorsList.length > 0 ? doctorsList : [{ doctor_id: "DOC-01", doctor_name: "Врач не указан" }]}
+        />
+      )}
+
+      {/* Appointment detail modal */}
+      {selectedAppointmentId && (
+        <AppointmentDetailModal
+          appointmentId={selectedAppointmentId}
+          onClose={() => setSelectedAppointmentId(null)}
         />
       )}
     </div>

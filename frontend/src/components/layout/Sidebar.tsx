@@ -9,6 +9,9 @@ import {
   MessageSquare,
   GitBranch,
   Users,
+  UserCheck,
+  BookOpen,
+  FileBarChart,
   Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -38,6 +41,7 @@ const sections: NavSection[] = [
     items: [
       { label: "Обзор", icon: <LayoutDashboard size={15} />, path: "/" },
       { label: "Расписание", icon: <CalendarDays size={15} />, path: "/schedule" },
+      { label: "Пациенты", icon: <UserCheck size={15} />, path: "/patients" },
       { label: "Контроль звонков", icon: <PhoneCall size={15} />, path: "/calls" },
       { label: "Контроль скриптов", icon: <ClipboardList size={15} />, path: "/scripts" },
       { label: "Аналитика", icon: <BarChart3 size={15} />, path: "/analytics" },
@@ -63,6 +67,8 @@ const sections: NavSection[] = [
   },
   {
     items: [
+      { label: "Справочники", icon: <BookOpen size={15} />, path: "/directories" },
+      { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports" },
       { label: "Сотрудники", icon: <Users size={15} />, path: "/staff" },
       { label: "Настройки", icon: <Settings size={15} />, path: "/settings" },
     ],

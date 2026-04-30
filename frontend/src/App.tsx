@@ -11,6 +11,8 @@ import Schedule from "./pages/Schedule";
 import CallsQC from "./pages/CallsQC";
 import ScriptsQC from "./pages/ScriptsQC";
 import Analytics from "./pages/Analytics";
+import Directories from "./pages/Directories";
+import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 
@@ -109,6 +111,26 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Финансы & KPI">
                 <Analytics />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/directories"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Справочники">
+                <Directories />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Отчёты">
+                <Reports />
               </AppLayout>
             </ProtectedRoute>
           }
