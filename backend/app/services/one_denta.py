@@ -337,10 +337,12 @@ class OneDentaService:
         attendance_map = {-1: "cancelled", 0: "unconfirmed", 1: "arrived", 2: "confirmed"}
         services = v.get("services", [])
         service_name = services[0]["name"] if services else ""
+        client_val = v.get("client")
+        resource_val = v.get("resourceId")
         return {
             "external_id": str(v["id"]),
-            "patient_external_id": str(v.get("client", "")),
-            "doctor_id": str(v.get("resourceId", "")),
+            "patient_external_id": str(client_val) if client_val is not None else None,
+            "doctor_id": str(resource_val) if resource_val is not None else "",
             "doctor_name": "",
             "service": service_name,
             "services": services,

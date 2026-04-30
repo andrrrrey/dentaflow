@@ -288,7 +288,7 @@ export default function Schedule() {
           {/* Sync button */}
           <Button variant="secondary" size="sm" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
             <RefreshCw size={14} className={`mr-[5px] ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать"}
+            {syncMutation.isPending ? "Запрос..." : syncMutation.isSuccess ? "Запущено ✓" : "Синхронизировать"}
           </Button>
 
           {/* View toggle */}

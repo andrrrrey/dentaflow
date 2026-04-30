@@ -148,12 +148,12 @@ async def get_appointment_detail(
 async def trigger_sync(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Manually trigger 1Denta sync for patients and appointments."""
-    from app.tasks.sync_1denta import _sync_patients_async, _sync_appointments_async
+    """Dispatch 1Denta sync tasks to Celery (non-blocking)."""
+    from app.tasks.sync_1denta import sync_patients, sync_appointments
 
-    p_result = await _sync_patients_async()
-    a_result = await _sync_appointments_async()
-    return {"patients": p_result, "appointments": a_result}
+    sync_patients.delay()
+    sync_appointments.delay()
+    return {"status": "started"}
 
 
 class CreateAppointmentBody(BaseModel):

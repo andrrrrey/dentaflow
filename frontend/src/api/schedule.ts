@@ -90,8 +90,11 @@ export function useSyncSchedule() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedule"] });
-      qc.invalidateQueries({ queryKey: ["patients"] });
+      // Celery task runs in background — refetch after a short delay
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ["schedule"] });
+        qc.invalidateQueries({ queryKey: ["patients"] });
+      }, 8000);
     },
   });
 }
