@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Save, KeyRound, Check, AlertCircle } from "lucide-react";
+import { Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
+import { useIntegrations, useSaveIntegrations, useCheckIntegration } from "../api/integrations";
 
 /* ---------- helpers ---------- */
 
@@ -213,6 +214,236 @@ function ProfileTab() {
   );
 }
 
+/* ---------- Integration card ---------- */
+
+interface IntegrationField {
+  key: string;
+  label: string;
+  type?: string;
+  placeholder?: string;
+}
+
+interface IntegrationCardConfig {
+  service: string;
+  title: string;
+  description: string;
+  fields: IntegrationField[];
+}
+
+const INTEGRATIONS: IntegrationCardConfig[] = [
+  {
+    service: "novofon",
+    title: "Novofon (телефония)",
+    description: "Звонки, записи разговоров, вебхуки",
+    fields: [
+      { key: "novofon_api_key", label: "API Key", type: "password", placeholder: "Bearer ключ" },
+      { key: "novofon_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет вебхука" },
+    ],
+  },
+  {
+    service: "one_denta",
+    title: "1Denta (CRM)",
+    description: "Синхронизация пациентов и записей",
+    fields: [
+      { key: "one_denta_api_url", label: "API URL", placeholder: "https://crmexchange.1denta.ru" },
+      { key: "one_denta_email", label: "Email", type: "email", placeholder: "email@clinic.ru" },
+      { key: "one_denta_password", label: "Пароль", type: "password", placeholder: "Пароль" },
+    ],
+  },
+  {
+    service: "openai",
+    title: "OpenAI",
+    description: "ИИ-аналитика, подсказки, анализ скриптов",
+    fields: [
+      { key: "openai_api_key", label: "API Key", type: "password", placeholder: "sk-..." },
+      { key: "openai_model", label: "Модель", placeholder: "gpt-4o" },
+    ],
+  },
+  {
+    service: "telegram",
+    title: "Telegram",
+    description: "Бот для уведомлений и приёма сообщений",
+    fields: [
+      { key: "telegram_bot_token", label: "Bot Token", type: "password", placeholder: "123456:ABC..." },
+      { key: "telegram_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет" },
+      { key: "telegram_owner_chat_id", label: "Chat ID владельца", placeholder: "123456789" },
+    ],
+  },
+  {
+    service: "max_vk",
+    title: "MAX / VK",
+    description: "Сообщения из VK-сообщества",
+    fields: [
+      { key: "max_api_key", label: "Access Token", type: "password", placeholder: "vk1.a.XXX..." },
+      { key: "max_confirmation_token", label: "Confirmation Token", type: "password", placeholder: "Токен подтверждения" },
+    ],
+  },
+  {
+    service: "site",
+    title: "Форма на сайте",
+    description: "Webhook для приёма заявок с сайта",
+    fields: [
+      { key: "site_webhook_url", label: "Webhook URL", placeholder: "https://dentaflow.ru/api/v1/webhooks/site" },
+    ],
+  },
+  {
+    service: "mail",
+    title: "Почта (Mail.ru)",
+    description: "SMTP для отправки email-уведомлений",
+    fields: [
+      { key: "mail_host", label: "SMTP-сервер", placeholder: "smtp.mail.ru" },
+      { key: "mail_port", label: "Порт", placeholder: "465" },
+      { key: "mail_user", label: "Email", type: "email", placeholder: "clinic@mail.ru" },
+      { key: "mail_password", label: "Пароль", type: "password", placeholder: "Пароль приложения" },
+    ],
+  },
+];
+
+function IntegrationCard({
+  config,
+  values,
+  onChange,
+  onCheck,
+  checkResult,
+  checking,
+}: {
+  config: IntegrationCardConfig;
+  values: Record<string, string>;
+  onChange: (key: string, val: string) => void;
+  onCheck: () => void;
+  checkResult: { ok: boolean; message: string } | null;
+  checking: boolean;
+}) {
+  return (
+    <Card>
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h3 className="text-[14px] font-bold text-text-main">{config.title}</h3>
+          <p className="text-[11.5px] text-text-muted mt-[2px]">{config.description}</p>
+        </div>
+        {checkResult && (
+          <div className="flex items-center gap-1.5">
+            {checkResult.ok ? (
+              <Wifi size={14} className="text-[#00c9a7]" />
+            ) : (
+              <WifiOff size={14} className="text-[#f44b6e]" />
+            )}
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: checkResult.ok ? "#00c9a7" : "#f44b6e" }}
+            >
+              {checkResult.message}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {config.fields.map((f) => (
+          <InputField
+            key={f.key}
+            label={f.label}
+            value={values[f.key] ?? ""}
+            onChange={(v) => onChange(f.key, v)}
+            type={f.type}
+            placeholder={f.placeholder}
+          />
+        ))}
+      </div>
+
+      <div className="flex justify-end mt-3">
+        <button
+          onClick={onCheck}
+          disabled={checking}
+          className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all"
+          style={{
+            background: "rgba(91,76,245,0.08)",
+            color: "#5B4CF5",
+          }}
+        >
+          {checking ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
+          {checking ? "Проверка..." : "Проверить"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Integrations tab ---------- */
+
+function IntegrationsTab() {
+  const { data: saved, isLoading } = useIntegrations();
+  const saveMutation = useSaveIntegrations();
+  const checkMutation = useCheckIntegration();
+
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [checkResults, setCheckResults] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [checkingService, setCheckingService] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState("");
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (saved) setValues(saved);
+  }, [saved]);
+
+  function handleChange(key: string, val: string) {
+    setValues((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function handleSave() {
+    setSaveSuccess("");
+    setSaveError("");
+    try {
+      await saveMutation.mutateAsync(values);
+      setSaveSuccess("Настройки сохранены");
+    } catch {
+      setSaveError("Ошибка при сохранении");
+    }
+  }
+
+  async function handleCheck(service: string) {
+    setCheckingService(service);
+    try {
+      const result = await checkMutation.mutateAsync(service);
+      setCheckResults((prev) => ({ ...prev, [service]: result }));
+    } catch {
+      setCheckResults((prev) => ({ ...prev, [service]: { ok: false, message: "Ошибка сети" } }));
+    } finally {
+      setCheckingService(null);
+    }
+  }
+
+  if (isLoading) {
+    return <div className="text-center text-text-muted py-8 text-[13px]">Загрузка настроек...</div>;
+  }
+
+  return (
+    <div className="flex flex-col gap-[14px]">
+      {INTEGRATIONS.map((cfg) => (
+        <IntegrationCard
+          key={cfg.service}
+          config={cfg}
+          values={values}
+          onChange={handleChange}
+          onCheck={() => handleCheck(cfg.service)}
+          checkResult={checkResults[cfg.service] ?? null}
+          checking={checkingService === cfg.service}
+        />
+      ))}
+
+      <div className="flex flex-col gap-3">
+        <StatusBanner success={saveSuccess} error={saveError} />
+        <div className="flex justify-end">
+          <Button variant="primary" size="md" onClick={handleSave} disabled={saveMutation.isPending}>
+            <Save size={14} className="mr-2" />
+            {saveMutation.isPending ? "Сохранение..." : "Сохранить все"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- component ---------- */
 
 type Tab = "profile" | "clinic" | "integrations" | "notifications";
@@ -231,12 +462,6 @@ export default function Settings() {
     name: "Стоматология «Улыбка»",
     address: "г. Москва, ул. Ленина, д. 42",
     phone: "+7 (495) 123-45-67",
-  });
-
-  const [integrations, setIntegrations] = useState({
-    dentaApiKey: "sk-****************************3f2a",
-    novofon: "nf-****************************8b1c",
-    telegramBot: "bot****************************:AAF",
   });
 
   const [notifications, setNotifications] = useState({
@@ -286,22 +511,7 @@ export default function Settings() {
         </Card>
       )}
 
-      {activeTab === "integrations" && (
-        <Card>
-          <h2 className="text-[15px] font-bold text-text-main mb-4">Интеграции</h2>
-          <div className="flex flex-col gap-3">
-            <InputField label="1Denta API Key" value={integrations.dentaApiKey} onChange={(v) => setIntegrations((p) => ({ ...p, dentaApiKey: v }))} type="password" placeholder="sk-..." />
-            <InputField label="Novofon API Key" value={integrations.novofon} onChange={(v) => setIntegrations((p) => ({ ...p, novofon: v }))} type="password" placeholder="nf-..." />
-            <InputField label="Telegram Bot Token" value={integrations.telegramBot} onChange={(v) => setIntegrations((p) => ({ ...p, telegramBot: v }))} type="password" placeholder="bot...:AAF..." />
-          </div>
-          <div className="flex justify-end mt-4">
-            <Button variant="primary" size="md">
-              <Save size={14} className="mr-2" />
-              Сохранить
-            </Button>
-          </div>
-        </Card>
-      )}
+      {activeTab === "integrations" && <IntegrationsTab />}
 
       {activeTab === "notifications" && (
         <Card>

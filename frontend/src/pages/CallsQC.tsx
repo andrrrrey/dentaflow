@@ -1,128 +1,176 @@
+import { useState } from "react";
 import StatCard from "../components/ui/StatCard";
 import Pill from "../components/ui/Pill";
 import Card from "../components/ui/Card";
-import { Phone, BarChart3, CheckCircle } from "lucide-react";
-
-/* ---------- types ---------- */
-
-interface CallRecord {
-  id: number;
-  date: string;
-  admin: string;
-  patient: string;
-  duration: string;
-  score: number;
-  status: "excellent" | "good" | "poor";
-}
-
-/* ---------- mock data ---------- */
-
-const calls: CallRecord[] = [
-  { id: 1, date: "13.04.2026", admin: "Ольга Смирнова", patient: "Кузнецов Алексей", duration: "4:32", score: 94, status: "excellent" },
-  { id: 2, date: "13.04.2026", admin: "Мария Волкова", patient: "Сидорова Мария", duration: "3:18", score: 87, status: "excellent" },
-  { id: 3, date: "12.04.2026", admin: "Анна Кузнецова", patient: "Волков Дмитрий", duration: "6:45", score: 72, status: "good" },
-  { id: 4, date: "12.04.2026", admin: "Елена Морозова", patient: "Морозова Анна", duration: "2:10", score: 58, status: "poor" },
-  { id: 5, date: "12.04.2026", admin: "Ольга Смирнова", patient: "Николаев Игорь", duration: "5:22", score: 91, status: "excellent" },
-  { id: 6, date: "11.04.2026", admin: "Мария Волкова", patient: "Попова Елена", duration: "3:55", score: 65, status: "good" },
-  { id: 7, date: "11.04.2026", admin: "Анна Кузнецова", patient: "Лебедев Сергей", duration: "4:08", score: 79, status: "good" },
-  { id: 8, date: "11.04.2026", admin: "Елена Морозова", patient: "Козлова Ирина", duration: "1:45", score: 43, status: "poor" },
-  { id: 9, date: "10.04.2026", admin: "Ольга Смирнова", patient: "Фёдоров Андрей", duration: "5:10", score: 88, status: "excellent" },
-  { id: 10, date: "10.04.2026", admin: "Мария Волкова", patient: "Егорова Ольга", duration: "3:30", score: 76, status: "good" },
-];
+import { Phone, BarChart3, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play } from "lucide-react";
+import { useCalls } from "../api/calls";
+import type { CallRecord } from "../api/calls";
 
 /* ---------- helpers ---------- */
 
-function scoreBarColor(score: number): string {
-  if (score >= 80) return "#00c9a7";
-  if (score >= 60) return "#f5a623";
-  return "#f44b6e";
+function formatDuration(sec: number): string {
+  if (!sec) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function scoreVariant(score: number): "green" | "yellow" | "red" {
-  if (score >= 80) return "green";
-  if (score >= 60) return "yellow";
-  return "red";
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
+function statusVariant(call: CallRecord): "green" | "yellow" | "red" {
+  if (call.status === "missed" || call.duration === 0) return "red";
+  if (call.duration < 30) return "yellow";
+  return "green";
+}
+
+function statusLabel(call: CallRecord): string {
+  if (call.status === "missed" || call.duration === 0) return "Пропущен";
+  return "Отвечен";
+}
+
+function DirectionIcon({ direction }: { direction: string }) {
+  if (direction === "outbound") return <PhoneOutgoing size={14} className="text-accent2" />;
+  return <PhoneIncoming size={14} className="text-accent3" />;
 }
 
 /* ---------- component ---------- */
 
 export default function CallsQC() {
-  const avgScore = Math.round(calls.reduce((s, c) => s + c.score, 0) / calls.length);
-  const totalCalls = calls.length;
-  const scriptCompliance = 78;
+  const [days, setDays] = useState(7);
+  const [filterStatus, setFilterStatus] = useState("");
+
+  const { data, isLoading } = useCalls({
+    days,
+    status: filterStatus || undefined,
+  });
+
+  const calls = data?.calls ?? [];
+  const stats = data?.stats;
 
   return (
     <div className="flex flex-col gap-[18px]">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-[14px]">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-[14px]">
         <StatCard
-          label="Средняя оценка"
-          value={`${avgScore}%`}
+          label="Всего звонков"
+          value={String(stats?.total ?? 0)}
+          icon={<Phone size={18} className="text-accent2" />}
+        />
+        <StatCard
+          label="Отвечено"
+          value={String(stats?.answered ?? 0)}
+          icon={<PhoneIncoming size={18} className="text-accent3" />}
+        />
+        <StatCard
+          label="Пропущено"
+          value={String(stats?.missed ?? 0)}
+          icon={<PhoneMissed size={18} className="text-[#f44b6e]" />}
+        />
+        <StatCard
+          label="% ответов"
+          value={`${stats?.answer_rate ?? 0}%`}
           icon={<BarChart3 size={18} className="text-accent2" />}
-          delta="+2.3% к прошлой неделе"
-          deltaType="up"
-        />
-        <StatCard
-          label="Кол-во звонков"
-          value={String(totalCalls)}
-          icon={<Phone size={18} className="text-accent3" />}
-        />
-        <StatCard
-          label="% соответствия скрипту"
-          value={`${scriptCompliance}%`}
-          icon={<CheckCircle size={18} className="text-accent2" />}
-          delta="+5% к прошлому месяцу"
-          deltaType="up"
         />
       </div>
 
-      {/* Calls table */}
+      {/* Filters + table */}
       <Card>
-        <h2 className="text-[15px] font-bold text-text-main mb-4">Последние звонки</h2>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <h2 className="text-[15px] font-bold text-text-main">История звонков</h2>
 
-        <div className="overflow-x-auto">
-          {/* Header */}
-          <div className="hidden md:grid grid-cols-[90px_1fr_1fr_80px_180px_100px] gap-3 px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
-            {(["Дата", "Администратор", "Пациент", "Длит.", "Оценка", "Статус"] as const).map((h) => (
-              <span key={h} className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
-                {h}
-              </span>
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="ml-auto rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-text-main outline-none cursor-pointer"
+            style={{ background: "rgba(255,255,255,0.65)", border: "1px solid rgba(91,76,245,0.15)" }}
+          >
+            <option value={3}>3 дня</option>
+            <option value={7}>7 дней</option>
+            <option value={14}>14 дней</option>
+            <option value={30}>30 дней</option>
+          </select>
+
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-text-main outline-none cursor-pointer"
+            style={{ background: "rgba(255,255,255,0.65)", border: "1px solid rgba(91,76,245,0.15)" }}
+          >
+            <option value="">Все статусы</option>
+            <option value="answered">Отвечено</option>
+            <option value="missed">Пропущено</option>
+          </select>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных...</div>
+        ) : calls.length === 0 ? (
+          <div className="text-center text-text-muted py-12 text-[13px]">Нет звонков за выбранный период</div>
+        ) : (
+          <div className="overflow-x-auto">
+            {/* Header */}
+            <div className="hidden md:grid grid-cols-[90px_40px_1fr_1fr_80px_100px_60px] gap-3 px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
+              {["Дата", "", "Откуда", "Куда", "Длит.", "Статус", ""].map((h) => (
+                <span key={h} className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                  {h}
+                </span>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {calls.map((call) => (
+              <div
+                key={call.call_id}
+                className="md:grid md:grid-cols-[90px_40px_1fr_1fr_80px_100px_60px] gap-3 px-[14px] py-[11px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors flex flex-col"
+              >
+                <div className="flex flex-col">
+                  <span className="text-[12.5px] text-text-main font-medium">{formatDate(call.started_at)}</span>
+                  <span className="text-[11px] text-text-muted">{formatTime(call.started_at)}</span>
+                </div>
+                <div className="flex items-center">
+                  <DirectionIcon direction={call.direction} />
+                </div>
+                <span className="text-[13px] text-text-main font-medium font-mono">{call.caller_id || "—"}</span>
+                <span className="text-[13px] text-text-muted font-mono">{call.called_did || "—"}</span>
+                <span className="text-[12.5px] text-text-muted">{formatDuration(call.duration)}</span>
+                <span>
+                  <Pill variant={statusVariant(call)}>
+                    {statusLabel(call)}
+                  </Pill>
+                </span>
+                <div className="flex items-center">
+                  {call.recording_url && (
+                    <a
+                      href={call.recording_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent2 hover:text-accent"
+                      title="Прослушать запись"
+                    >
+                      <Play size={16} />
+                    </a>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
-
-          {/* Rows */}
-          {calls.map((call) => (
-            <div
-              key={call.id}
-              className="md:grid md:grid-cols-[90px_1fr_1fr_80px_180px_100px] gap-3 px-[14px] py-[11px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors flex flex-col"
-            >
-              <span className="text-[12.5px] text-text-muted">{call.date}</span>
-              <span className="text-[13px] text-text-main font-medium">{call.admin}</span>
-              <span className="text-[13px] text-text-main">{call.patient}</span>
-              <span className="text-[12.5px] text-text-muted">{call.duration}</span>
-              {/* Score bar */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-[6px] rounded-full bg-[rgba(0,0,0,0.06)] overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${call.score}%`,
-                      background: scoreBarColor(call.score),
-                    }}
-                  />
-                </div>
-                <span className="text-[12px] font-bold text-text-main w-[32px] text-right">
-                  {call.score}%
-                </span>
-              </div>
-              <span>
-                <Pill variant={scoreVariant(call.score)}>
-                  {call.score >= 80 ? "Отлично" : call.score >= 60 ? "Норма" : "Плохо"}
-                </Pill>
-              </span>
-            </div>
-          ))}
-        </div>
+        )}
       </Card>
     </div>
   );

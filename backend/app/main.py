@@ -13,10 +13,12 @@ from app.routers import (
     dashboard,
     deals,
     doctors,
+    integrations,
     notifications,
     patients,
     pipeline_ext,
     schedule,
+    scripts,
     search,
     staff,
     tasks,
@@ -70,6 +72,8 @@ app.include_router(pipeline_ext.router)
 app.include_router(search.router)
 app.include_router(ai.router)
 app.include_router(staff.router)
+app.include_router(integrations.router)
+app.include_router(scripts.router)
 
 # --- Future routers ---
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])

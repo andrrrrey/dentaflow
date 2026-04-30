@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     MAX_API_KEY: str = ""
     MAX_CONFIRMATION_TOKEN: str = ""
 
+    MAIL_HOST: str = ""
+    MAIL_PORT: int = 465
+    MAIL_USER: str = ""
+    MAIL_PASSWORD: str = ""
+
+    SITE_WEBHOOK_URL: str = ""
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 

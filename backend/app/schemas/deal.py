@@ -26,11 +26,16 @@ class DealResponse(BaseModel):
 
 class DealCreate(BaseModel):
     patient_id: uuid.UUID | None = None
+    patient_name: str | None = None
+    patient_phone: str | None = None
     title: str
     stage: str = "new"
     amount: float | None = None
     service: str | None = None
+    doctor_name: str | None = None
+    source_channel: str | None = None
     assigned_to: uuid.UUID | None = None
+    notes: str | None = None
 
 
 class DealUpdate(BaseModel):
@@ -39,6 +44,24 @@ class DealUpdate(BaseModel):
     notes: str | None = None
     lost_reason: str | None = None
     title: str | None = None
+    service: str | None = None
+    doctor_name: str | None = None
+    assigned_to: uuid.UUID | None = None
+    source_channel: str | None = None
+
+
+class DealNoteCreate(BaseModel):
+    text: str
+
+
+class DealNote(BaseModel):
+    id: uuid.UUID
+    deal_id: uuid.UUID
+    text: str
+    author_name: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class StageColumn(BaseModel):

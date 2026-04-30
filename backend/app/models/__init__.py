@@ -6,6 +6,9 @@ from app.models.deal import Deal, DealStageHistory
 from app.models.appointment import Appointment
 from app.models.task import Task
 from app.models.notification import Notification
+from app.models.integration_setting import IntegrationSetting
+from app.models.deal_note import DealNote
+from app.models.script import Script
 
 __all__ = [
     "Base",
@@ -14,7 +17,10 @@ __all__ = [
     "Communication",
     "Deal",
     "DealStageHistory",
+    "DealNote",
     "Appointment",
     "Task",
     "Notification",
+    "IntegrationSetting",
+    "Script",
 ]

@@ -6,16 +6,20 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.deal import (
     DealCreate,
+    DealNote,
+    DealNoteCreate,
     DealResponse,
     DealUpdate,
     PipelineResponse,
     StageHistoryEntry,
 )
 from app.services.deals_service import (
+    add_deal_note,
     create_deal,
     delete_deal,
     get_deal,
     get_deal_history,
+    get_deal_notes,
     get_pipeline,
     update_deal,
 )
@@ -35,7 +39,7 @@ async def list_pipeline(
 @router.post("/", response_model=DealResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_deal(
     body: DealCreate,
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> DealResponse:
     return await create_deal(
         title=body.title,
@@ -44,6 +48,11 @@ async def create_new_deal(
         amount=body.amount,
         service=body.service,
         assigned_to=body.assigned_to,
+        notes=body.notes,
+        doctor_name=body.doctor_name,
+        source_channel=body.source_channel,
+        patient_name=body.patient_name,
+        patient_phone=body.patient_phone,
     )
 
 
@@ -71,6 +80,10 @@ async def patch_deal(
         notes=body.notes,
         lost_reason=body.lost_reason,
         title=body.title,
+        service=body.service,
+        doctor_name=body.doctor_name,
+        assigned_to=body.assigned_to,
+        source_channel=body.source_channel,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Deal not found")
@@ -93,3 +106,20 @@ async def deal_history(
     _current_user: User = Depends(get_current_user),
 ) -> list[StageHistoryEntry]:
     return await get_deal_history(deal_id)
+
+
+@router.get("/{deal_id}/notes", response_model=list[DealNote])
+async def list_deal_notes(
+    deal_id: uuid.UUID,
+    _current_user: User = Depends(get_current_user),
+) -> list[DealNote]:
+    return await get_deal_notes(deal_id)
+
+
+@router.post("/{deal_id}/notes", response_model=DealNote, status_code=status.HTTP_201_CREATED)
+async def create_deal_note(
+    deal_id: uuid.UUID,
+    body: DealNoteCreate,
+    current_user: User = Depends(get_current_user),
+) -> DealNote:
+    return await add_deal_note(deal_id=deal_id, text=body.text, author_id=current_user.id)

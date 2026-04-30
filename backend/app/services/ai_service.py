@@ -106,6 +106,59 @@ class AIService:
         return lines[:3] if lines else self._mock_reply_suggestions()
 
     # ------------------------------------------------------------------
+    # Script analysis
+    # ------------------------------------------------------------------
+
+    async def analyze_script(self, script_content: str) -> dict:
+        """Analyze a call script for quality, completeness, and weaknesses."""
+        if settings.APP_ENV == "development":
+            return self._mock_script_analysis()
+
+        prompt = (
+            "Проанализируй скрипт звонка для администратора стоматологической клиники.\n"
+            "Оцени:\n"
+            "1. Общее качество (0-100)\n"
+            "2. Полноту (все ли этапы разговора покрыты)\n"
+            "3. Сильные стороны\n"
+            "4. Слабые места и рекомендации по улучшению\n\n"
+            "Верни JSON с ключами: score, completeness, strengths (список), "
+            "weaknesses (список), recommendations (список).\n\n"
+            f"Скрипт:\n{script_content}"
+        )
+
+        return await self._chat(
+            system="Ты — эксперт по продажам и телефонным переговорам в стоматологии.",
+            user=prompt,
+            parse_json=True,
+        )
+
+    async def compare_call_with_script(self, transcript: str, script_content: str) -> dict:
+        """Compare a call transcript with a script to determine compliance."""
+        if settings.APP_ENV == "development":
+            return self._mock_call_comparison()
+
+        prompt = (
+            "Сравни расшифровку звонка со скриптом для администратора "
+            "стоматологической клиники.\n"
+            "Определи:\n"
+            "1. Общее соответствие скрипту (0-100%)\n"
+            "2. Какие этапы скрипта были выполнены\n"
+            "3. Какие этапы пропущены\n"
+            "4. Отклонения от скрипта\n"
+            "5. Рекомендации по улучшению\n\n"
+            "Верни JSON: compliance_pct, completed_steps (список), "
+            "missed_steps (список), deviations (список), recommendations (список).\n\n"
+            f"СКРИПТ:\n{script_content}\n\n"
+            f"РАСШИФРОВКА ЗВОНКА:\n{transcript}"
+        )
+
+        return await self._chat(
+            system="Ты — эксперт по контролю качества звонков в стоматологии.",
+            user=prompt,
+            parse_json=True,
+        )
+
+    # ------------------------------------------------------------------
     # Communication prioritisation
     # ------------------------------------------------------------------
 
@@ -236,4 +289,52 @@ class AIService:
         return {
             "priority": "high",
             "tags": ["горячий_лид", "первичное_обращение"],
+        }
+
+    @staticmethod
+    def _mock_script_analysis() -> dict:
+        return {
+            "score": 78,
+            "completeness": 85,
+            "strengths": [
+                "Хорошее приветствие и представление клиники",
+                "Корректная работа с возражениями по цене",
+                "Чёткое завершение разговора с подведением итогов",
+            ],
+            "weaknesses": [
+                "Нет уточнения удобного времени для перезвона",
+                "Отсутствует предложение альтернативных услуг",
+                "Не предусмотрена работа с возражением «я подумаю»",
+            ],
+            "recommendations": [
+                "Добавить блок уточнения предпочтительного времени связи",
+                "Включить cross-sell предложения (гигиена, отбеливание)",
+                "Добавить технику работы с отложенным решением",
+            ],
+        }
+
+    @staticmethod
+    def _mock_call_comparison() -> dict:
+        return {
+            "compliance_pct": 72,
+            "completed_steps": [
+                "Приветствие и представление",
+                "Выявление потребности",
+                "Презентация услуги",
+                "Завершение разговора",
+            ],
+            "missed_steps": [
+                "Уточнение удобного времени",
+                "Работа с возражениями",
+                "Предложение записи на приём",
+            ],
+            "deviations": [
+                "Администратор перебивал пациента",
+                "Не использована техника активного слушания",
+            ],
+            "recommendations": [
+                "Дать пациенту высказаться полностью перед ответом",
+                "Использовать уточняющие вопросы для выявления потребностей",
+                "Обязательно предлагать запись на конкретную дату",
+            ],
         }
