@@ -236,8 +236,8 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     title: "Novofon (телефония)",
     description: "Звонки, записи разговоров, вебхуки",
     fields: [
-      { key: "novofon_api_key", label: "API Key", type: "password", placeholder: "Bearer ключ" },
-      { key: "novofon_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет вебхука" },
+      { key: "novofon_api_key", label: "API Key (appid_...)", type: "password", placeholder: "appid_XXXXXXX" },
+      { key: "novofon_webhook_secret", label: "API Secret (из кабинета Novofon → API → Secret)", type: "password", placeholder: "Secret из личного кабинета" },
     ],
   },
   {
