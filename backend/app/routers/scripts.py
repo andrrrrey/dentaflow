@@ -104,18 +104,19 @@ async def update_script(
     }
 
 
-@router.delete("/{script_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{script_id}", status_code=status.HTTP_200_OK)
 async def delete_script(
     script_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
-) -> None:
+) -> dict:
     script = (await db.execute(
         select(Script).where(Script.id == script_id)
     )).scalar_one_or_none()
     if not script:
         raise HTTPException(status_code=404, detail="Script not found")
     await db.delete(script)
+    return {"ok": True}
 
 
 @router.post("/{script_id}/analyze")
