@@ -98,7 +98,7 @@ function PatientsSidePanel({ stage, onClose }: { stage: string; onClose: () => v
 /* ── Component ───────────────────────────────────────────── */
 
 export default function Pipeline() {
-  const { pipeline, deals, moveDeal, updateDeal, getHistory } = usePipeline();
+  const { pipeline, deals, moveDeal, getHistory } = usePipeline();
   const { data: funnel, isLoading: funnelLoading } = useFunnel();
 
   const [selectedDeal, setSelectedDeal] = useState<DealResponse | null>(null);
