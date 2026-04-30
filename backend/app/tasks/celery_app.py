@@ -48,7 +48,10 @@ celery_app.conf.beat_schedule = {
     },
 }
 
-# Auto-discover task modules
-celery_app.autodiscover_tasks([
-    "app.tasks",
-])
+# Explicitly include task modules (autodiscover only finds app/tasks/tasks.py, not submodules)
+celery_app.conf.include = [
+    "app.tasks.sync_1denta",
+    "app.tasks.alerts",
+    "app.tasks.ai_insights",
+    "app.tasks.daily_report",
+]
