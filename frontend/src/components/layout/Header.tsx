@@ -1,24 +1,14 @@
 import { useState, useEffect } from "react";
-import clsx from "clsx";
-import { Search, Settings } from "lucide-react";
+import { Search, LogOut } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import GlobalSearch from "../ui/GlobalSearch";
-
-type Period = "day" | "week" | "month";
+import { useAuthStore } from "../../store/authStore";
 
 interface HeaderProps {
   title: string;
-  period?: Period;
-  onPeriodChange?: (p: Period) => void;
 }
 
-const periodLabels: { key: Period; label: string }[] = [
-  { key: "day", label: "День" },
-  { key: "week", label: "Неделя" },
-  { key: "month", label: "Месяц" },
-];
-
-export default function Header({ title, period, onPeriodChange }: HeaderProps) {
+export default function Header({ title }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
@@ -46,26 +36,6 @@ export default function Header({ title, period, onPeriodChange }: HeaderProps) {
         {/* Title */}
         <h1 className="text-base font-extrabold flex-1">{title}</h1>
 
-        {/* Period tabs */}
-        {period !== undefined && onPeriodChange && (
-          <div className="flex gap-[3px] p-1 rounded-xl bg-[rgba(91,76,245,0.07)]">
-            {periodLabels.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => onPeriodChange(key)}
-                className={clsx(
-                  "px-[13px] py-[5px] rounded-[9px] text-xs font-semibold cursor-pointer transition-all duration-150 border-none bg-transparent",
-                  period === key
-                    ? "bg-white text-accent2 shadow-[0_2px_8px_rgba(91,76,245,0.15)]"
-                    : "text-text-muted",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Actions */}
         <div className="flex gap-[7px] items-center">
           <button
@@ -83,10 +53,12 @@ export default function Header({ title, period, onPeriodChange }: HeaderProps) {
           <NotificationBell />
 
           <button
-            className="w-9 h-9 rounded-[10px] bg-[rgba(91,76,245,0.08)] border-none cursor-pointer flex items-center justify-center text-text-main transition-all duration-150 hover:bg-[rgba(91,76,245,0.15)]"
-            aria-label="Settings"
+            onClick={() => useAuthStore.getState().logout()}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-[10px] bg-[rgba(91,76,245,0.08)] border-none cursor-pointer text-text-muted transition-all duration-150 hover:bg-[rgba(244,75,110,0.12)] hover:text-[#f44b6e]"
+            aria-label="Выйти"
           >
-            <Settings size={15} />
+            <LogOut size={14} />
+            <span className="text-[11px] font-semibold hidden sm:block">Выйти</span>
           </button>
         </div>
       </header>

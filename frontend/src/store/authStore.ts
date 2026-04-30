@@ -6,6 +6,7 @@ export interface UserResponse {
   email: string;
   name: string;
   role: string;
+  avatar_url?: string | null;
   is_active: boolean;
   created_at: string;
 }

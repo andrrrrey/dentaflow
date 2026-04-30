@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.routers import (
@@ -78,6 +80,11 @@ app.include_router(integrations.router)
 app.include_router(scripts.router)
 app.include_router(directories.router)
 app.include_router(reports.router)
+
+# --- Static files (avatars, uploads) ---
+_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+os.makedirs(_static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 # --- Future routers ---
 # app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,6 +125,37 @@ async def update_me(
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
         current_user.email = body.email
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+AVATAR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "avatars")
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+MAX_AVATAR_SIZE = 5 * 1024 * 1024
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    ext = os.path.splitext(file.filename or "img.png")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported image format")
+
+    contents = await file.read()
+    if len(contents) > MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+
+    os.makedirs(AVATAR_DIR, exist_ok=True)
+    filename = f"{current_user.id}{ext}"
+    filepath = os.path.join(AVATAR_DIR, filename)
+    with open(filepath, "wb") as f:
+        f.write(contents)
+
+    current_user.avatar_url = f"/static/avatars/{filename}"
     await db.commit()
     await db.refresh(current_user)
     return current_user

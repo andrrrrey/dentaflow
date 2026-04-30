@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
 import { useIntegrations, useSaveIntegrations, useCheckIntegration } from "../api/integrations";
@@ -96,12 +96,14 @@ function StatusBanner({ success, error }: { success?: string; error?: string }) 
 
 function ProfileTab() {
   const user = useAuthStore((s) => s.user);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
@@ -109,6 +111,31 @@ function ProfileTab() {
   const [pwdSaving, setPwdSaving] = useState(false);
   const [pwdSuccess, setPwdSuccess] = useState("");
   const [pwdError, setPwdError] = useState("");
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    setSuccess("");
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await api.post("/auth/me/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      useAuthStore.setState((s) => ({
+        user: s.user ? { ...s.user, avatar_url: data.avatar_url } : null,
+      }));
+      setSuccess("Фото обновлено");
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg ?? "Ошибка загрузки фото");
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function handleSaveProfile() {
     setSaving(true);
@@ -160,12 +187,41 @@ function ProfileTab() {
       {/* Profile info */}
       <Card>
         <div className="flex items-center gap-3 mb-5">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white text-[18px] font-bold flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#5B4CF5,#3B7FED)" }}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={handleAvatarUpload}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={avatarUploading}
+            className="relative w-12 h-12 rounded-full flex-shrink-0 border-none cursor-pointer p-0 overflow-hidden group"
+            title="Нажмите чтобы загрузить фото"
           >
-            {(user?.name ?? "?")[0].toUpperCase()}
-          </div>
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt={user.name}
+                className="w-full h-full object-cover rounded-full"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center text-white text-[18px] font-bold"
+                style={{ background: "linear-gradient(135deg,#5B4CF5,#3B7FED)" }}
+              >
+                {(user?.name ?? "?")[0].toUpperCase()}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
+              {avatarUploading ? (
+                <Loader2 size={16} className="text-white animate-spin" />
+              ) : (
+                <Camera size={16} className="text-white" />
+              )}
+            </div>
+          </button>
           <div>
             <div className="text-[15px] font-bold">{user?.name}</div>
             <div className="text-[12px] text-text-muted">{user?.role}</div>
