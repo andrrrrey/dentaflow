@@ -35,7 +35,7 @@ async def _sync_patients_async() -> dict:
     from app.models.patient import Patient
     from app.services.one_denta import OneDentaService
 
-    service = OneDentaService()
+    service = await OneDentaService.from_db_session_factory()
     since = datetime.now(timezone.utc) - timedelta(hours=1)
     patients_data = await service.get_patients(updated_since=since)
 
@@ -110,7 +110,7 @@ async def _sync_appointments_async() -> dict:
     from app.models.patient import Patient
     from app.services.one_denta import OneDentaService
 
-    service = OneDentaService()
+    service = await OneDentaService.from_db_session_factory()
     now = datetime.now(timezone.utc)
     appointments_data = await service.get_appointments(
         date_from=now - timedelta(days=1),

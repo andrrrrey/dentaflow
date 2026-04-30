@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 
@@ -27,23 +30,59 @@ def _utcnow() -> datetime:
 class OneDentaService:
     """Async client for the SQNS CRM Exchange API v2 (1Denta)."""
 
-    def __init__(self) -> None:
-        self.base_url = settings.ONE_DENTA_API_URL.rstrip("/")
-        self.email = settings.ONE_DENTA_EMAIL
-        self.password = settings.ONE_DENTA_PASSWORD
+    def __init__(
+        self,
+        base_url: str | None = None,
+        email: str | None = None,
+        password: str | None = None,
+    ) -> None:
+        self.base_url = (base_url or settings.ONE_DENTA_API_URL).rstrip("/")
+        self.email = email or settings.ONE_DENTA_EMAIL
+        self.password = password or settings.ONE_DENTA_PASSWORD
+
+    @classmethod
+    async def from_db(cls, db: "AsyncSession") -> "OneDentaService":
+        """Create service with credentials loaded from DB (falls back to env vars)."""
+        from sqlalchemy import select
+        from app.models.integration_setting import IntegrationSetting
+
+        stmt = select(IntegrationSetting).where(
+            IntegrationSetting.key.in_(
+                ["one_denta_api_url", "one_denta_email", "one_denta_password"]
+            )
+        )
+        result = await db.execute(stmt)
+        rows = {row.key: row.value for row in result.scalars().all()}
+
+        return cls(
+            base_url=rows.get("one_denta_api_url") or settings.ONE_DENTA_API_URL,
+            email=rows.get("one_denta_email") or settings.ONE_DENTA_EMAIL,
+            password=rows.get("one_denta_password") or settings.ONE_DENTA_PASSWORD,
+        )
+
+    @classmethod
+    async def from_db_session_factory(cls) -> "OneDentaService":
+        """For use in Celery tasks — opens its own DB session."""
+        from app.database import async_session_factory
+
+        async with async_session_factory() as session:
+            return await cls.from_db(session)
 
     # ------------------------------------------------------------------
     # Patients / Clients
     # ------------------------------------------------------------------
 
+    def _no_credentials(self) -> bool:
+        return not self.email or not self.password
+
     async def get_patients(self, updated_since: datetime | None = None) -> list[dict]:
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             return self._mock_patients()
         clients = await self._fetch_all_pages("/api/v2/client")
         return [self._map_client(c) for c in clients]
 
     async def get_patient_by_phone(self, phone: str) -> dict | None:
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             for p in self._mock_patients():
                 if p["phone"] == phone:
                     return p
@@ -55,7 +94,7 @@ class OneDentaService:
             return None
 
     async def get_patient_by_id(self, external_id: str) -> dict | None:
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             for p in self._mock_patients():
                 if p["external_id"] == external_id:
                     return p
@@ -76,7 +115,7 @@ class OneDentaService:
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> list[dict]:
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             return self._mock_appointments()
 
         base_params: dict[str, Any] = {}
@@ -142,21 +181,21 @@ class OneDentaService:
 
     async def get_services(self) -> list[dict]:
         """Return full list of clinic services."""
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             return []
         items = await self._fetch_all_pages("/api/v2/service")
         return items
 
     async def get_resources(self) -> list[dict]:
         """Return staff members available for online booking."""
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             return []
         data = await self._request("GET", "/api/v2/resource")
         return data.get("resources", [])
 
     async def get_commodities(self) -> list[dict]:
         """Return commodities/products list."""
-        if settings.APP_ENV == "development":
+        if self._no_credentials():
             return []
         items = await self._fetch_all_pages("/api/v2/commodity")
         return items

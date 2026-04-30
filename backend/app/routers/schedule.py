@@ -193,7 +193,7 @@ async def create_appointment(
 
     external_id = None
     try:
-        svc = OneDentaService()
+        svc = await OneDentaService.from_db(db)
         result = await svc.create_visit(
             name=body.patient_name,
             phone=body.patient_phone,
@@ -233,10 +233,11 @@ async def create_appointment(
 
 @router.get("/services")
 async def list_services(
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Return available services from 1Denta."""
-    svc = OneDentaService()
+    svc = await OneDentaService.from_db(db)
     services = await svc.get_services()
     return {"services": services}
 
@@ -246,10 +247,11 @@ async def available_slots(
     resource_id: str = Query(..., description="Doctor resource ID"),
     service_ids: str = Query("1", description="Comma-separated service IDs"),
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Return available time slots for a doctor on a given date."""
-    svc = OneDentaService()
+    svc = await OneDentaService.from_db(db)
     ids = [s.strip() for s in service_ids.split(",")]
     slots = await svc.get_available_slots(resource_id=resource_id, service_ids=ids, date=date)
     return {"slots": slots}
