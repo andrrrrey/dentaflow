@@ -4,6 +4,14 @@
 # ============================================================
 
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
+    restart: "no"
+
   nginx:
     image: nginx:alpine
     ports:
@@ -15,6 +23,7 @@ services:
       - frontend_dist:/usr/share/nginx/html
     depends_on:
       - backend
+      - frontend
     restart: always
 
   backend:
