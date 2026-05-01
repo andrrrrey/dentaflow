@@ -27,12 +27,42 @@ router = APIRouter(prefix="/api/v1/patients", tags=["patients"])
 async def list_patients(
     search: str | None = Query(None, description="Search by name, phone, email"),
     visited: str | None = Query(None, description="visited | not_visited"),
+    gender: str | None = Query(None, description="male | female"),
+    source_channel: str | None = Query(None),
+    birth_date_from: str | None = Query(None, description="YYYY-MM-DD"),
+    birth_date_to: str | None = Query(None, description="YYYY-MM-DD"),
+    last_visit_from: str | None = Query(None, description="YYYY-MM-DD"),
+    last_visit_to: str | None = Query(None, description="YYYY-MM-DD"),
+    created_from: str | None = Query(None, description="YYYY-MM-DD"),
+    created_to: str | None = Query(None, description="YYYY-MM-DD"),
+    revenue_min: float | None = Query(None),
+    revenue_max: float | None = Query(None),
+    visits_min: int | None = Query(None),
+    visits_max: int | None = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientListResponse:
-    return await get_patients(db=db, search=search, visited=visited, page=page, limit=limit)
+    return await get_patients(
+        db=db,
+        search=search,
+        visited=visited,
+        gender=gender,
+        source_channel=source_channel,
+        birth_date_from=birth_date_from,
+        birth_date_to=birth_date_to,
+        last_visit_from=last_visit_from,
+        last_visit_to=last_visit_to,
+        created_from=created_from,
+        created_to=created_to,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
+        visits_min=visits_min,
+        visits_max=visits_max,
+        page=page,
+        limit=limit,
+    )
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)

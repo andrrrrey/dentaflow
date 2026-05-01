@@ -33,6 +33,7 @@ class Patient(Base):
     total_revenue: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), default=0
     )
+    gender: Mapped[str | None] = mapped_column(String(10), nullable=True)  # male|female
     ltv_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # AI LTV 0-100
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(

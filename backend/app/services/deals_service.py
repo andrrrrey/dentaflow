@@ -20,6 +20,7 @@ from app.schemas.deal import (
 )
 
 STAGES = [
+    ("waiting_list", "Лист ожидания"),
     ("new", "Новые"),
     ("contact", "Контакт"),
     ("negotiation", "Переговоры"),

@@ -113,8 +113,8 @@ async def _sync_appointments_async() -> dict:
     service = await OneDentaService.from_db_session_factory()
     now = datetime.now(timezone.utc)
     appointments_data = await service.get_appointments(
-        date_from=now - timedelta(days=1),
-        date_to=now + timedelta(days=7),
+        date_from=now - timedelta(days=90),
+        date_to=now + timedelta(days=60),
     )
 
     created = 0
@@ -178,7 +178,65 @@ async def _sync_appointments_async() -> dict:
 
         await session.commit()
 
+    # Auto-create waiting_list deals for scheduled/confirmed appointments without a deal
+    await _sync_waiting_list_deals_async(appointments_data)
+
     return {"created": created, "updated": updated, "total": len(appointments_data)}
+
+
+async def _sync_waiting_list_deals_async(appointments_data: list) -> None:
+    """Create waiting_list pipeline deals for newly scheduled 1denta appointments."""
+    from sqlalchemy import select, exists
+    from app.database import async_session_factory
+    from app.models.appointment import Appointment
+    from app.models.deal import Deal
+    from app.models.patient import Patient
+
+    eligible_statuses = {"scheduled", "confirmed", "waiting"}
+
+    async with async_session_factory() as session:
+        for a_data in appointments_data:
+            if a_data.get("status") not in eligible_statuses:
+                continue
+
+            ext_id = a_data.get("external_id")
+            if not ext_id:
+                continue
+
+            # Resolve patient
+            patient_id = None
+            patient_ext = a_data.get("patient_external_id")
+            if patient_ext:
+                p_stmt = select(Patient.id).where(Patient.external_id == patient_ext).limit(1)
+                p_row = (await session.execute(p_stmt)).scalar_one_or_none()
+                if p_row:
+                    patient_id = p_row
+
+            if not patient_id:
+                continue
+
+            # Skip if patient already has any open deal
+            has_deal = (await session.execute(
+                select(exists().where(
+                    (Deal.patient_id == patient_id) &
+                    (Deal.stage.notin_(["closed_won", "closed_lost"]))
+                ))
+            )).scalar()
+            if has_deal:
+                continue
+
+            patient_name = a_data.get("patient_name") or ""
+            deal = Deal(
+                title=f"Запись: {patient_name} — {a_data.get('service', 'Услуга')}",
+                patient_id=patient_id,
+                stage="waiting_list",
+                source_channel="1denta",
+                service=a_data.get("service"),
+                doctor_name=a_data.get("doctor_name"),
+            )
+            session.add(deal)
+
+        await session.commit()
 
 
 @celery_app.task(name="app.tasks.sync_1denta.sync_patients", bind=True, max_retries=3)

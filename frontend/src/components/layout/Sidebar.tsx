@@ -13,6 +13,7 @@ import {
   BookOpen,
   FileBarChart,
   Settings,
+  Megaphone,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
@@ -64,6 +65,7 @@ const sections: NavSection[] = [
   },
   {
     items: [
+      { label: "Маркетинг", icon: <Megaphone size={15} />, path: "/marketing/discounts" },
       { label: "Справочники", icon: <BookOpen size={15} />, path: "/directories" },
       { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports" },
       { label: "Сотрудники", icon: <Users size={15} />, path: "/staff" },
@@ -140,7 +142,10 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
             className={clsx("mb-1", idx > 0 && "mt-2 pt-2 border-t border-[rgba(91,76,245,0.1)]")}
           >
             {section.items.map((item) => {
-              const active = location.pathname === item.path;
+              const active = item.path.includes("*")
+                ? location.pathname.startsWith(item.path.replace("/*", ""))
+                : location.pathname === item.path ||
+                  (item.path !== "/" && location.pathname.startsWith(item.path.split("/").slice(0, 2).join("/")));
               return (
                 <div
                   key={item.path}

@@ -3,10 +3,16 @@ import { format, subDays } from "date-fns";
 import Card from "../components/ui/Card";
 import StatCard from "../components/ui/StatCard";
 import { useRevenueReport, usePatientsReport, useServicesReport, useDoctorsReport } from "../api/reports";
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+
+const DAY_PAGE = 10;
+const DAY_PREVIEW = 7;
 
 export default function Reports() {
   const [dateFrom, setDateFrom] = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [dayExpanded, setDayExpanded] = useState(false);
+  const [dayPage, setDayPage] = useState(1);
 
   const params = { date_from: dateFrom, date_to: dateTo };
   const { data: revenue, isLoading: revLoading } = useRevenueReport(params);
@@ -66,33 +72,68 @@ export default function Reports() {
       </div>
 
       {/* Revenue by day */}
-      {revenue && revenue.by_day.length > 0 && (
-        <Card>
-          <h3 className="text-[14px] font-bold mb-3">Выручка по дням</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  {["Дата", "Записей", "Выручка"].map((h) => (
-                    <th key={h} className="text-left text-[10.5px] font-bold text-text-muted uppercase tracking-[0.8px] pb-[10px] px-[12px]" style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {revenue.by_day.map((d) => (
-                  <tr key={d.date} className="hover:bg-[rgba(91,76,245,0.03)]" style={{ borderBottom: "1px solid rgba(91,76,245,0.05)" }}>
-                    <td className="py-[8px] px-[12px] text-[12.5px] font-medium">{d.date}</td>
-                    <td className="py-[8px] px-[12px] text-[12.5px] text-text-muted">{d.count}</td>
-                    <td className="py-[8px] px-[12px] text-[12.5px] font-semibold">{d.revenue.toLocaleString("ru-RU")} ₽</td>
+      {revenue && revenue.by_day.length > 0 && (() => {
+        const allDays = revenue.by_day;
+        const totalPages = Math.ceil(allDays.length / DAY_PAGE);
+        const visibleRows = dayExpanded
+          ? allDays.slice((dayPage - 1) * DAY_PAGE, dayPage * DAY_PAGE)
+          : allDays.slice(0, DAY_PREVIEW);
+        return (
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[14px] font-bold">Выручка по дням</h3>
+              {allDays.length > DAY_PREVIEW && (
+                <button
+                  onClick={() => { setDayExpanded((e) => !e); setDayPage(1); }}
+                  className="flex items-center gap-1 text-[11.5px] font-semibold border-none cursor-pointer rounded-[8px] px-3 py-[5px] transition-colors"
+                  style={{ background: "rgba(91,76,245,0.07)", color: "#5B4CF5" }}
+                >
+                  {dayExpanded ? <><ChevronUp size={13} /> Свернуть</> : <><ChevronDown size={13} /> Показать все ({allDays.length})</>}
+                </button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {["Дата", "Записей", "Выручка"].map((h) => (
+                      <th key={h} className="text-left text-[10.5px] font-bold text-text-muted uppercase tracking-[0.8px] pb-[10px] px-[12px]" style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+                </thead>
+                <tbody>
+                  {visibleRows.map((d) => (
+                    <tr key={d.date} className="hover:bg-[rgba(91,76,245,0.03)]" style={{ borderBottom: "1px solid rgba(91,76,245,0.05)" }}>
+                      <td className="py-[8px] px-[12px] text-[12.5px] font-medium">{d.date}</td>
+                      <td className="py-[8px] px-[12px] text-[12.5px] text-text-muted">{d.count}</td>
+                      <td className="py-[8px] px-[12px] text-[12.5px] font-semibold">{d.revenue.toLocaleString("ru-RU")} ₽</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {dayExpanded && totalPages > 1 && (
+              <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+                <span className="text-[11px] text-text-muted">Стр. {dayPage} из {totalPages}</span>
+                <div className="flex gap-1">
+                  <button onClick={() => setDayPage((p) => Math.max(1, p - 1))} disabled={dayPage === 1}
+                    className="w-7 h-7 rounded-[7px] flex items-center justify-center border-none cursor-pointer disabled:opacity-40"
+                    style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+                    <ChevronLeft size={13} />
+                  </button>
+                  <button onClick={() => setDayPage((p) => Math.min(totalPages, p + 1))} disabled={dayPage === totalPages}
+                    className="w-7 h-7 rounded-[7px] flex items-center justify-center border-none cursor-pointer disabled:opacity-40"
+                    style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+                    <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Services popularity */}

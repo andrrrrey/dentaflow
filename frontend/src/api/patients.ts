@@ -72,12 +72,27 @@ export interface AIAnalysis {
   next_action: string;
 }
 
+export interface PatientStats {
+  total_visits: number;
+  completed_visits: number;
+  cancelled_visits: number;
+  no_show_visits: number;
+  total_revenue: number;
+  avg_revenue_per_visit: number;
+  first_visit_at: string | null;
+  last_visit_at: string | null;
+  unique_doctors: number;
+  unique_services: number;
+}
+
 export interface PatientDetailResponse extends PatientResponse {
   appointments: AppointmentResponse[];
   communications: CommunicationBrief[];
   deals: DealBrief[];
   tasks: TaskBrief[];
   ai_analysis: AIAnalysis;
+  stats: PatientStats;
+  raw_1denta_data: Record<string, unknown> | null;
 }
 
 export interface PatientListResponse {
@@ -100,13 +115,32 @@ export function usePatientDetail(id: string | undefined) {
   return { data, isLoading };
 }
 
-export function usePatients(search: string, page = 1, limit = 20, visited?: string) {
+export interface PatientFilters {
+  search?: string;
+  visited?: string;
+  gender?: string;
+  source_channel?: string;
+  birth_date_from?: string;
+  birth_date_to?: string;
+  last_visit_from?: string;
+  last_visit_to?: string;
+  created_from?: string;
+  created_to?: string;
+  revenue_min?: number;
+  revenue_max?: number;
+  visits_min?: number;
+  visits_max?: number;
+}
+
+export function usePatients(filters: PatientFilters, page = 1, limit = 20) {
   const { data = null, isLoading } = useQuery<PatientListResponse>({
-    queryKey: ["patients", search, page, limit, visited],
+    queryKey: ["patients", filters, page, limit],
     queryFn: async () => {
-      const { data } = await api.get("/patients/", {
-        params: { search: search || undefined, page, limit, visited: visited || undefined },
+      const params: Record<string, unknown> = { page, limit };
+      Object.entries(filters).forEach(([k, v]) => {
+        if (v !== undefined && v !== "" && v !== null) params[k] = v;
       });
+      const { data } = await api.get("/patients/", { params });
       return data;
     },
     staleTime: 30_000,

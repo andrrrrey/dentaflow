@@ -83,12 +83,27 @@ class PatientResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PatientStats(BaseModel):
+    total_visits: int
+    completed_visits: int
+    cancelled_visits: int
+    no_show_visits: int
+    total_revenue: float
+    avg_revenue_per_visit: float
+    first_visit_at: datetime | None
+    last_visit_at: datetime | None
+    unique_doctors: int
+    unique_services: int
+
+
 class PatientDetailResponse(PatientResponse):
     appointments: list[AppointmentResponse]
     communications: list[CommunicationBrief]
     deals: list[DealBrief]
     tasks: list[TaskBrief]
     ai_analysis: AIAnalysis
+    stats: PatientStats
+    raw_1denta_data: dict | None = None
 
 
 class PatientListResponse(BaseModel):

@@ -17,6 +17,7 @@ from app.routers import (
     directories,
     doctors,
     integrations,
+    marketing,
     notifications,
     patients,
     pipeline_ext,
@@ -80,6 +81,7 @@ app.include_router(integrations.router)
 app.include_router(scripts.router)
 app.include_router(directories.router)
 app.include_router(reports.router)
+app.include_router(marketing.router)
 
 # --- Static files (avatars, uploads) ---
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

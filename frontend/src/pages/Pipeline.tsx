@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, X } from "lucide-react";
+import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
@@ -29,6 +29,29 @@ function uniqueAssigned(stages: StageColumn[]) {
 }
 
 const FUNNEL_COLORS = ["#5B4CF5", "#3B7FED", "#00C9A7", "#F5A623", "#F44B6E", "#a855f7"];
+const TABLE_PAGE = 20;
+
+const STAGE_LABELS: Record<string, string> = {
+  waiting_list: "Лист ожидания",
+  new: "Новые",
+  contact: "Контакт",
+  negotiation: "Переговоры",
+  scheduled: "Записан",
+  treatment: "Лечение",
+  closed_won: "Закрыто ✓",
+  closed_lost: "Закрыто ✗",
+};
+
+const STAGE_COLOR: Record<string, string> = {
+  waiting_list: "#a855f7",
+  new: "#3B7FED",
+  contact: "#F5A623",
+  negotiation: "#F5A623",
+  scheduled: "#5B4CF5",
+  treatment: "#00C9A7",
+  closed_won: "#00C9A7",
+  closed_lost: "#f44b6e",
+};
 
 const qualityVariant: Record<string, "green" | "yellow" | "red" | "gray"> = {
   "Горячий": "green",
@@ -88,8 +111,11 @@ export default function Pipeline() {
 
   const [selectedDeal, setSelectedDeal] = useState<DealResponse | null>(null);
   const [filterAssigned, setFilterAssigned] = useState("");
+  const [filterStage, setFilterStage] = useState("");
   const [activeStage, setActiveStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"funnel" | "crm">("funnel");
+  const [crmView, setCrmView] = useState<"kanban" | "table">("kanban");
+  const [tablePage, setTablePage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const pipeline: PipelineResponse = pipelineData ?? { stages: [], total_pipeline_value: 0 };
@@ -110,6 +136,15 @@ export default function Pipeline() {
   const handleMoveDeal = (dealId: string, toStage: string) => {
     moveDealMutation.mutate({ dealId, stage: toStage });
   };
+
+  const allDeals = useMemo(() =>
+    filteredPipeline.stages.flatMap((s) => s.deals)
+      .filter((d) => !filterStage || d.stage === filterStage)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [filteredPipeline, filterStage],
+  );
+  const tablePages = Math.max(1, Math.ceil(allDeals.length / TABLE_PAGE));
+  const tableRows = allDeals.slice((tablePage - 1) * TABLE_PAGE, tablePage * TABLE_PAGE);
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,7 +227,7 @@ export default function Pipeline() {
           </Card>
         </div>
       ) : (
-        /* CRM Kanban view */
+        /* CRM view */
         <div className="flex flex-col gap-[14px] min-h-0">
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
@@ -203,14 +238,70 @@ export default function Pipeline() {
               <option value="">Все ответственные</option>
               {assignedUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-            <div className="ml-auto text-[13px] font-bold text-text-muted">
-              Воронка: <span className="text-accent2">{formatValue(filteredPipeline.total_pipeline_value)}</span>
+            {crmView === "table" && (
+              <select value={filterStage} onChange={(e) => { setFilterStage(e.target.value); setTablePage(1); }} className="rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-text-main outline-none cursor-pointer" style={{ background: "rgba(255,255,255,0.65)", border: "1px solid rgba(91,76,245,0.15)" }}>
+                <option value="">Все этапы</option>
+                {Object.entries(STAGE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-[13px] font-bold text-text-muted">
+                Воронка: <span className="text-accent2">{formatValue(filteredPipeline.total_pipeline_value)}</span>
+              </span>
+              {/* View toggle */}
+              <div className="flex gap-[2px] p-[3px] rounded-[10px]" style={{ background: "rgba(91,76,245,0.07)" }}>
+                {([["kanban", <LayoutGrid size={13} />], ["table", <List size={13} />]] as const).map(([v, icon]) => (
+                  <button key={v} onClick={() => setCrmView(v)} className="w-7 h-7 rounded-[7px] flex items-center justify-center border-none cursor-pointer transition-all"
+                    style={crmView === v ? { background: "#fff", color: "#5B4CF5", boxShadow: "0 1px 6px rgba(91,76,245,0.15)" } : { background: "transparent", color: "#8a8fa5" }}>
+                    {icon}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
           {pipelineLoading ? (
             <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных...</div>
-          ) : (
+          ) : crmView === "kanban" ? (
             <KanbanBoard pipeline={filteredPipeline} onMoveDeal={handleMoveDeal} onDealClick={setSelectedDeal} />
+          ) : (
+            /* Table view */
+            <div className="rounded-[18px] overflow-hidden" style={{ background: "rgba(255,255,255,0.65)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 4px 20px rgba(120,140,180,0.12)" }}>
+              <div className="grid grid-cols-[1fr_140px_120px_120px_100px] gap-3 px-[18px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
+                {["Пациент / Сделка", "Услуга", "Врач", "Этап", "Сумма"].map((h) => (
+                  <span key={h} className="text-[10.5px] font-bold text-text-muted uppercase tracking-wider">{h}</span>
+                ))}
+              </div>
+              {tableRows.length === 0 ? (
+                <div className="text-center py-10 text-text-muted text-[13px]">Нет сделок</div>
+              ) : tableRows.map((deal) => (
+                <div key={deal.id} onClick={() => setSelectedDeal(deal)} className="grid grid-cols-[1fr_140px_120px_120px_100px] gap-3 px-[18px] py-[12px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors cursor-pointer">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-bold text-text-main truncate">{deal.title}</div>
+                    {deal.patient_name && <div className="text-[11px] text-text-muted truncate">{deal.patient_name}</div>}
+                  </div>
+                  <div className="text-[12px] text-text-muted truncate self-center">{deal.service ?? "—"}</div>
+                  <div className="text-[12px] text-text-muted truncate self-center">{deal.doctor_name ?? "—"}</div>
+                  <div className="self-center">
+                    <span className="px-[8px] py-[2px] rounded-full text-[10.5px] font-bold" style={{ background: `${STAGE_COLOR[deal.stage] ?? "#8a8fa5"}20`, color: STAGE_COLOR[deal.stage] ?? "#8a8fa5" }}>
+                      {STAGE_LABELS[deal.stage] ?? deal.stage}
+                    </span>
+                  </div>
+                  <div className="text-[13px] font-bold text-text-main text-right self-center">
+                    {deal.amount ? `${deal.amount.toLocaleString("ru-RU")} ₽` : "—"}
+                  </div>
+                </div>
+              ))}
+              {tablePages > 1 && (
+                <div className="flex items-center justify-between px-[18px] py-[10px]">
+                  <span className="text-[11px] text-text-muted">Стр. {tablePage} из {tablePages} · {allDeals.length} сделок</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => setTablePage((p) => Math.max(1, p - 1))} disabled={tablePage === 1} className="w-7 h-7 rounded-[7px] flex items-center justify-center border-none cursor-pointer disabled:opacity-40" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}><ChevronLeft size={13} /></button>
+                    <button onClick={() => setTablePage((p) => Math.min(tablePages, p + 1))} disabled={tablePage === tablePages} className="w-7 h-7 rounded-[7px] flex items-center justify-center border-none cursor-pointer disabled:opacity-40" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}><ChevronRight size={13} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

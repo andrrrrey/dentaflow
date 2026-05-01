@@ -9,11 +9,13 @@ import CommHistory from "../components/patient/CommHistory";
 import DealsHistory from "../components/patient/DealsHistory";
 import TasksList from "../components/patient/TasksList";
 import AIAnalysis from "../components/patient/AIAnalysis";
+import PatientStats from "../components/patient/PatientStats";
 
-type TabKey = "1denta" | "communications" | "crm" | "tasks";
+type TabKey = "1denta" | "stats" | "communications" | "crm" | "tasks";
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "1denta", label: "1Denta" },
+  { key: "1denta", label: "История визитов" },
+  { key: "stats", label: "Статистика" },
   { key: "communications", label: "Коммуникации" },
   { key: "crm", label: "CRM" },
   { key: "tasks", label: "Задачи" },
@@ -101,6 +103,9 @@ export default function PatientCard() {
           {/* Tab content */}
           {activeTab === "1denta" && (
             <MedHistory appointments={patient.appointments} />
+          )}
+          {activeTab === "stats" && (
+            <PatientStats stats={patient.stats} rawData={patient.raw_1denta_data} />
           )}
           {activeTab === "communications" && (
             <CommHistory communications={patient.communications} />

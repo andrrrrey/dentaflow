@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { format, startOfWeek, endOfWeek, addWeeks, startOfMonth, endOfMonth } from "date-fns";
+import { useState, useMemo } from "react";
+import { format, subDays, addDays, startOfMonth, endOfMonth, parseISO, eachDayOfInterval } from "date-fns";
 import { ru } from "date-fns/locale";
 import StatCard from "../components/ui/StatCard";
 import Card from "../components/ui/Card";
@@ -19,24 +19,24 @@ function formatRub(v: number): string {
 
 export default function Analytics() {
   const [mode, setMode] = useState<ViewMode>("week");
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = prev, etc.
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = last 7 days, -1 = prev 7 days, etc.
 
   const now = new Date();
 
+  // Rolling 7-day window: offset 0 = yesterday–6 days ago, shifted by weekOffset*7
+  const periodEnd = addDays(now, weekOffset * 7);
+  const periodStart = subDays(periodEnd, 6);
+
   const dateFrom = mode === "week"
-    ? format(startOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 1 }), "yyyy-MM-dd")
+    ? format(periodStart, "yyyy-MM-dd")
     : format(startOfMonth(now), "yyyy-MM-dd");
 
   const dateTo = mode === "week"
-    ? format(endOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 1 }), "yyyy-MM-dd")
+    ? format(periodEnd, "yyyy-MM-dd")
     : format(endOfMonth(now), "yyyy-MM-dd");
 
   const weekLabel = mode === "week"
-    ? (() => {
-        const ws = startOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 1 });
-        const we = endOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 1 });
-        return `${format(ws, "d MMM", { locale: ru })} — ${format(we, "d MMM yyyy", { locale: ru })}`;
-      })()
+    ? `${format(periodStart, "d MMM", { locale: ru })} — ${format(periodEnd, "d MMM yyyy", { locale: ru })}`
     : format(now, "LLLL yyyy", { locale: ru });
 
   const params = { date_from: dateFrom, date_to: dateTo };
@@ -55,10 +55,22 @@ export default function Analytics() {
   const servicesData = services?.services ?? [];
   const totalServiceCount = servicesData.reduce((sum, s) => sum + s.count, 0) || 1;
 
-  const revenueChartData = (revenue?.by_day ?? []).map((d) => ({
-    date: format(new Date(d.date), "dd.MM"),
-    revenue: d.revenue,
-  }));
+  // Build a zero-filled 7-day array for the chart (week mode)
+  const revenueChartData = useMemo(() => {
+    if (mode === "month") {
+      return (revenue?.by_day ?? []).map((d) => ({
+        date: format(parseISO(d.date), "dd.MM"),
+        revenue: d.revenue,
+      }));
+    }
+    const byDayMap = new Map<string, number>(
+      (revenue?.by_day ?? []).map((d) => [d.date, d.revenue])
+    );
+    return eachDayOfInterval({ start: periodStart, end: periodEnd }).map((day) => {
+      const key = format(day, "yyyy-MM-dd");
+      return { date: format(day, "dd.MM"), revenue: byDayMap.get(key) ?? 0 };
+    });
+  }, [revenue, mode, periodStart, periodEnd]);
 
   return (
     <div className="flex flex-col gap-[18px]">

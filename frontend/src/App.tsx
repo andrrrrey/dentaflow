@@ -15,6 +15,7 @@ import Directories from "./pages/Directories";
 import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
+import Marketing from "./pages/Marketing";
 
 /* ---------- app ---------- */
 
@@ -131,6 +132,16 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Отчёты">
                 <Reports />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/marketing/*"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Маркетинг">
+                <Marketing />
               </AppLayout>
             </ProtectedRoute>
           }

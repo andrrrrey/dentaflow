@@ -21,6 +21,7 @@ from app.schemas.patient import (
     PatientDetailResponse,
     PatientListResponse,
     PatientResponse,
+    PatientStats,
     TaskBrief,
 )
 
@@ -29,9 +30,22 @@ async def get_patients(
     db: AsyncSession,
     search: str | None = None,
     visited: str | None = None,
+    gender: str | None = None,
+    source_channel: str | None = None,
+    birth_date_from: str | None = None,
+    birth_date_to: str | None = None,
+    last_visit_from: str | None = None,
+    last_visit_to: str | None = None,
+    created_from: str | None = None,
+    created_to: str | None = None,
+    revenue_min: float | None = None,
+    revenue_max: float | None = None,
+    visits_min: int | None = None,
+    visits_max: int | None = None,
     page: int = 1,
     limit: int = 20,
 ) -> PatientListResponse:
+    from datetime import date as date_type
     stmt = select(Patient)
 
     if search:
@@ -41,11 +55,60 @@ async def get_patients(
             | Patient.phone.ilike(q)
             | Patient.email.ilike(q)
         )
-
     if visited == "visited":
         stmt = stmt.where(Patient.last_visit_at.isnot(None))
     elif visited == "not_visited":
         stmt = stmt.where(Patient.last_visit_at.is_(None))
+    if gender:
+        stmt = stmt.where(Patient.gender == gender)
+    if source_channel:
+        stmt = stmt.where(Patient.source_channel == source_channel)
+    if birth_date_from:
+        try:
+            stmt = stmt.where(Patient.birth_date >= date_type.fromisoformat(birth_date_from))
+        except ValueError:
+            pass
+    if birth_date_to:
+        try:
+            stmt = stmt.where(Patient.birth_date <= date_type.fromisoformat(birth_date_to))
+        except ValueError:
+            pass
+    if last_visit_from:
+        try:
+            stmt = stmt.where(Patient.last_visit_at >= datetime.fromisoformat(last_visit_from))
+        except ValueError:
+            pass
+    if last_visit_to:
+        try:
+            stmt = stmt.where(Patient.last_visit_at <= datetime.fromisoformat(last_visit_to))
+        except ValueError:
+            pass
+    if created_from:
+        try:
+            stmt = stmt.where(Patient.created_at >= datetime.fromisoformat(created_from))
+        except ValueError:
+            pass
+    if created_to:
+        try:
+            stmt = stmt.where(Patient.created_at <= datetime.fromisoformat(created_to))
+        except ValueError:
+            pass
+    if revenue_min is not None:
+        stmt = stmt.where(Patient.total_revenue >= revenue_min)
+    if revenue_max is not None:
+        stmt = stmt.where(Patient.total_revenue <= revenue_max)
+    if visits_min is not None or visits_max is not None:
+        from sqlalchemy import func as sqlfunc
+        visit_count = (
+            select(sqlfunc.count(Appointment.id))
+            .where(Appointment.patient_id == Patient.id)
+            .correlate(Patient)
+            .scalar_subquery()
+        )
+        if visits_min is not None:
+            stmt = stmt.where(visit_count >= visits_min)
+        if visits_max is not None:
+            stmt = stmt.where(visit_count <= visits_max)
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar() or 0
@@ -173,6 +236,26 @@ async def get_patient_detail(
         next_action="Нет рекомендаций",
     )
 
+    # Compute stats from appointments
+    completed = [a for a in appointments if a.status == "completed"]
+    cancelled = [a for a in appointments if a.status == "cancelled"]
+    no_shows = [a for a in appointments if a.status == "no_show"]
+    revenues = [a.revenue for a in appointments if a.revenue is not None]
+    total_rev = sum(revenues)
+    dates = sorted([a.scheduled_at for a in appointments if a.scheduled_at is not None])
+    stats = PatientStats(
+        total_visits=len(appointments),
+        completed_visits=len(completed),
+        cancelled_visits=len(cancelled),
+        no_show_visits=len(no_shows),
+        total_revenue=total_rev,
+        avg_revenue_per_visit=round(total_rev / len(revenues), 2) if revenues else 0.0,
+        first_visit_at=dates[0] if dates else None,
+        last_visit_at=dates[-1] if dates else None,
+        unique_doctors=len({a.doctor_name for a in appointments if a.doctor_name}),
+        unique_services=len({a.service for a in appointments if a.service}),
+    )
+
     return PatientDetailResponse(
         id=patient.id,
         external_id=patient.external_id,
@@ -192,6 +275,8 @@ async def get_patient_detail(
         deals=deals,
         tasks=tasks,
         ai_analysis=ai_analysis,
+        stats=stats,
+        raw_1denta_data=patient.raw_1denta_data,
     )
 
 
