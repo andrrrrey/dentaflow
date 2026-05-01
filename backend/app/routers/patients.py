@@ -26,12 +26,13 @@ router = APIRouter(prefix="/api/v1/patients", tags=["patients"])
 @router.get("/", response_model=PatientListResponse)
 async def list_patients(
     search: str | None = Query(None, description="Search by name, phone, email"),
+    visited: str | None = Query(None, description="visited | not_visited"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> PatientListResponse:
-    return await get_patients(db=db, search=search, page=page, limit=limit)
+    return await get_patients(db=db, search=search, visited=visited, page=page, limit=limit)
 
 
 @router.get("/{patient_id}", response_model=PatientDetailResponse)

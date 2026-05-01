@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, User, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import Pill from "../components/ui/Pill";
 import { usePatients } from "../api/patients";
+import { useSyncSchedule } from "../api/schedule";
 
 const PAGE_SIZE = 20;
 
@@ -29,11 +30,21 @@ function formatRevenue(v: number): string {
   return v.toLocaleString("ru-RU") + " ₽";
 }
 
+type VisitedFilter = "" | "visited" | "not_visited";
+
+const visitedLabels: Record<VisitedFilter, string> = {
+  "": "Все",
+  visited: "Посетили",
+  not_visited: "Не посетили",
+};
+
 export default function Patients() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [visited, setVisited] = useState<VisitedFilter>("");
   const navigate = useNavigate();
-  const { data, isLoading } = usePatients(search, page, PAGE_SIZE);
+  const { data, isLoading } = usePatients(search, page, PAGE_SIZE, visited || undefined);
+  const syncMutation = useSyncSchedule();
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -44,29 +55,68 @@ export default function Patients() {
     setPage(1);
   }
 
+  function handleVisited(v: VisitedFilter) {
+    setVisited(v);
+    setPage(1);
+  }
+
   return (
     <div className="flex flex-col gap-[14px]">
-      {/* Search */}
-      <div
-        className="flex items-center gap-2 px-4 py-[10px] rounded-[14px]"
-        style={{
-          background: "rgba(255,255,255,0.65)",
-          backdropFilter: "blur(18px)",
-          border: "1px solid rgba(255,255,255,0.85)",
-          boxShadow: "0 4px 20px rgba(120,140,180,0.12)",
-        }}
-      >
-        <Search size={16} className="text-text-muted flex-shrink-0" />
-        <input
-          type="text"
-          placeholder="Поиск по имени, телефону, email..."
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          className="flex-1 bg-transparent border-none outline-none text-[13px] text-text-main placeholder:text-text-muted"
-        />
-        <span className="text-[11px] text-text-muted flex-shrink-0">
-          {data ? `${total} пациентов` : ""}
-        </span>
+      {/* Search + Filter */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div
+          className="flex items-center gap-2 px-4 py-[10px] rounded-[14px] flex-1"
+          style={{
+            background: "rgba(255,255,255,0.65)",
+            backdropFilter: "blur(18px)",
+            border: "1px solid rgba(255,255,255,0.85)",
+            boxShadow: "0 4px 20px rgba(120,140,180,0.12)",
+          }}
+        >
+          <Search size={16} className="text-text-muted flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Поиск по имени, телефону, email..."
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="flex-1 bg-transparent border-none outline-none text-[13px] text-text-main placeholder:text-text-muted"
+          />
+          <span className="text-[11px] text-text-muted flex-shrink-0">
+            {data ? `${total} пациентов` : ""}
+          </span>
+        </div>
+
+        {/* Visited filter */}
+        <div
+          className="flex gap-[2px] p-[3px] rounded-[14px] flex-shrink-0"
+          style={{ background: "rgba(91,76,245,0.07)" }}
+        >
+          {(["", "visited", "not_visited"] as VisitedFilter[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => handleVisited(v)}
+              className="px-3 py-[6px] rounded-[11px] text-[11px] font-semibold border-none cursor-pointer transition-all"
+              style={
+                visited === v
+                  ? { background: "#fff", color: "#5B4CF5", boxShadow: "0 1px 6px rgba(91,76,245,0.15)" }
+                  : { background: "transparent", color: "#8a8fa5" }
+              }
+            >
+              {visitedLabels[v]}
+            </button>
+          ))}
+        </div>
+
+        {/* Sync button */}
+        <button
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
+          className="flex items-center gap-[6px] px-3 py-[10px] rounded-[14px] border-none cursor-pointer transition-colors flex-shrink-0 text-[11px] font-semibold disabled:opacity-50"
+          style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+        >
+          <RefreshCw size={13} className={syncMutation.isPending ? "animate-spin" : ""} />
+          {syncMutation.isPending ? "Запрос..." : syncMutation.isSuccess ? "Запущено ✓" : "Синхронизировать"}
+        </button>
       </div>
 
       {/* Table */}

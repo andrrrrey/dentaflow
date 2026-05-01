@@ -28,6 +28,7 @@ from app.schemas.patient import (
 async def get_patients(
     db: AsyncSession,
     search: str | None = None,
+    visited: str | None = None,
     page: int = 1,
     limit: int = 20,
 ) -> PatientListResponse:
@@ -40,6 +41,11 @@ async def get_patients(
             | Patient.phone.ilike(q)
             | Patient.email.ilike(q)
         )
+
+    if visited == "visited":
+        stmt = stmt.where(Patient.last_visit_at.isnot(None))
+    elif visited == "not_visited":
+        stmt = stmt.where(Patient.last_visit_at.is_(None))
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar() or 0

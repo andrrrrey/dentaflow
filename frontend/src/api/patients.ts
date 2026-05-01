@@ -100,16 +100,17 @@ export function usePatientDetail(id: string | undefined) {
   return { data, isLoading };
 }
 
-export function usePatients(search: string, page = 1, limit = 20) {
+export function usePatients(search: string, page = 1, limit = 20, visited?: string) {
   const { data = null, isLoading } = useQuery<PatientListResponse>({
-    queryKey: ["patients", search, page, limit],
+    queryKey: ["patients", search, page, limit, visited],
     queryFn: async () => {
       const { data } = await api.get("/patients/", {
-        params: { search: search || undefined, page, limit },
+        params: { search: search || undefined, page, limit, visited: visited || undefined },
       });
       return data;
     },
     staleTime: 30_000,
+    refetchInterval: 5 * 60 * 1000,
   });
 
   return { data, isLoading };
