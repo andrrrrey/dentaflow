@@ -138,8 +138,8 @@ class NovofonService:
         date_to: datetime | None = None,
     ) -> list[dict]:
         """Return recent call history."""
-        if settings.APP_ENV == "development":
-            return self._mock_call_history()
+        if not self.api_key:
+            return []
 
         params: dict[str, str] = {}
         if date_from:

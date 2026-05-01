@@ -108,7 +108,7 @@ function TableView({ appointments, onSelectAppointment }: { appointments: Appoin
     <table className="w-full border-collapse">
       <thead>
         <tr>
-          {["Время", "Врач", "Пациент", "Услуга", "Кабинет", "Статус"].map((h) => (
+          {["Дата и время", "Врач", "Пациент", "Услуга", "Кабинет", "Статус"].map((h) => (
             <th key={h} className="text-left text-[10.5px] font-bold text-text-muted uppercase tracking-[0.8px] pb-[10px] px-[12px]" style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
               {h}
             </th>
@@ -118,7 +118,12 @@ function TableView({ appointments, onSelectAppointment }: { appointments: Appoin
       <tbody>
         {appointments.map((a) => (
           <tr key={a.id} className="hover:bg-[rgba(91,76,245,0.03)] cursor-pointer" style={{ borderBottom: "1px solid rgba(91,76,245,0.05)" }} onClick={() => onSelectAppointment(a.id)}>
-            <td className="py-[10px] px-[12px] font-mono text-[12.5px] font-semibold">{timeOf(a.scheduled_at)}</td>
+            <td className="py-[10px] px-[12px]">
+                <div className="font-mono text-[12.5px] font-semibold">{timeOf(a.scheduled_at)}</div>
+                <div className="text-[11px] text-text-muted">
+                  {a.scheduled_at ? format(parseISO(a.scheduled_at), "dd.MM.yyyy") : "—"}
+                </div>
+              </td>
             <td className="py-[10px] px-[12px] text-[13px]">{a.doctor_name || "—"}</td>
             <td className="py-[10px] px-[12px]">
               <div className="text-[13px] font-semibold">{a.patient_name}</div>

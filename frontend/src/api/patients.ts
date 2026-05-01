@@ -100,12 +100,12 @@ export function usePatientDetail(id: string | undefined) {
   return { data, isLoading };
 }
 
-export function usePatients(search: string) {
+export function usePatients(search: string, page = 1, limit = 20) {
   const { data = null, isLoading } = useQuery<PatientListResponse>({
-    queryKey: ["patients", search],
+    queryKey: ["patients", search, page, limit],
     queryFn: async () => {
       const { data } = await api.get("/patients/", {
-        params: { search: search || undefined },
+        params: { search: search || undefined, page, limit },
       });
       return data;
     },

@@ -15,6 +15,7 @@ import {
   Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAuthStore } from "../../store/authStore";
 
 /* ---------- types ---------- */
 
@@ -31,7 +32,7 @@ interface NavSection {
 }
 
 interface SidebarProps {
-  currentUser: { name: string; role: string };
+  currentUser?: { name: string; role: string };
 }
 
 /* ---------- nav config ---------- */
@@ -81,15 +82,21 @@ const badgeColorMap: Record<string, string> = {
 
 /* ---------- component ---------- */
 
-export default function Sidebar({ currentUser }: SidebarProps) {
+export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const authUser = useAuthStore((s) => s.user);
 
-  const initials = currentUser.name
+  const displayName = authUser?.name ?? _currentUser?.name ?? "Пользователь";
+  const displayRole = authUser?.role ?? _currentUser?.role ?? "";
+  const avatarUrl = authUser?.avatar_url;
+
+  const initials = displayName
     .split(" ")
-    .map((w) => w[0])
+    .map((w: string) => w[0])
     .join("")
-    .toUpperCase();
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <aside
@@ -179,19 +186,23 @@ export default function Sidebar({ currentUser }: SidebarProps) {
         className="flex items-center gap-[10px] px-[14px] py-3"
         style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}
       >
-        <div
-          className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0"
-          style={{
-            background: "linear-gradient(135deg, #5B4CF5, #3B7FED)",
-          }}
-        >
-          {initials}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-bold truncate">
-            {currentUser.name}
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            className="w-[34px] h-[34px] rounded-full object-cover flex-shrink-0"
+          />
+        ) : (
+          <div
+            className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
+          >
+            {initials}
           </div>
-          <div className="text-[11px] text-text-muted">{currentUser.role}</div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-[12.5px] font-bold truncate">{displayName}</div>
+          <div className="text-[11px] text-text-muted">{displayRole}</div>
         </div>
       </div>
     </aside>

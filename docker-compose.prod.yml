@@ -9,7 +9,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
     volumes:
-      - frontend_dist:/usr/share/nginx/html
+      - frontend_dist:/output
+    command: sh -c "cp -rf /dist/. /output/ && echo 'Frontend deployed'"
     restart: "no"
 
   nginx:
