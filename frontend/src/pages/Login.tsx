@@ -126,7 +126,7 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full inline-flex items-center justify-center font-semibold font-raleway cursor-pointer transition-all duration-150 border-none text-white rounded-xl py-3 text-sm hover:opacity-90 hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full inline-flex items-center justify-center font-semibold font-sans cursor-pointer transition-all duration-150 border-none text-white rounded-xl py-3 text-sm hover:opacity-90 hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             background: "linear-gradient(135deg, #5B4CF5, #3B7FED)",
             boxShadow: "0 4px 14px rgba(91,76,245,0.3)",

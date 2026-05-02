@@ -17,7 +17,7 @@ export default function Button({
   ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center font-semibold font-raleway cursor-pointer transition-all duration-150 border-none";
+    "inline-flex items-center justify-center font-semibold font-sans cursor-pointer transition-all duration-150 border-none";
 
   const sizeStyles = {
     sm: "px-[14px] py-[6px] text-xs rounded-[10px]",

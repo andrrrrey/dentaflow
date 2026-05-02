@@ -23,12 +23,20 @@ def _period_range(period: str) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
     if period == "day":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "month":
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    else:
+        # Last moment of current month
+        if now.month == 12:
+            next_month = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            next_month = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = next_month - timedelta(microseconds=1)
+    else:  # week
         start = now - timedelta(days=now.weekday())
         start = start.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start, now
+        end = start + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
+    return start, end
 
 
 async def _kpi(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> KpiData:

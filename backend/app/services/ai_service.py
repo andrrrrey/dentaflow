@@ -16,23 +16,18 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded openai client (avoids import-time errors when the key is empty)
-_openai_client = None
-
-
-def _get_openai_client():
-    global _openai_client
-    if _openai_client is None:
-        from openai import AsyncOpenAI
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    return _openai_client
+def _make_openai_client(api_key: str):
+    from openai import AsyncOpenAI
+    return AsyncOpenAI(api_key=api_key)
 
 
 class AIService:
     """High-level AI helpers for DentaFlow."""
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
         self.model = settings.OPENAI_MODEL
+        self._api_key = api_key or settings.OPENAI_API_KEY
+        self._client = _make_openai_client(self._api_key) if self._api_key else None
 
     # ------------------------------------------------------------------
     # Daily insights
@@ -44,7 +39,7 @@ class AIService:
             return self._mock_insights()
 
         # Fallback: template-based insights from real KPI (no OpenAI needed)
-        if not settings.OPENAI_API_KEY:
+        if not self._api_key:
             return self._template_insights(kpi)
 
         prompt = (
@@ -240,7 +235,11 @@ class AIService:
         user: str,
         parse_json: bool = False,
     ) -> dict | str:
-        client = _get_openai_client()
+        if not self._client:
+            if parse_json:
+                return {"error": "AI service unavailable"}
+            return "AI service unavailable"
+        client = self._client
 
         try:
             response = await client.chat.completions.create(

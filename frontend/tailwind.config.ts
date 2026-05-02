@@ -10,11 +10,11 @@ const config: Config = {
         accent3: "#00C9A7",
         danger: "#F44B6E",
         warn: "#F5A623",
-        "text-main": "#1a2340",
-        "text-muted": "#7a8aab",
+        "text-main": "#1e293b",
+        "text-muted": "#64748b",
       },
       fontFamily: {
-        raleway: ["Raleway", "sans-serif"],
+        sans: ["Inter", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       borderRadius: {

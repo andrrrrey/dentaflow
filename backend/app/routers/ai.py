@@ -30,6 +30,7 @@ def _redis():
 
 @router.get("/insights")
 async def get_insights(
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Return cached AI insights (refreshed hourly by Celery)."""
@@ -42,8 +43,9 @@ async def get_insights(
     except Exception:
         logger.exception("Redis unavailable, falling back to live generation")
 
-    # Fallback: generate on the fly with mock/live KPI
-    ai = AIService()
+    from app.services.integrations_service import get_raw_value
+    api_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
+    ai = AIService(api_key=api_key)
     insights = await ai.generate_daily_insights(kpi={})
     return insights
 
@@ -56,6 +58,9 @@ async def refresh_insights(
 ) -> dict:
     """Force-regenerate AI insights using real KPI data for the given period."""
     from app.services.dashboard_service import _kpi, _period_range
+    from app.services.integrations_service import get_raw_value
+
+    api_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
 
     dt_from, dt_to = _period_range(period)
     kpi = await _kpi(db, dt_from, dt_to)
@@ -69,7 +74,7 @@ async def refresh_insights(
         "conversion_rate": kpi.conversion_rate,
     }
 
-    ai = AIService()
+    ai = AIService(api_key=api_key)
     insights = await ai.generate_daily_insights(kpi=kpi_data)
 
     try:
