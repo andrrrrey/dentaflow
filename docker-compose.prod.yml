@@ -30,8 +30,6 @@ services:
   backend:
     build: ./backend
     env_file: .env
-    volumes:
-      - ./backend:/app          # live code mount — no rebuild needed for Python changes
     depends_on:
       - postgres
       - redis
@@ -41,8 +39,6 @@ services:
   celery_worker:
     build: ./backend
     env_file: .env
-    volumes:
-      - ./backend:/app
     depends_on:
       - postgres
       - redis
@@ -52,8 +48,6 @@ services:
   celery_beat:
     build: ./backend
     env_file: .env
-    volumes:
-      - ./backend:/app
     depends_on:
       - postgres
       - redis
@@ -63,8 +57,6 @@ services:
   telegram_bot:
     build: ./backend
     env_file: .env
-    volumes:
-      - ./backend:/app
     depends_on:
       - postgres
       - redis

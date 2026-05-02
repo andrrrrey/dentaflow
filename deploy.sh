@@ -1,130 +1,56 @@
 #!/bin/bash
-# DentaFlow fast deploy script
-# Usage:
-#   ./deploy.sh            — smart deploy (detects what changed)
-#   ./deploy.sh --full     — force full rebuild of everything
-#   ./deploy.sh --back     — backend only (restart, no rebuild)
-#   ./deploy.sh --front    — frontend only
-#   ./deploy.sh --deps     — rebuild backend image (when requirements.txt changed)
-
+# ─────────────────────────────────────────────────────
+# DentaFlow deploy
+#
+# ./deploy.sh           — бэкенд + фронтенд (~2-3 мин)
+# ./deploy.sh --fast    — бэкенд + фронтенд без tsc (~1 мин)
+# ./deploy.sh --back    — только бэкенд (~30 сек)
+# ./deploy.sh --front   — только фронтенд
+# ─────────────────────────────────────────────────────
 set -e
 
 COMPOSE="docker compose -f docker-compose.prod.yml"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT=$(basename "$DIR")   # dentaflow
 cd "$DIR"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-log()  { echo -e "${BLUE}→${NC} $1"; }
-ok()   { echo -e "${GREEN}✓${NC} $1"; }
-warn() { echo -e "${YELLOW}!${NC} $1"; }
+FAST=0; BACK_ONLY=0; FRONT_ONLY=0
+[ "$1" = "--fast"  ] && FAST=1
+[ "$1" = "--back"  ] && BACK_ONLY=1
+[ "$1" = "--front" ] && FRONT_ONLY=1
 
-# ── Pull latest code ──────────────────────────────────────────────────────────
-log "Pulling latest code..."
+echo "→ git pull..."
 git pull origin main
-ok "Code updated"
 
-# ── Determine what changed ────────────────────────────────────────────────────
-CHANGED=$(git diff HEAD@{1} HEAD --name-only 2>/dev/null || git diff HEAD~1 HEAD --name-only 2>/dev/null || echo "all")
+# ── Backend ────────────────────────────────────────────
+if [ $FRONT_ONLY -eq 0 ]; then
+  echo "→ Backend rebuild (~30 сек, pip закеширован)..."
+  $COMPOSE up -d --build backend celery_worker celery_beat telegram_bot
+fi
 
-BACKEND_DEPS=$(echo "$CHANGED" | grep -c "backend/requirements.txt" || true)
-BACKEND_CODE=$(echo "$CHANGED" | grep -c "^backend/" || true)
-FRONTEND_CHANGED=$(echo "$CHANGED" | grep -c "^frontend/" || true)
-COMPOSE_CHANGED=$(echo "$CHANGED" | grep -c "docker-compose" || true)
-MIGRATIONS=$(echo "$CHANGED" | grep -c "alembic/versions/" || true)
+# ── Frontend ───────────────────────────────────────────
+if [ $BACK_ONLY -eq 0 ]; then
+  if [ $FAST -eq 1 ]; then
+    echo "→ Frontend fast build (~1 мин, без type check)..."
+    BUILD="npm install --prefer-offline --silent && npx vite build && cp -rf dist/. /dist/"
+  else
+    echo "→ Frontend build (~2-3 мин)..."
+    BUILD="npm install --prefer-offline --silent && npm run build && cp -rf dist/. /dist/"
+  fi
 
-# ── Parse flags ───────────────────────────────────────────────────────────────
-MODE="smart"
-[ "$1" = "--full"  ] && MODE="full"
-[ "$1" = "--back"  ] && MODE="back"
-[ "$1" = "--front" ] && MODE="front"
-[ "$1" = "--deps"  ] && MODE="deps"
+  # node_modules и vite-кеш живут в volume — npm install быстрый при повторных запусках
+  docker run --rm \
+    -v "$DIR/frontend":/app \
+    -v "${PROJECT}_frontend_node_modules":/app/node_modules \
+    -v "${PROJECT}_frontend_dist":/dist \
+    node:20-alpine sh -c "cd /app && $BUILD"
 
-# ── Deploy ────────────────────────────────────────────────────────────────────
+  $COMPOSE restart nginx
+fi
 
-deploy_backend_restart() {
-    log "Restarting backend (no rebuild)..."
-    $COMPOSE restart backend celery_worker celery_beat telegram_bot
-    ok "Backend restarted in seconds"
-}
-
-deploy_backend_rebuild() {
-    log "Rebuilding backend image (requirements.txt changed)..."
-    $COMPOSE up -d --build backend celery_worker celery_beat telegram_bot
-    ok "Backend rebuilt and started"
-}
-
-deploy_frontend() {
-    log "Building frontend (this takes ~1-2 min)..."
-    # Build using node:20-alpine with cached node_modules volume
-    # Much faster than rebuilding the Docker image each time
-    docker run --rm \
-        -v "$DIR/frontend":/app \
-        -v dentaflow_frontend_node_modules:/app/node_modules \
-        -v dentaflow_frontend_dist:/dist \
-        node:20-alpine \
-        sh -c "cd /app && npm install --prefer-offline --silent && npm run build && cp -rf dist/. /dist/ && echo 'Frontend built and deployed'"
-    $COMPOSE restart nginx
-    ok "Frontend deployed"
-}
-
-run_migrations() {
-    log "Running DB migrations..."
-    $COMPOSE exec backend alembic upgrade head
-    ok "Migrations done"
-}
-
-case "$MODE" in
-  full)
-    log "Full rebuild requested"
-    $COMPOSE up -d --build backend celery_worker celery_beat telegram_bot
-    deploy_frontend
-    $COMPOSE restart nginx
-    run_migrations
-    ;;
-  back)
-    deploy_backend_restart
-    run_migrations
-    ;;
-  deps)
-    deploy_backend_rebuild
-    run_migrations
-    ;;
-  front)
-    deploy_frontend
-    ;;
-  smart)
-    DEPLOYED=0
-
-    if [ "$COMPOSE_CHANGED" -gt 0 ]; then
-        warn "docker-compose changed — doing full restart"
-        $COMPOSE up -d
-        DEPLOYED=1
-    fi
-
-    if [ "$BACKEND_DEPS" -gt 0 ]; then
-        deploy_backend_rebuild
-        DEPLOYED=1
-    elif [ "$BACKEND_CODE" -gt 0 ]; then
-        deploy_backend_restart
-        DEPLOYED=1
-    fi
-
-    if [ "$FRONTEND_CHANGED" -gt 0 ]; then
-        deploy_frontend
-        DEPLOYED=1
-    fi
-
-    if [ "$DEPLOYED" -eq 0 ]; then
-        warn "Nothing changed — restarting backend anyway"
-        deploy_backend_restart
-    fi
-
-    run_migrations
-    ;;
-esac
+# ── Migrations ─────────────────────────────────────────
+echo "→ Migrations..."
+$COMPOSE exec backend alembic upgrade head
 
 echo ""
-ok "Deploy complete!"
-echo ""
-echo "  Logs:    docker compose -f docker-compose.prod.yml logs -f backend"
-echo "  Status:  docker compose -f docker-compose.prod.yml ps"
+echo "✓ Готово"
