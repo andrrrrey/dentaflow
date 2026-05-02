@@ -71,17 +71,28 @@ class AIService:
 
         prompt = (
             "Проанализируй данные пациента стоматологической клиники.\n"
-            "Оцени вероятность возврата (0-100), основные барьеры и "
-            "рекомендуемое следующее действие.\n\n"
+            "Верни JSON строго с этими ключами:\n"
+            "- summary (строка, краткое резюме по пациенту)\n"
+            "- return_probability (целое число 0-100, вероятность возврата)\n"
+            "- barriers (массив строк, барьеры возврата)\n"
+            "- next_action (строка, рекомендуемое следующее действие)\n"
+            "- ltv_score (целое число 0-100, оценка LTV)\n\n"
             f"Пациент: {json.dumps(patient_data, ensure_ascii=False, default=str)}\n"
             f"История: {json.dumps(history or [], ensure_ascii=False, default=str)}"
         )
 
-        return await self._chat(
-            system="Ты — AI-аналитик стоматологической клиники.",
+        result = await self._chat(
+            system="Ты — AI-аналитик стоматологической клиники. Отвечай только JSON.",
             user=prompt,
             parse_json=True,
         )
+
+        # Fall back to template if OpenAI returned error or missing required keys
+        required = {"summary", "return_probability", "barriers", "next_action"}
+        if "error" in result or not required.issubset(result.keys()):
+            return self._template_patient_analysis(patient_data, history or [])
+
+        return result
 
     # ------------------------------------------------------------------
     # Reply suggestions

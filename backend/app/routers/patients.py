@@ -190,6 +190,20 @@ async def sync_patient_from_1denta(
     return {"ok": True, "synced": len(patient_visits), "created": created, "updated": updated}
 
 
+@router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_patient(
+    patient_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> None:
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    await db.delete(patient)
+    await db.commit()
+
+
 @router.patch("/{patient_id}", response_model=PatientResponse)
 async def patch_patient(
     patient_id: uuid.UUID,

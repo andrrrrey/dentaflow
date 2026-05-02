@@ -10,6 +10,8 @@ import DealsHistory from "../components/patient/DealsHistory";
 import TasksList from "../components/patient/TasksList";
 import AIAnalysis from "../components/patient/AIAnalysis";
 import PatientStats from "../components/patient/PatientStats";
+import AddDealModal from "../components/pipeline/AddDealModal";
+import AddAppointmentModal from "../components/schedule/AddAppointmentModal";
 
 type TabKey = "1denta" | "stats" | "communications" | "crm" | "tasks";
 
@@ -26,6 +28,8 @@ export default function PatientCard() {
   const navigate = useNavigate();
   const { data: patient, isLoading } = usePatientDetail(id);
   const [activeTab, setActiveTab] = useState<TabKey>("1denta");
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [showAddAppointment, setShowAddAppointment] = useState(false);
 
   if (isLoading) {
     return (
@@ -61,7 +65,11 @@ export default function PatientCard() {
       </button>
 
       {/* Patient Header */}
-      <PatientHeader patient={patient} />
+      <PatientHeader
+        patient={patient}
+        onAddDeal={() => setShowAddDeal(true)}
+        onAddAppointment={() => setShowAddAppointment(true)}
+      />
 
       {/* Main content: tabs + AI */}
       <div className="flex flex-col lg:flex-row gap-[16px]">
@@ -131,6 +139,24 @@ export default function PatientCard() {
           <AIAnalysis analysis={patient.ai_analysis} patientId={patient.id} />
         </div>
       </div>
+
+      {showAddDeal && (
+        <AddDealModal
+          onClose={() => setShowAddDeal(false)}
+          initialPatientId={patient.id}
+          initialPatientName={patient.name}
+          initialPatientPhone={patient.phone ?? ""}
+          onCreated={() => setActiveTab("crm")}
+        />
+      )}
+
+      {showAddAppointment && (
+        <AddAppointmentModal
+          onClose={() => setShowAddAppointment(false)}
+          initialPatientName={patient.name}
+          initialPatientPhone={patient.phone ?? ""}
+        />
+      )}
     </div>
   );
 }

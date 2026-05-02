@@ -164,3 +164,27 @@ export function usePatients(filters: PatientFilters, page = 1, limit = 20) {
 
   return { data, isLoading };
 }
+
+export function useDeletePatient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patientId: string) => {
+      await api.delete(`/patients/${patientId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patients"] });
+    },
+  });
+}
+
+export function usePatientSearch(search: string) {
+  return useQuery<PatientListResponse>({
+    queryKey: ["patients-search", search],
+    queryFn: async () => {
+      const { data } = await api.get("/patients/", { params: { search, limit: 8 } });
+      return data;
+    },
+    enabled: search.length >= 2,
+    staleTime: 10_000,
+  });
+}

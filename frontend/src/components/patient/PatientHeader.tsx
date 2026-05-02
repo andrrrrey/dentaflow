@@ -6,15 +6,17 @@ import {
   Mail,
   Phone,
   User,
-  CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import Pill from "../ui/Pill";
 import Button from "../ui/Button";
-import { useCreateDeal } from "../../api/deals";
+import { useDeletePatient } from "../../api/patients";
 import type { PatientDetailResponse } from "../../api/patients";
 
 interface PatientHeaderProps {
   patient: PatientDetailResponse;
+  onAddDeal: () => void;
+  onAddAppointment: () => void;
 }
 
 const channelLabel: Record<string, string> = {
@@ -40,24 +42,16 @@ function ltvColor(score: number | null): "green" | "yellow" | "red" | "blue" {
   return "red";
 }
 
-export default function PatientHeader({ patient }: PatientHeaderProps) {
+export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: PatientHeaderProps) {
   const navigate = useNavigate();
-  const createDeal = useCreateDeal();
-  const [dealCreated, setDealCreated] = useState(false);
+  const deletePatient = useDeletePatient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const handleCreateDeal = () => {
-    if (dealCreated || createDeal.isPending) return;
-    createDeal.mutate(
-      {
-        title: `Лид: ${patient.name}`,
-        patient_id: patient.id,
-        patient_name: patient.name,
-        patient_phone: patient.phone ?? undefined,
-        stage: "new",
-        source_channel: patient.source_channel ?? undefined,
-      },
-      { onSuccess: () => setDealCreated(true) }
-    );
+  const handleDelete = () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    deletePatient.mutate(patient.id, {
+      onSuccess: () => navigate("/patients"),
+    });
   };
 
   return (
@@ -132,22 +126,27 @@ export default function PatientHeader({ patient }: PatientHeaderProps) {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2 flex-shrink-0">
-          <Button variant="primary" size="sm" onClick={() => navigate("/schedule")}>
+          <Button variant="primary" size="sm" onClick={onAddAppointment}>
             <CalendarPlus size={14} className="mr-1.5" />
             Записать
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCreateDeal}
-            disabled={dealCreated || createDeal.isPending}
-          >
-            {dealCreated ? (
-              <><CheckCircle2 size={14} className="mr-1.5 text-[#00C9A7]" />Сделка создана</>
-            ) : (
-              <><PlusCircle size={14} className="mr-1.5" />{createDeal.isPending ? "Создаём..." : "Создать сделку"}</>
-            )}
+          <Button variant="ghost" size="sm" onClick={onAddDeal}>
+            <PlusCircle size={14} className="mr-1.5" />
+            Создать сделку
           </Button>
+          <button
+            onClick={handleDelete}
+            onBlur={() => setConfirmDelete(false)}
+            disabled={deletePatient.isPending}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border transition-all cursor-pointer disabled:opacity-50 ${
+              confirmDelete
+                ? "border-[#f44b6e] bg-[rgba(244,75,110,0.08)] text-[#f44b6e]"
+                : "border-[rgba(244,75,110,0.25)] bg-transparent text-[#f44b6e] hover:bg-[rgba(244,75,110,0.08)]"
+            }`}
+          >
+            <Trash2 size={13} />
+            {confirmDelete ? "Подтвердить удаление" : "Удалить"}
+          </button>
         </div>
       </div>
     </div>

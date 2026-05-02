@@ -125,7 +125,20 @@ class OneDentaService:
             base_params["dateTill"] = date_to.strftime("%Y-%m-%d")
 
         visits = await self._fetch_all_pages("/api/v2/visit", extra_params=base_params)
-        return [self._map_visit(v) for v in visits if not v.get("deleted")]
+
+        # Build resource_id → name lookup to enrich visits that lack inline resource obj
+        resource_map: dict[str, str] = {}
+        try:
+            resources_data = await self._request("GET", "/api/v2/resource")
+            for r in resources_data.get("resources", []):
+                rid = str(r.get("id", ""))
+                rname = r.get("name", "")
+                if rid and rname:
+                    resource_map[rid] = rname
+        except Exception:
+            pass
+
+        return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
 
     async def create_visit(
         self,
@@ -333,7 +346,7 @@ class OneDentaService:
         }
 
     @staticmethod
-    def _map_visit(v: dict) -> dict:
+    def _map_visit(v: dict, resource_map: dict[str, str] | None = None) -> dict:
         attendance_map = {-1: "cancelled", 0: "unconfirmed", 1: "arrived", 2: "confirmed"}
         services = v.get("services", [])
         service_name = services[0]["name"] if services else ""
@@ -343,6 +356,7 @@ class OneDentaService:
         doctor_name_val = (
             resource_obj.get("name")
             or v.get("resourceName")
+            or (resource_map.get(str(resource_val)) if resource_map and resource_val is not None else None)
             or ""
         )
         return {

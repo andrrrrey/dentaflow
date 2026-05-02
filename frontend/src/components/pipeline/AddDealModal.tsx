@@ -2,10 +2,12 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Plus } from "lucide-react";
 import Button from "../ui/Button";
+import PatientSearchInput from "../ui/PatientSearchInput";
 import { useCreateDeal } from "../../api/deals";
 import { usePipelineStages } from "../../api/pipelineStages";
 import { useDoctorsList } from "../../api/doctors";
 import { useIntegrations } from "../../api/integrations";
+import { useServices } from "../../api/directories";
 import type { DealCreateData } from "../../api/deals";
 
 const inputStyle = {
@@ -32,18 +34,30 @@ const CHANNEL_INTEGRATION_KEYS: Record<string, string> = {
 
 interface AddDealModalProps {
   onClose: () => void;
+  initialPatientId?: string;
+  initialPatientName?: string;
+  initialPatientPhone?: string;
+  onCreated?: (dealId: string) => void;
 }
 
-export default function AddDealModal({ onClose }: AddDealModalProps) {
+export default function AddDealModal({
+  onClose,
+  initialPatientId,
+  initialPatientName = "",
+  initialPatientPhone = "",
+  onCreated,
+}: AddDealModalProps) {
   const createMutation = useCreateDeal();
   const { data: apiStages } = usePipelineStages();
   const { data: doctorsList } = useDoctorsList();
   const { data: integrations } = useIntegrations();
+  const { data: servicesData } = useServices();
 
-  const [form, setForm] = useState<DealCreateData>({
-    title: "",
-    patient_name: "",
-    patient_phone: "",
+  const [form, setForm] = useState<DealCreateData & { patient_id?: string }>({
+    title: initialPatientName ? `Лид: ${initialPatientName}` : "",
+    patient_id: initialPatientId,
+    patient_name: initialPatientName,
+    patient_phone: initialPatientPhone,
     stage: "new",
     amount: undefined,
     service: "",
@@ -54,6 +68,7 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
   const [error, setError] = useState("");
 
   const stages = apiStages?.map((s) => ({ key: s.key, label: s.label })) ?? [];
+  const services = servicesData?.services ?? [];
 
   const connectedChannels = (() => {
     const channels: { key: string; label: string }[] = [{ key: "manual", label: "Ручной ввод" }];
@@ -78,7 +93,8 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
     }
     setError("");
     try {
-      await createMutation.mutateAsync(form);
+      const result = await createMutation.mutateAsync(form);
+      onCreated?.(result.id);
       onClose();
     } catch {
       setError("Ошибка при создании сделки");
@@ -106,7 +122,12 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Имя пациента *</label>
-              <input value={form.patient_name ?? ""} onChange={(e) => set("patient_name", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Иванов Иван" />
+              <PatientSearchInput
+                value={form.patient_name ?? ""}
+                onChangeName={(v) => set("patient_name", v)}
+                onSelectPatient={(id, name, phone) => setForm((p) => ({ ...p, patient_id: id, patient_name: name, patient_phone: phone }))}
+                inputStyle={inputStyle}
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Телефон *</label>
@@ -130,7 +151,14 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Услуга</label>
-              <input value={form.service ?? ""} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Имплантация" />
+              {services.length > 0 ? (
+                <select value={form.service ?? ""} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
+                  <option value="">— Выбрать услугу —</option>
+                  {services.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                </select>
+              ) : (
+                <input value={form.service ?? ""} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Имплантация" />
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Врач</label>

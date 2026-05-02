@@ -29,6 +29,7 @@ services:
 
   backend:
     build: ./backend
+    image: dentaflow-backend:latest
     env_file: .env
     depends_on:
       - postgres
@@ -37,7 +38,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 
   celery_worker:
-    build: ./backend
+    image: dentaflow-backend:latest
     env_file: .env
     depends_on:
       - postgres
@@ -46,7 +47,7 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,ai,sync
 
   celery_beat:
-    build: ./backend
+    image: dentaflow-backend:latest
     env_file: .env
     depends_on:
       - postgres
@@ -55,7 +56,7 @@ services:
     command: celery -A app.tasks.celery_app beat --loglevel=info
 
   telegram_bot:
-    build: ./backend
+    image: dentaflow-backend:latest
     env_file: .env
     depends_on:
       - postgres

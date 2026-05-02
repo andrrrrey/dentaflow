@@ -24,8 +24,10 @@ git pull origin main
 
 # ── Backend ────────────────────────────────────────────
 if [ $FRONT_ONLY -eq 0 ]; then
-  echo "→ Backend rebuild (~30 сек, pip закеширован)..."
-  $COMPOSE up -d --build backend celery_worker celery_beat telegram_bot
+  echo "→ Backend build (образ собирается один раз)..."
+  # Собираем образ один раз через backend, остальные сервисы используют тот же image
+  $COMPOSE build backend
+  $COMPOSE up -d backend celery_worker celery_beat telegram_bot
 fi
 
 # ── Frontend ───────────────────────────────────────────

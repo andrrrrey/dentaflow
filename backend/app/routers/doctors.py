@@ -25,10 +25,10 @@ async def list_doctors(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Return distinct doctors extracted from appointments."""
+    """Return distinct doctors extracted from appointments (last 30 days)."""
     today = date.today()
-    dt_from = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
-    dt_to = dt_from + timedelta(days=1)
+    dt_to = datetime(today.year, today.month, today.day, tzinfo=timezone.utc) + timedelta(days=1)
+    dt_from = dt_to - timedelta(days=30)
 
     stmt = (
         select(
@@ -37,7 +37,7 @@ async def list_doctors(
             func.count(Appointment.id).label("appointments_today"),
         )
         .where(Appointment.scheduled_at >= dt_from, Appointment.scheduled_at < dt_to)
-        .where(Appointment.doctor_name.isnot(None))
+        .where(Appointment.doctor_name.isnot(None), Appointment.doctor_name != "")
         .group_by(Appointment.doctor_name, Appointment.doctor_id)
         .order_by(Appointment.doctor_name)
     )
@@ -52,7 +52,18 @@ async def list_doctors(
             "appointments_today": row.appointments_today,
         }
         for row in rows
+        if row.doctor_name  # skip empty names
     ]
+
+    # Fallback: if no doctors found from appointments, query cached resources (1denta staff)
+    if not doctors:
+        from sqlalchemy import text
+        res_result = await db.execute(
+            text("SELECT external_id, name FROM directory_cache WHERE category = 'resource' AND name IS NOT NULL AND name != '' ORDER BY name LIMIT 50")
+        )
+        for r in res_result.all():
+            doctors.append({"doctor_id": r[0], "doctor_name": r[1], "appointments_today": 0})
+
     return {"doctors": doctors}
 
 
