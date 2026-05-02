@@ -20,12 +20,9 @@ function adaptAiInsights(raw: ReturnType<typeof useAiInsights>["data"]): AIInsig
     };
   }
 
-  const chipColors: AIChip["type"][] = ["warn", "danger", "blue", "ok"];
-  const chips: AIChip[] = (raw.highlights ?? []).slice(0, 5).map((h, i) => ({
-    type: chipColors[i % chipColors.length],
-    text: h.length > 50 ? h.slice(0, 48) + "…" : h,
-    action: "",
-  }));
+  const highlights: string[] = raw.highlights ?? [];
+  const summaryParts = [raw.summary ?? raw.text ?? "Анализ данных завершён.", ...highlights].filter(Boolean);
+  const fullSummary = summaryParts.join(" ");
 
   const recommendations = (raw.recommendations ?? []).map((r) => ({
     title: r.slice(0, 60),
@@ -33,8 +30,8 @@ function adaptAiInsights(raw: ReturnType<typeof useAiInsights>["data"]): AIInsig
   }));
 
   return {
-    summary: raw.summary ?? raw.text ?? "Анализ данных завершён.",
-    chips,
+    summary: fullSummary,
+    chips: [],
     recommendations,
   };
 }

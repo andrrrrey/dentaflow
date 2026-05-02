@@ -99,31 +99,30 @@ async def _kpi(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> KpiData:
 
 
 async def _funnel(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[FunnelItem]:
+    # Show current deal counts by stage (no date filter — pipeline is a snapshot, not time-series)
     stages_order = [
-        ("new", "Новые обращения"),
+        ("waiting_list", "Лист ожидания"),
+        ("new", "Новые"),
         ("contact", "Контакт"),
+        ("negotiation", "Переговоры"),
         ("scheduled", "Записан"),
         ("treatment", "Лечение"),
-        ("closed_won", "Оплата"),
+        ("closed_won", "Закрыто ✓"),
     ]
 
-    counts: dict[str, int] = {}
-    for stage_key, _ in stages_order:
-        count = (await db.execute(
-            select(func.count()).where(
-                Deal.created_at >= dt_from,
-                Deal.stage.in_(
-                    [s for s, _ in stages_order[stages_order.index((stage_key, _)):]]
-                    + (["closed_lost"] if stage_key == "new" else [])
-                ),
-            )
-        )).scalar() or 0
-        counts[stage_key] = count
+    stmt = (
+        select(Deal.stage, func.count().label("cnt"))
+        .where(Deal.stage.in_([s for s, _ in stages_order]))
+        .group_by(Deal.stage)
+    )
+    rows = {row.stage: row.cnt for row in (await db.execute(stmt)).all()}
 
-    top = counts.get("new", 1) or 1
+    counts = {key: rows.get(key, 0) for key, _ in stages_order}
+    top = max(counts.values(), default=1) or 1
     return [
         FunnelItem(stage=label, count=counts[key], pct=round(counts[key] / top * 100, 1))
         for key, label in stages_order
+        if counts[key] > 0
     ]
 
 
