@@ -10,6 +10,7 @@ from app.models.integration_setting import IntegrationSetting
 from app.models.deal_note import DealNote
 from app.models.script import Script
 from app.models.pipeline_stage import PipelineStage
+from app.models.directory_cache import DirectoryCache
 
 __all__ = [
     "Base",
@@ -25,4 +26,5 @@ __all__ = [
     "IntegrationSetting",
     "Script",
     "PipelineStage",
+    "DirectoryCache",
 ]

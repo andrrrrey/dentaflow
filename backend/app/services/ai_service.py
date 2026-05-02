@@ -43,18 +43,28 @@ class AIService:
         if settings.APP_ENV == "development":
             return self._mock_insights()
 
+        # Fallback: template-based insights from real KPI (no OpenAI needed)
+        if not settings.OPENAI_API_KEY:
+            return self._template_insights(kpi)
+
         prompt = (
             "Ты — AI-ассистент стоматологической клиники DentaFlow. "
-            "Проанализируй ключевые показатели за день и дай краткие рекомендации "
-            "на русском языке.\n\n"
+            "Проанализируй ключевые показатели за период и дай 2-3 конкретных совета "
+            "на русском языке. Верни JSON с ключами: summary (строка), highlights (список строк), recommendations (список строк).\n\n"
             f"KPI: {json.dumps(kpi, ensure_ascii=False)}"
         )
 
-        return await self._chat(
-            system="Ты — аналитик стоматологической клиники. Отвечай кратко и по делу.",
+        result = await self._chat(
+            system="Ты — аналитик стоматологической клиники. Отвечай кратко и по делу на русском.",
             user=prompt,
             parse_json=True,
         )
+
+        # If OpenAI failed, fall back to template
+        if "error" in result:
+            return self._template_insights(kpi)
+
+        return result
 
     # ------------------------------------------------------------------
     # Patient analysis
@@ -263,6 +273,56 @@ class AIService:
             if parse_json:
                 return {"error": "AI service unavailable"}
             return "AI service unavailable"
+
+    # ------------------------------------------------------------------
+    # Template insights (no AI needed — built from real KPI numbers)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _template_insights(kpi: dict) -> dict:
+        appointments = kpi.get("appointments", 0)
+        confirmed = kpi.get("confirmed", 0)
+        no_shows = kpi.get("no_shows", 0)
+        revenue = kpi.get("revenue", 0)
+        new_leads = kpi.get("new_leads", 0)
+        conversion = kpi.get("conversion_rate", 0)
+        period_label = {"day": "сегодня", "week": "эту неделю", "month": "этот месяц"}.get(
+            kpi.get("period", "week"), "выбранный период"
+        )
+
+        highlights = []
+        recommendations = []
+
+        if appointments > 0:
+            conf_pct = round(confirmed / appointments * 100) if appointments else 0
+            highlights.append(f"Записей за {period_label}: {appointments}, подтверждено {confirmed} ({conf_pct}%)")
+
+        if no_shows > 0:
+            highlights.append(f"Неявки: {no_shows} — рекомендуется напомнить пациентам перед визитом")
+            recommendations.append("Настройте автоматические напоминания за 24 часа до приёма")
+
+        if revenue > 0:
+            rev_str = f"{revenue:,.0f}".replace(",", " ")
+            highlights.append(f"Выручка за {period_label}: {rev_str} ₽")
+
+        if new_leads > 0:
+            highlights.append(f"Новых пациентов: {new_leads}")
+
+        if conversion > 0:
+            if conversion < 30:
+                recommendations.append(f"Конверсия {conversion}% — ниже нормы. Проверьте качество обработки входящих заявок")
+            elif conversion > 60:
+                recommendations.append(f"Конверсия {conversion}% — хороший результат. Масштабируйте успешные каналы")
+
+        if not highlights:
+            highlights.append(f"Данные за {period_label} загружены. Подключите OpenAI для ИИ-аналитики")
+
+        if not recommendations:
+            recommendations.append("Для получения персонализированных советов настройте OpenAI API в разделе Настройки")
+
+        summary = " ".join(highlights[:2])
+
+        return {"summary": summary, "highlights": highlights[2:], "recommendations": recommendations}
 
     # ------------------------------------------------------------------
     # Mock data

@@ -14,9 +14,7 @@ interface KpiCardsProps {
 }
 
 function formatRevenue(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ₽`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ₽`;
-  return `${value} ₽`;
+  return value.toLocaleString("ru-RU") + " ₽";
 }
 
 export default function KpiCards({ kpi }: KpiCardsProps) {
