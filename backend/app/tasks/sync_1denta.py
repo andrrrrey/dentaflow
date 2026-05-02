@@ -11,6 +11,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+# 1denta API returns datetimes in Moscow time (UTC+3) without explicit timezone offset
+MOSCOW_TZ = timezone(timedelta(hours=3))
+
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -151,7 +154,11 @@ async def _sync_appointments_async() -> dict:
             scheduled_at = None
             if a_data.get("scheduled_at"):
                 try:
-                    scheduled_at = datetime.fromisoformat(a_data["scheduled_at"])
+                    dt = datetime.fromisoformat(a_data["scheduled_at"])
+                    if dt.tzinfo is None:
+                        # 1denta returns naive datetimes in Moscow time (UTC+3)
+                        dt = dt.replace(tzinfo=MOSCOW_TZ)
+                    scheduled_at = dt.astimezone(timezone.utc)
                 except ValueError:
                     pass
 
@@ -174,9 +181,9 @@ async def _sync_appointments_async() -> dict:
                 created += 1
             else:
                 appointment.patient_id = patient_id or appointment.patient_id
-                appointment.doctor_name = a_data.get("doctor_name", appointment.doctor_name)
-                appointment.doctor_id = a_data.get("doctor_id", appointment.doctor_id)
-                appointment.service = a_data.get("service", appointment.service)
+                appointment.doctor_name = a_data.get("doctor_name") or appointment.doctor_name
+                appointment.doctor_id = a_data.get("doctor_id") or appointment.doctor_id
+                appointment.service = a_data.get("service") or appointment.service
                 appointment.branch = a_data.get("branch", appointment.branch)
                 appointment.scheduled_at = scheduled_at or appointment.scheduled_at
                 appointment.duration_min = a_data.get("duration_min", appointment.duration_min)

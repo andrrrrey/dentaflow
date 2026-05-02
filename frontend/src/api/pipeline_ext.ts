@@ -47,8 +47,10 @@ export function useFunnel() {
       const { data } = await api.get("/pipeline/funnel");
       return data;
     },
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,   // Keep fresh for 10 minutes
+    gcTime: 60 * 60 * 1000,       // Keep in cache for 1 hour across navigation
+    refetchInterval: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

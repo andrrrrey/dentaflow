@@ -1,16 +1,26 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
+import { useState, useRef, useEffect } from "react";
 import Pill from "../ui/Pill";
-import { useAppointmentDetail } from "../../api/schedule";
+import { useAppointmentDetail, useUpdateAppointmentStatus } from "../../api/schedule";
+
+const STATUS_OPTIONS = [
+  { value: "unconfirmed", label: "Не подтверждён" },
+  { value: "confirmed", label: "Подтверждён" },
+  { value: "arrived", label: "Пациент пришёл" },
+  { value: "cancelled", label: "Визит отменён" },
+  { value: "completed", label: "Завершено" },
+  { value: "no_show", label: "Не явился" },
+];
 
 const statusLabels: Record<string, string> = {
-  confirmed: "Подтверждено",
-  unconfirmed: "Не подтверждено",
-  arrived: "Пришёл",
+  confirmed: "Подтверждён",
+  unconfirmed: "Не подтверждён",
+  arrived: "Пациент пришёл",
   completed: "Завершено",
-  cancelled: "Отменено",
+  cancelled: "Визит отменён",
   no_show: "Не явился",
 };
 
@@ -41,10 +51,33 @@ interface Props {
 
 export default function AppointmentDetailModal({ appointmentId, onClose }: Props) {
   const { data, isLoading } = useAppointmentDetail(appointmentId);
+  const updateStatus = useUpdateAppointmentStatus();
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const appt = data?.appointment;
   const patient = data?.patient;
   const raw = patient?.raw_1denta_data as Record<string, unknown> | null;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownOpen(false);
+      }
+    }
+    if (statusDropdownOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [statusDropdownOpen]);
+
+  function handleStatusChange(newStatus: string) {
+    setStatusDropdownOpen(false);
+    updateStatus.mutate({ appointmentId, status: newStatus });
+  }
+
+  const currentStatus = appt?.status ?? "";
+  const averageCheck = raw?.average_check as number | null | undefined;
+  const medicalCard = raw?.medical_card as string | null | undefined;
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -80,11 +113,40 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                 <span className="text-[12px] text-text-muted">Услуга:</span>
                 <span className="text-[13px] font-medium">{appt.service || "—"}</span>
               </div>
+              {/* Status with change dropdown */}
               <div className="flex items-center gap-3">
                 <span className="text-[12px] text-text-muted">Статус:</span>
-                <Pill variant={statusVariant[appt.status ?? ""] ?? "gray"}>
-                  {statusLabels[appt.status ?? ""] ?? appt.status ?? "—"}
-                </Pill>
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setStatusDropdownOpen((o) => !o)}
+                    className="flex items-center gap-1 px-3 py-[5px] rounded-xl text-[12.5px] font-semibold cursor-pointer border-none"
+                    style={{
+                      background: currentStatus === "confirmed" ? "rgba(0,201,167,0.12)" : currentStatus === "cancelled" ? "rgba(244,75,110,0.1)" : currentStatus === "arrived" || currentStatus === "completed" ? "rgba(91,76,245,0.1)" : "rgba(91,76,245,0.08)",
+                      color: currentStatus === "confirmed" ? "#007d6e" : currentStatus === "cancelled" ? "#c52048" : currentStatus === "arrived" || currentStatus === "completed" ? "#5B4CF5" : "#5B4CF5",
+                    }}
+                    disabled={updateStatus.isPending}
+                  >
+                    {statusLabels[currentStatus] ?? currentStatus ?? "—"}
+                    <ChevronDown size={12} className="ml-1" />
+                  </button>
+                  {statusDropdownOpen && (
+                    <div
+                      className="absolute left-0 top-full mt-1 z-[300] rounded-xl overflow-hidden flex flex-col"
+                      style={{ background: "rgba(255,255,255,0.98)", boxShadow: "0 8px 24px rgba(91,76,245,0.18)", minWidth: 180 }}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleStatusChange(opt.value)}
+                          className="px-4 py-[9px] text-[13px] text-left border-none cursor-pointer hover:bg-[rgba(91,76,245,0.06)] transition-colors"
+                          style={{ color: opt.value === currentStatus ? "#5B4CF5" : "#1e293b", fontWeight: opt.value === currentStatus ? 600 : 400 }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               {appt.revenue > 0 && (
                 <div className="flex items-center gap-3">
@@ -105,6 +167,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   <div>
                     <div className="text-[15px] font-bold">{patient.name}</div>
                     {patient.external_id && <div className="text-[11px] text-text-muted">ID: {patient.external_id}</div>}
+                    {medicalCard && <div className="text-[11px] text-text-muted">Мед. карта №{medicalCard}</div>}
                   </div>
                   {patient.is_new_patient && <Pill variant="blue">Новый</Pill>}
                 </div>
@@ -118,7 +181,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
 
                 <div className="grid grid-cols-3 gap-3 mt-2">
                   <StatBox label="Выручка" value={`${patient.total_revenue.toLocaleString("ru-RU")} ₽`} />
-                  <StatBox label="LTV" value={patient.ltv_score != null ? `${patient.ltv_score}%` : "—"} />
+                  <StatBox label="Средний чек" value={averageCheck != null ? `${averageCheck.toLocaleString("ru-RU")} ₽` : "—"} />
                   <StatBox label="Посл. визит" value={patient.last_visit_at ? formatDt(patient.last_visit_at).split(",")[0] : "—"} />
                 </div>
 
@@ -137,7 +200,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(91,76,245,0.06)" }}>
                     <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Данные 1Denta</div>
                     <div className="grid grid-cols-2 gap-2">
-                      {raw.sex != null && <InfoRow icon={<User size={13} />} label="Пол" value={sexLabels[raw.sex as number] || String(raw.sex)} />}
+                      {raw.sex != null && Number(raw.sex) !== 0 && <InfoRow icon={<User size={13} />} label="Пол" value={sexLabels[raw.sex as number] || String(raw.sex)} />}
                       {raw.visits_count != null && <InfoRow icon={<Calendar size={13} />} label="Визитов" value={String(raw.visits_count)} />}
                       {raw.type != null && <InfoRow icon={<Tag size={13} />} label="Тип" value={String(raw.type)} />}
                       {raw.comment != null && <InfoRow icon={<Tag size={13} />} label="Комментарий" value={String(raw.comment)} />}

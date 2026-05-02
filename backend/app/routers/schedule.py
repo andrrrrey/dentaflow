@@ -144,6 +144,34 @@ async def get_appointment_detail(
     return response
 
 
+class UpdateAppointmentStatusBody(BaseModel):
+    status: str
+
+
+@router.patch("/{appointment_id}/status")
+async def update_appointment_status(
+    appointment_id: uuid.UUID,
+    body: UpdateAppointmentStatusBody,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Update the status of an appointment."""
+    valid_statuses = {"confirmed", "unconfirmed", "arrived", "completed", "cancelled", "no_show"}
+    if body.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+
+    stmt = select(Appointment).where(Appointment.id == appointment_id)
+    result = await db.execute(stmt)
+    appt = result.scalar_one_or_none()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    appt.status = body.status
+    await db.commit()
+    await db.refresh(appt)
+    return {"id": str(appt.id), "status": appt.status}
+
+
 @router.post("/sync")
 async def trigger_sync(
     _current_user: User = Depends(get_current_user),

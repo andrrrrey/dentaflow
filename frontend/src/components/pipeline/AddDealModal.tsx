@@ -67,7 +67,11 @@ export default function AddDealModal({
   });
   const [error, setError] = useState("");
 
-  const stages = apiStages?.map((s) => ({ key: s.key, label: s.label })) ?? [];
+  // Exclude system terminal/auto stages from deal creation form
+  const EXCLUDED_STAGES = new Set(["waiting_list", "closed_won", "closed_lost"]);
+  const stages = (apiStages ?? [])
+    .filter((s) => !EXCLUDED_STAGES.has(s.key))
+    .map((s) => ({ key: s.key, label: s.label }));
   const services = servicesData?.services ?? [];
 
   const connectedChannels = (() => {

@@ -67,20 +67,26 @@ export default function Reports() {
             <p className="text-[13px] text-white/80">Анализирую данные...</p>
           ) : advice ? (
             <>
-              <p className="text-[14px] font-semibold text-white leading-relaxed mb-3" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
-                {advice.summary}
-              </p>
-              <div className="flex flex-col gap-[6px] mb-3">
-                {advice.advice.map((tip, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <Lightbulb size={12} className="text-white/70 mt-[2px] flex-shrink-0" />
-                    <span className="text-[12px] text-white/90">{tip}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="px-[12px] py-[8px] rounded-[10px] text-[12px] font-semibold text-white" style={{ background: "rgba(255,255,255,0.15)" }}>
-                → {advice.priority_action}
-              </div>
+              {advice.summary && (
+                <p className="text-[14px] font-semibold text-white leading-relaxed mb-3" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
+                  {advice.summary}
+                </p>
+              )}
+              {Array.isArray(advice.advice) && advice.advice.length > 0 && (
+                <div className="flex flex-col gap-[6px] mb-3">
+                  {advice.advice.map((tip, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <Lightbulb size={12} className="text-white/70 mt-[2px] flex-shrink-0" />
+                      <span className="text-[12px] text-white/90">{tip}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {advice.priority_action && (
+                <div className="px-[12px] py-[8px] rounded-[10px] text-[12px] font-semibold text-white" style={{ background: "rgba(255,255,255,0.15)" }}>
+                  → {advice.priority_action}
+                </div>
+              )}
             </>
           ) : null}
         </div>
