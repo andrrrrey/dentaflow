@@ -56,28 +56,24 @@ async def list_doctors(
         if row.doctor_name  # skip empty names
     ]
 
-    # Fallback: try to fetch doctors from 1denta resources if none in DB
-    if not doctors:
-        try:
-            from app.services.one_denta import OneDentaService
-            svc = await OneDentaService.from_db(db)
-            resources = await svc.get_resources()
-            for r in resources:
-                rid = str(r.get("id", ""))
-                rname = r.get("name", "")
-                if rname:
-                    doctors.append({"doctor_id": rid or None, "doctor_name": rname, "appointments_today": 0})
-        except Exception:
-            pass
-
-    # Second fallback: directory_cache table
-    if not doctors:
-        from sqlalchemy import text
+    # Always merge directory_cache doctors so all known doctors appear,
+    # even those without recent appointments
+    from sqlalchemy import text
+    known_names = {d["doctor_name"].lower() for d in doctors}
+    try:
         res_result = await db.execute(
-            text("SELECT external_id, name FROM directory_cache WHERE category = 'resource' AND name IS NOT NULL AND name != '' ORDER BY name LIMIT 50")
+            text(
+                "SELECT external_id, name FROM directory_cache "
+                "WHERE category = 'resource' AND name IS NOT NULL AND name != '' "
+                "ORDER BY name LIMIT 100"
+            )
         )
         for r in res_result.all():
-            doctors.append({"doctor_id": r[0], "doctor_name": r[1], "appointments_today": 0})
+            if r[1] and r[1].lower() not in known_names:
+                doctors.append({"doctor_id": r[0], "doctor_name": r[1], "appointments_today": 0})
+                known_names.add(r[1].lower())
+    except Exception:
+        pass
 
     return {"doctors": doctors}
 

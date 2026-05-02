@@ -156,3 +156,25 @@ export function useDoctorsList() {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+export function useUpdateAppointment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      ...updates
+    }: {
+      appointmentId: string;
+      service?: string;
+      doctor_name?: string;
+      doctor_id?: string;
+    }) => {
+      const { data } = await api.patch(`/schedule/${appointmentId}`, updates);
+      return data;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["appointment-detail", vars.appointmentId] });
+    },
+  });
+}

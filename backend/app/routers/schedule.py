@@ -71,7 +71,7 @@ async def list_schedule(
             "doctor_id": appt.doctor_id,
             "service": appt.service,
             "branch": appt.branch,
-            "scheduled_at": appt.scheduled_at.isoformat() if appt.scheduled_at else None,
+            "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
             "duration_min": appt.duration_min,
             "status": appt.status,
             "revenue": float(appt.revenue) if appt.revenue else 0,
@@ -118,7 +118,7 @@ async def get_appointment_detail(
             "doctor_id": appt.doctor_id,
             "service": appt.service,
             "branch": appt.branch,
-            "scheduled_at": appt.scheduled_at.isoformat() if appt.scheduled_at else None,
+            "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
             "duration_min": appt.duration_min,
             "status": appt.status,
             "revenue": float(appt.revenue) if appt.revenue else 0,
@@ -135,13 +135,49 @@ async def get_appointment_detail(
             "birth_date": str(patient.birth_date) if patient.birth_date else None,
             "source_channel": patient.source_channel,
             "is_new_patient": patient.is_new_patient,
-            "last_visit_at": patient.last_visit_at.isoformat() if patient.last_visit_at else None,
+            "last_visit_at": patient.last_visit_at.strftime("%Y-%m-%dT%H:%M:%S") if patient.last_visit_at else None,
             "total_revenue": float(patient.total_revenue),
             "ltv_score": patient.ltv_score,
             "tags": patient.tags,
             "raw_1denta_data": patient.raw_1denta_data,
         }
     return response
+
+
+class UpdateAppointmentBody(BaseModel):
+    service: str | None = None
+    doctor_name: str | None = None
+    doctor_id: str | None = None
+
+
+@router.patch("/{appointment_id}")
+async def update_appointment(
+    appointment_id: uuid.UUID,
+    body: UpdateAppointmentBody,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Update appointment service or doctor."""
+    stmt = select(Appointment).where(Appointment.id == appointment_id)
+    result = await db.execute(stmt)
+    appt = result.scalar_one_or_none()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if body.service is not None:
+        appt.service = body.service
+    if body.doctor_name is not None:
+        appt.doctor_name = body.doctor_name
+    if body.doctor_id is not None:
+        appt.doctor_id = body.doctor_id
+
+    await db.commit()
+    return {
+        "id": str(appt.id),
+        "service": appt.service,
+        "doctor_name": appt.doctor_name,
+        "doctor_id": appt.doctor_id,
+    }
 
 
 class UpdateAppointmentStatusBody(BaseModel):
