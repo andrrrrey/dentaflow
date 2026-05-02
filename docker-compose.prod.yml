@@ -32,7 +32,6 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app          # live code mount — no rebuild needed for Python changes
-      - backend_packages:/usr/local/lib/python3.11  # preserve pip packages across restarts
     depends_on:
       - postgres
       - redis
@@ -44,7 +43,6 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app
-      - backend_packages:/usr/local/lib/python3.11
     depends_on:
       - postgres
       - redis
@@ -56,7 +54,6 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app
-      - backend_packages:/usr/local/lib/python3.11
     depends_on:
       - postgres
       - redis
@@ -68,7 +65,6 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app
-      - backend_packages:/usr/local/lib/python3.11
     depends_on:
       - postgres
       - redis
@@ -97,4 +93,3 @@ volumes:
   certbot_data:
   frontend_dist:
   frontend_node_modules:    # cached node_modules for fast frontend builds
-  backend_packages:         # cached pip packages across container restarts
