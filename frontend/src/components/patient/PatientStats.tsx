@@ -1,7 +1,7 @@
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import type { PatientStats as StatsType, AppointmentResponse } from "../../api/patients";
-import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database, BarChart2, User, CreditCard, FileText } from "lucide-react";
+import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database, BarChart2, CreditCard, FileText } from "lucide-react";
 
 interface Props {
   stats: StatsType;
@@ -35,6 +35,73 @@ function fmt(dt: string | null): string {
   try { return format(parseISO(dt), "d MMM yyyy", { locale: ru }); } catch { return dt; }
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  // Financial
+  total_revenue: "Общая сумма",
+  totalArrival: "Общая сумма",
+  balance: "Баланс",
+  discount: "Скидка",
+  discountPercent: "Скидка, %",
+  debt: "Долг",
+  totalPaid: "Оплачено",
+  bonuses: "Бонусы",
+  price: "Стоимость",
+  revenue: "Выручка",
+  // Contact (these are excluded as duplicates)
+  phone: "Телефон",
+  email: "Email",
+  name: "ФИО",
+  firstName: "Имя",
+  lastName: "Фамилия",
+  patronymic: "Отчество",
+  additionalPhone: "Доп. телефон",
+  address: "Адрес",
+  // Medical
+  allergies: "Аллергии",
+  diagnosis: "Диагноз",
+  contraindications: "Противопоказания",
+  notes: "Заметки",
+  medicalNotes: "Мед. заметки",
+  bloodType: "Группа крови",
+  // Other common fields
+  sex: "Пол",
+  type: "Тип",
+  comment: "Комментарий",
+  birth_date: "Дата рождения",
+  birthDate: "Дата рождения",
+  external_id: "ID в 1Denta",
+  visits_count: "Визитов (1Denta)",
+  visitsCount: "Визитов (1Denta)",
+  is_new_patient: "Новый пациент",
+  ltv_score: "LTV",
+  tags: "Теги",
+  source_channel: "Источник",
+};
+
+const SEX_LABELS: Record<string, string> = { "0": "Другой", "1": "Мужской", "2": "Женский" };
+const TYPE_LABELS: Record<string, string> = {
+  noGroup: "Без группы",
+  new: "Новый",
+  potential: "Потенциальный",
+  refuse: "Отказавшийся",
+  refused: "Отказавшийся",
+  regular: "Постоянный",
+};
+
+function formatFieldValue(key: string, val: unknown): string {
+  if (val === null || val === undefined) return "—";
+  const s = String(val);
+  if (key === "sex") return SEX_LABELS[s] ?? s;
+  if (key === "type") return TYPE_LABELS[s] ?? s;
+  if (key === "is_new_patient") return s === "true" ? "Да" : "Нет";
+  if ((key === "total_revenue" || key === "totalArrival" || key === "revenue" || key === "balance" || key === "debt") && !isNaN(Number(s))) {
+    return Number(s).toLocaleString("ru-RU") + " ₽";
+  }
+  return s;
+}
+
+const DUPLICATE_CONTACT_KEYS = new Set(["phone", "email", "name", "firstName", "lastName", "patronymic", "additionalPhone"]);
+
 function RawDataTile({ title, icon, entries }: { title: string; icon: React.ReactNode; entries: [string, unknown][] }) {
   return (
     <div
@@ -53,8 +120,10 @@ function RawDataTile({ title, icon, entries }: { title: string; icon: React.Reac
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {entries.map(([key, val]) => (
           <div key={key} className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-text-muted font-semibold uppercase tracking-wide">{key}</span>
-            <span className="text-[12.5px] text-text-main font-medium">{String(val)}</span>
+            <span className="text-[10px] text-text-muted font-semibold uppercase tracking-wide">
+              {FIELD_LABELS[key] ?? key}
+            </span>
+            <span className="text-[12.5px] text-text-main font-medium">{formatFieldValue(key, val)}</span>
           </div>
         ))}
       </div>
@@ -81,26 +150,24 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
 
   const rawGroups = (() => {
     if (!rawData || Object.keys(rawData).length === 0) return null;
-    const contact: [string, unknown][] = [];
     const medical: [string, unknown][] = [];
     const financial: [string, unknown][] = [];
     const other: [string, unknown][] = [];
 
-    const contactKeys = ["phone", "email", "secondPhone", "secondEmail", "address", "city", "zip", "birthDate", "gender", "name", "firstName", "lastName", "middleName", "surname"];
     const medicalKeys = ["allergies", "diagnosis", "contraindications", "notes", "medicalNotes", "bloodType", "diseases", "health"];
-    const financialKeys = ["balance", "discount", "discountPercent", "debt", "totalPaid", "bonuses", "price", "revenue"];
+    const financialKeys = ["total_revenue", "totalArrival", "balance", "discount", "discountPercent", "debt", "totalPaid", "bonuses", "price", "revenue"];
 
     for (const [key, val] of Object.entries(rawData)) {
       if (val === null || val === undefined || val === "") continue;
       if (typeof val === "object") continue;
+      if (DUPLICATE_CONTACT_KEYS.has(key)) continue;
       const k = key.toLowerCase();
-      if (contactKeys.some(ck => k.includes(ck.toLowerCase()))) contact.push([key, val]);
-      else if (medicalKeys.some(mk => k.includes(mk.toLowerCase()))) medical.push([key, val]);
-      else if (financialKeys.some(fk => k.includes(fk.toLowerCase()))) financial.push([key, val]);
+      if (medicalKeys.some(mk => k.includes(mk.toLowerCase()))) medical.push([key, val]);
+      else if (financialKeys.some(fk => k === fk || k.includes(fk.toLowerCase()))) financial.push([key, val]);
       else other.push([key, val]);
     }
 
-    return { contact, medical, financial, other };
+    return { medical, financial, other };
   })();
 
   return (
@@ -220,9 +287,6 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
       {/* 1Denta data in separate tiles */}
       {rawGroups && (
         <>
-          {rawGroups.contact.length > 0 && (
-            <RawDataTile title="Контактные данные" icon={<User size={14} />} entries={rawGroups.contact} />
-          )}
           {rawGroups.medical.length > 0 && (
             <RawDataTile title="Медицинские данные" icon={<FileText size={14} />} entries={rawGroups.medical} />
           )}
@@ -230,7 +294,7 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
             <RawDataTile title="Финансы" icon={<CreditCard size={14} />} entries={rawGroups.financial} />
           )}
           {rawGroups.other.length > 0 && (
-            <RawDataTile title="Прочие данные из 1Denta" icon={<Database size={14} />} entries={rawGroups.other} />
+            <RawDataTile title="Данные из 1Denta" icon={<Database size={14} />} entries={rawGroups.other} />
           )}
         </>
       )}

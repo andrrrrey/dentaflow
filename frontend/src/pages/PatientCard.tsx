@@ -114,7 +114,7 @@ export default function PatientCard() {
             <DealsHistory deals={patient.deals} />
           )}
           {activeTab === "tasks" && (
-            <TasksList tasks={patient.tasks} />
+            <TasksList tasks={patient.tasks} patientId={patient.id} patientName={patient.name} />
           )}
         </div>
 

@@ -16,6 +16,7 @@ import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 import Marketing from "./pages/Marketing";
+import Tasks from "./pages/Tasks";
 
 /* ---------- app ---------- */
 
@@ -152,6 +153,16 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Сотрудники">
                 <Staff />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tasks"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Задачи">
+                <Tasks />
               </AppLayout>
             </ProtectedRoute>
           }

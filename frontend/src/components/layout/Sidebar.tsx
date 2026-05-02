@@ -14,6 +14,7 @@ import {
   FileBarChart,
   Settings,
   Megaphone,
+  CheckSquare,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
@@ -60,6 +61,11 @@ const sections: NavSection[] = [
         label: "Воронка",
         icon: <GitBranch size={15} />,
         path: "/pipeline",
+      },
+      {
+        label: "Задачи",
+        icon: <CheckSquare size={15} />,
+        path: "/tasks",
       },
     ],
   },

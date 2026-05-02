@@ -1,13 +1,15 @@
+import { useState } from "react";
 import {
   CalendarPlus,
   Phone,
-  MessageCircle,
   PlusCircle,
   Mail,
   User,
+  CheckCircle2,
 } from "lucide-react";
 import Pill from "../ui/Pill";
 import Button from "../ui/Button";
+import { useCreateDeal } from "../../api/deals";
 import type { PatientDetailResponse } from "../../api/patients";
 
 interface PatientHeaderProps {
@@ -38,6 +40,24 @@ function ltvColor(score: number | null): "green" | "yellow" | "red" | "blue" {
 }
 
 export default function PatientHeader({ patient }: PatientHeaderProps) {
+  const createDeal = useCreateDeal();
+  const [dealCreated, setDealCreated] = useState(false);
+
+  const handleCreateDeal = () => {
+    if (dealCreated || createDeal.isPending) return;
+    createDeal.mutate(
+      {
+        title: `Лид: ${patient.name}`,
+        patient_id: patient.id,
+        patient_name: patient.name,
+        patient_phone: patient.phone ?? undefined,
+        stage: "new",
+        source_channel: patient.source_channel ?? undefined,
+      },
+      { onSuccess: () => setDealCreated(true) }
+    );
+  };
+
   return (
     <div
       className="rounded-glass p-[20px_22px]"
@@ -114,17 +134,17 @@ export default function PatientHeader({ patient }: PatientHeaderProps) {
             <CalendarPlus size={14} className="mr-1.5" />
             Записать
           </Button>
-          <Button variant="secondary" size="sm">
-            <Phone size={14} className="mr-1.5" />
-            Позвонить
-          </Button>
-          <Button variant="secondary" size="sm">
-            <MessageCircle size={14} className="mr-1.5" />
-            Написать
-          </Button>
-          <Button variant="ghost" size="sm">
-            <PlusCircle size={14} className="mr-1.5" />
-            Создать сделку
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCreateDeal}
+            disabled={dealCreated || createDeal.isPending}
+          >
+            {dealCreated ? (
+              <><CheckCircle2 size={14} className="mr-1.5 text-[#00C9A7]" />Сделка создана</>
+            ) : (
+              <><PlusCircle size={14} className="mr-1.5" />{createDeal.isPending ? "Создаём..." : "Создать сделку"}</>
+            )}
           </Button>
         </div>
       </div>
