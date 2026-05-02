@@ -7,7 +7,7 @@ import AdminsRating from "../components/dashboard/AdminsRating";
 import { useDashboardOverview } from "../api/dashboard";
 import { useAiInsights } from "../api/ai";
 import { useDoctorsLoad } from "../api/doctors";
-import type { AIInsights, AIChip, DoctorLoad } from "../types";
+import type { AIInsights, DoctorLoad } from "../types";
 
 /* ── Adapters ────────────────────────────────────────────── */
 
