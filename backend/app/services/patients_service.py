@@ -151,6 +151,109 @@ async def get_patients(
     return PatientListResponse(items=items, total=total)
 
 
+def _build_ai_analysis(
+    patient: Patient,
+    appointments: list,
+    completed: list,
+    cancelled: list,
+    no_shows: list,
+    total_rev: float,
+    dates: list,
+) -> AIAnalysis:
+    """Generate template-based AI analysis from real patient data."""
+    now = datetime.now(timezone.utc)
+
+    days_since_visit: int | None = None
+    if dates:
+        last = dates[-1]
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        days_since_visit = max(0, (now - last).days)
+
+    total_visits = len(appointments)
+    no_show_rate = len(no_shows) / total_visits if total_visits else 0
+    cancel_rate = len(cancelled) / total_visits if total_visits else 0
+
+    # --- Return probability ---
+    prob = 60  # base
+    if days_since_visit is not None:
+        if days_since_visit < 30:
+            prob += 25
+        elif days_since_visit < 90:
+            prob += 10
+        elif days_since_visit < 180:
+            prob -= 10
+        elif days_since_visit < 365:
+            prob -= 20
+        else:
+            prob -= 35
+    if total_visits >= 5:
+        prob += 10
+    elif total_visits >= 2:
+        prob += 5
+    if no_show_rate > 0.3:
+        prob -= 15
+    if cancel_rate > 0.3:
+        prob -= 10
+    if total_rev > 50_000:
+        prob += 5
+    prob = max(5, min(97, prob))
+
+    # --- Barriers ---
+    barriers: list[str] = []
+    if days_since_visit is not None and days_since_visit > 90:
+        barriers.append(f"Не был в клинике {days_since_visit} дней")
+    if no_show_rate > 0.2:
+        barriers.append("Высокий процент неявок на записи")
+    if cancel_rate > 0.3:
+        barriers.append("Часто отменяет визиты")
+    if total_visits == 0:
+        barriers.append("Нет истории визитов")
+    if not barriers:
+        if total_visits < 2:
+            barriers.append("Новый пациент — ещё не сформирована привязанность к клинике")
+        else:
+            barriers.append("Барьеры не выявлены — пациент лоялен")
+
+    # --- Summary ---
+    if total_visits == 0:
+        summary = f"Новый пациент {patient.name}. Данных о визитах пока нет."
+    elif days_since_visit is not None and days_since_visit > 180:
+        summary = (
+            f"Пациент не посещал клинику более {days_since_visit // 30} месяцев. "
+            f"Всего визитов: {total_visits}, выручка: {int(total_rev):,} ₽. Требуется реактивация."
+        )
+    elif days_since_visit is not None and days_since_visit < 30:
+        summary = (
+            f"Активный пациент: был в клинике {days_since_visit} дн. назад. "
+            f"Всего визитов: {total_visits}, выручка: {int(total_rev):,} ₽."
+        )
+    else:
+        summary = (
+            f"Пациент с {total_visits} визит(ами), выручка {int(total_rev):,} ₽. "
+            f"Последний визит: {days_since_visit} дн. назад."
+        )
+
+    # --- Next action ---
+    if total_visits == 0:
+        next_action = "Позвонить и предложить первичную консультацию"
+    elif days_since_visit is not None and days_since_visit > 365:
+        next_action = "Отправить персональное предложение — пациент давно не посещал клинику"
+    elif days_since_visit is not None and days_since_visit > 90:
+        next_action = f"Позвонить и предложить профилактический осмотр (не был {days_since_visit} дней)"
+    elif no_show_rate > 0.3:
+        next_action = "Выяснить причины неявок, предложить удобное время"
+    else:
+        next_action = "Напомнить о плановом осмотре или предложить дополнительную услугу"
+
+    return AIAnalysis(
+        summary=summary,
+        barriers=barriers,
+        return_probability=prob,
+        next_action=next_action,
+    )
+
+
 async def get_patient_detail(
     patient_id: uuid.UUID, db: AsyncSession
 ) -> PatientDetailResponse | None:
@@ -241,13 +344,6 @@ async def get_patient_detail(
         for t in tasks_result.scalars().all()
     ]
 
-    ai_analysis = AIAnalysis(
-        summary="Анализ пациента будет доступен после накопления данных.",
-        barriers=[],
-        return_probability=0,
-        next_action="Нет рекомендаций",
-    )
-
     # Compute stats from appointments
     completed = [a for a in appointments if a.status == "completed"]
     cancelled = [a for a in appointments if a.status == "cancelled"]
@@ -255,6 +351,8 @@ async def get_patient_detail(
     revenues = [a.revenue for a in appointments if a.revenue is not None]
     total_rev = sum(revenues)
     dates = sorted([a.scheduled_at for a in appointments if a.scheduled_at is not None])
+
+    ai_analysis = _build_ai_analysis(patient, appointments, completed, cancelled, no_shows, total_rev, dates)
     stats = PatientStats(
         total_visits=len(appointments),
         completed_visits=len(completed),

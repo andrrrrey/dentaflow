@@ -13,7 +13,7 @@ import type { DealResponse } from "../../api/deals";
 
 function formatRub(v: number | null): string {
   if (v == null) return "";
-  return v.toLocaleString("ru-RU").replace(/,/g, " ");
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 function formatDate(iso: string): string {
@@ -193,7 +193,18 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold text-text-muted mb-1">Сумма (₽)</label>
-                <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-xl px-3 py-[8px] text-[13px] font-medium text-text-main outline-none" style={inputStyle} placeholder="150 000" />
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))}
+                  onBlur={(e) => {
+                    const n = parseFloat(e.target.value.replace(/\s/g, ""));
+                    if (!isNaN(n)) setAmount(formatRub(n));
+                  }}
+                  className="w-full rounded-xl px-3 py-[8px] text-[13px] font-medium text-text-main outline-none"
+                  style={inputStyle}
+                  placeholder="150 000"
+                />
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-text-muted mb-1">Услуга</label>

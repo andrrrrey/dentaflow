@@ -17,7 +17,7 @@ import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
 
 function formatValue(v: number): string {
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + " млн ₽";
-  return v.toLocaleString("ru-RU") + " ₽";
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
 }
 
 function uniqueAssigned(stages: StageColumn[]) {
@@ -312,7 +312,7 @@ export default function Pipeline() {
                     </span>
                   </div>
                   <div className="text-[13px] font-bold text-text-main text-right self-center">
-                    {deal.amount ? `${deal.amount.toLocaleString("ru-RU").replace(/,/g, " ")} ₽` : "—"}
+                    {deal.amount ? `${Math.round(deal.amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₽` : "—"}
                   </div>
                   <div className="self-center flex justify-center" onClick={(e) => e.stopPropagation()}>
                     {confirmDeleteId === deal.id ? (

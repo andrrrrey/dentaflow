@@ -66,8 +66,8 @@ class AIService:
 
     async def analyze_patient(self, patient_data: dict, history: list | None = None) -> dict:
         """Return an AI analysis of a patient including return probability."""
-        if settings.APP_ENV == "development":
-            return self._mock_patient_analysis()
+        if not self._api_key:
+            return self._template_patient_analysis(patient_data, history or [])
 
         prompt = (
             "Проанализируй данные пациента стоматологической клиники.\n"
@@ -325,6 +325,76 @@ class AIService:
     # ------------------------------------------------------------------
     # Mock data
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _template_patient_analysis(patient_data: dict, history: list) -> dict:
+        from datetime import date, timedelta
+        total_rev = patient_data.get("total_revenue", 0) or 0
+        is_new = patient_data.get("is_new_patient", True)
+        last_visit_raw = patient_data.get("last_visit_at")
+        total_visits = len(history)
+
+        days_since: int | None = None
+        if last_visit_raw:
+            try:
+                last = date.fromisoformat(str(last_visit_raw)[:10])
+                days_since = (date.today() - last).days
+            except Exception:
+                pass
+
+        # probability
+        prob = 60
+        if days_since is not None:
+            if days_since < 30:
+                prob += 25
+            elif days_since < 90:
+                prob += 10
+            elif days_since < 180:
+                prob -= 10
+            elif days_since < 365:
+                prob -= 20
+            else:
+                prob -= 35
+        if total_visits >= 5:
+            prob += 10
+        elif total_visits >= 2:
+            prob += 5
+        no_shows = sum(1 for h in history if h.get("status") == "no_show")
+        if total_visits and no_shows / total_visits > 0.3:
+            prob -= 15
+        prob = max(5, min(97, prob))
+
+        barriers: list[str] = []
+        if days_since is not None and days_since > 90:
+            barriers.append(f"Не был в клинике {days_since} дней")
+        if total_visits and no_shows / total_visits > 0.2:
+            barriers.append("Высокий процент неявок на записи")
+        if is_new:
+            barriers.append("Новый пациент — нет истории взаимодействия")
+        if not barriers:
+            barriers.append("Барьеры не выявлены — пациент лоялен")
+
+        if total_visits == 0:
+            summary = "Новый пациент без истории визитов."
+        elif days_since is not None and days_since > 180:
+            summary = f"Пациент не посещал клинику {days_since} дней. Всего визитов: {total_visits}, выручка: {int(total_rev):,} ₽."
+        else:
+            summary = f"Пациент с {total_visits} визит(ами), выручка {int(total_rev):,} ₽."
+
+        if days_since is not None and days_since > 365:
+            next_action = "Отправить персональное предложение — пациент давно не посещал клинику"
+        elif days_since is not None and days_since > 90:
+            next_action = f"Позвонить и предложить профилактический осмотр (не был {days_since} дней)"
+        else:
+            next_action = "Напомнить о плановом осмотре или предложить дополнительную услугу"
+
+        return {
+            "summary": summary,
+            "return_probability": prob,
+            "barriers": barriers,
+            "next_action": next_action,
+            "ltv_score": min(100, int(total_rev / 1000)) if total_rev else 0,
+        }
 
     @staticmethod
     def _mock_insights() -> dict:

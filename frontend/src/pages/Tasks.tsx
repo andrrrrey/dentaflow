@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -22,6 +23,7 @@ const typeLabel: Record<string, string> = {
 const PAGE_SIZE = 15;
 
 export default function Tasks() {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "active" | "done">("all");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
@@ -186,7 +188,7 @@ export default function Tasks() {
                       key={task.id}
                       style={{
                         borderBottom: idx < pageTasks.length - 1 ? "1px solid rgba(91,76,245,0.06)" : "none",
-                        opacity: task.is_done ? 0.65 : 1,
+                        opacity: task.is_done && filter !== "done" ? 0.65 : 1,
                       }}
                     >
                       <td className="px-4 py-3 w-9">
@@ -202,9 +204,15 @@ export default function Tasks() {
                         </button>
                       </td>
                       <td className="px-4 py-3 max-w-[280px]">
-                        <span className={`text-[13px] font-semibold ${task.is_done ? "text-text-muted line-through" : "text-text-main"}`}>
+                        <span className={`text-[13px] font-semibold ${task.is_done && filter !== "done" ? "text-text-muted line-through" : "text-text-main"}`}>
                           {task.title ?? "—"}
                         </span>
+                        {task.is_done && task.done_at && filter === "done" && (
+                          <div className="text-[11px] text-[#00C9A7] flex items-center gap-1 mt-[2px]">
+                            <CheckCircle2 size={10} />
+                            Выполнено {format(new Date(task.done_at), "dd MMM yyyy, HH:mm", { locale: ru })}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
@@ -212,8 +220,17 @@ export default function Tasks() {
                           {typeLabel[task.type ?? ""] ?? task.type ?? "—"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[12.5px] text-text-muted">
-                        {task.patient_name ?? "—"}
+                      <td className="px-4 py-3 text-[12.5px]">
+                        {task.patient_id && task.patient_name ? (
+                          <button
+                            onClick={() => navigate(`/patients/${task.patient_id}`)}
+                            className="text-accent2 font-semibold hover:underline bg-transparent border-none cursor-pointer p-0 text-left"
+                          >
+                            {task.patient_name}
+                          </button>
+                        ) : (
+                          <span className="text-text-muted">{task.patient_name ?? "—"}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {task.due_at ? (
