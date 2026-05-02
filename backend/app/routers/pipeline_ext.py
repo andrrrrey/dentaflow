@@ -35,16 +35,19 @@ async def pipeline_funnel(
     )
     first_contact = first_contact_result.scalar_one() or 0
 
-    # Appointments by status
-    status_result = await db.execute(
-        select(Appointment.status, func.count(Appointment.id))
-        .group_by(Appointment.status)
+    # Unique patients by appointment status (not appointment count)
+    confirmed_result = await db.execute(
+        select(func.count(func.distinct(Appointment.patient_id)))
+        .where(Appointment.patient_id.isnot(None), Appointment.status == "confirmed")
     )
-    status_counts: dict[str, int] = {row[0]: row[1] for row in status_result.all() if row[0]}
+    confirmed = confirmed_result.scalar_one() or 0
 
-    confirmed = status_counts.get("confirmed", 0)
-    arrived = status_counts.get("arrived", 0) + status_counts.get("completed", 0)
-    treatment_started = arrived  # simplification: arrived = treatment started
+    arrived_result = await db.execute(
+        select(func.count(func.distinct(Appointment.patient_id)))
+        .where(Appointment.patient_id.isnot(None), Appointment.status.in_(["arrived", "completed"]))
+    )
+    arrived = arrived_result.scalar_one() or 0
+    treatment_started = arrived
 
     def pct(part: int, whole: int) -> int:
         return round(part / whole * 100) if whole else 0

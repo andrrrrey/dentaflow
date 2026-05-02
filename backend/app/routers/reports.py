@@ -76,17 +76,30 @@ async def patients_report(
     total_stmt = select(func.count()).select_from(Patient)
     total = (await db.execute(total_stmt)).scalar() or 0
 
+    # New patients: those who had their first appointment in this period
+    # (is_new_patient flag set by 1Denta, visit in period)
     new_stmt = (
-        select(func.count())
-        .select_from(Patient)
-        .where(Patient.created_at >= dt_from, Patient.created_at <= dt_to)
+        select(func.count(func.distinct(Appointment.patient_id)))
+        .select_from(Appointment)
+        .join(Patient, Appointment.patient_id == Patient.id)
+        .where(
+            Appointment.scheduled_at >= dt_from,
+            Appointment.scheduled_at <= dt_to,
+            Patient.is_new_patient == True,
+        )
     )
     new_patients = (await db.execute(new_stmt)).scalar() or 0
 
+    # Returning patients: visited in period and not flagged as new
     returning_stmt = (
-        select(func.count())
-        .select_from(Patient)
-        .where(Patient.is_new_patient == False, Patient.last_visit_at >= dt_from)
+        select(func.count(func.distinct(Appointment.patient_id)))
+        .select_from(Appointment)
+        .join(Patient, Appointment.patient_id == Patient.id)
+        .where(
+            Appointment.scheduled_at >= dt_from,
+            Appointment.scheduled_at <= dt_to,
+            Patient.is_new_patient == False,
+        )
     )
     returning = (await db.execute(returning_stmt)).scalar() or 0
 

@@ -32,15 +32,17 @@ def _period_range(period: str) -> tuple[datetime, datetime]:
 
 
 async def _kpi(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> KpiData:
+    # New patients: those who had their first appointment in this period
     new_leads = (await db.execute(
         select(func.count()).where(
-            Patient.created_at >= dt_from, Patient.created_at <= dt_to, Patient.is_new_patient == True
+            Patient.created_at >= dt_from, Patient.created_at <= dt_to
         )
     )).scalar() or 0
 
+    # Appointments: count by scheduled_at (when the visit actually happens, not import date)
     appts_created = (await db.execute(
         select(func.count()).where(
-            Appointment.created_at >= dt_from, Appointment.created_at <= dt_to
+            Appointment.scheduled_at >= dt_from, Appointment.scheduled_at <= dt_to
         )
     )).scalar() or 0
 
@@ -65,27 +67,23 @@ async def _kpi(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> KpiData:
         )
     )).scalar() or 0
 
+    # Revenue from appointments (synced from 1Denta), not from Deal.amount
     revenue = (await db.execute(
-        select(func.coalesce(func.sum(Deal.amount), 0)).where(
-            Deal.stage == "closed_won",
-            Deal.closed_at >= dt_from, Deal.closed_at <= dt_to,
+        select(func.coalesce(func.sum(Appointment.revenue), 0)).where(
+            Appointment.scheduled_at >= dt_from, Appointment.scheduled_at <= dt_to,
         )
     )).scalar() or 0
 
-    total_leads = (await db.execute(
+    # Conversion: appointments that resulted in arrived/completed vs total in period
+    total_appts = appts_created or 1
+    arrived = (await db.execute(
         select(func.count()).where(
-            Deal.created_at >= dt_from, Deal.created_at <= dt_to
-        )
-    )).scalar() or 1
-
-    won = (await db.execute(
-        select(func.count()).where(
-            Deal.stage == "closed_won",
-            Deal.closed_at >= dt_from, Deal.closed_at <= dt_to,
+            Appointment.scheduled_at >= dt_from, Appointment.scheduled_at <= dt_to,
+            Appointment.status.in_(["arrived", "completed"]),
         )
     )).scalar() or 0
 
-    conversion = round(won / total_leads * 100, 1) if total_leads else 0
+    conversion = round(arrived / total_appts * 100, 1) if total_appts else 0
 
     return KpiData(
         new_leads=new_leads,

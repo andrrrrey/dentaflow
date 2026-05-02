@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { ru } from "date-fns/locale";
 import KpiCards from "../components/dashboard/KpiCards";
 import AIInsightBanner from "../components/dashboard/AIInsightBanner";
 import FunnelChart from "../components/dashboard/FunnelChart";
@@ -44,13 +47,28 @@ function adaptDoctorsLoad(doctors: ReturnType<typeof useDoctorsLoad>["data"]): D
   }));
 }
 
-/* ── Component ───────────────────────────────────────────── */
-
-interface DashboardProps {
-  period?: "day" | "week" | "month";
+function getPeriodLabel(period: "day" | "week" | "month"): string {
+  const now = new Date();
+  if (period === "day") {
+    return format(now, "d MMMM yyyy", { locale: ru });
+  }
+  if (period === "week") {
+    const start = startOfWeek(now, { weekStartsOn: 1 });
+    const end = endOfWeek(now, { weekStartsOn: 1 });
+    return `${format(start, "d MMM", { locale: ru })} — ${format(end, "d MMM yyyy", { locale: ru })}`;
+  }
+  const start = startOfMonth(now);
+  const end = endOfMonth(now);
+  return `${format(start, "d MMM", { locale: ru })} — ${format(end, "d MMM yyyy", { locale: ru })}`;
 }
 
-export default function Dashboard({ period = "week" }: DashboardProps) {
+type Period = "day" | "week" | "month";
+const PERIOD_LABELS: Record<Period, string> = { day: "День", week: "Неделя", month: "Месяц" };
+
+/* ── Component ───────────────────────────────────────────── */
+
+export default function Dashboard() {
+  const [period, setPeriod] = useState<Period>("week");
   const { data: overview, isLoading: overviewLoading } = useDashboardOverview(period);
   const { data: rawInsights } = useAiInsights();
   const { data: rawDoctors } = useDoctorsLoad();
@@ -70,6 +88,28 @@ export default function Dashboard({ period = "week" }: DashboardProps) {
 
   return (
     <div className="flex flex-col gap-[18px]">
+      {/* Period selector */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 bg-[rgba(0,0,0,0.04)] rounded-lg p-1">
+          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-4 py-1.5 rounded-md text-[13px] font-semibold transition-all ${
+                period === p
+                  ? "bg-white shadow-sm text-text-main"
+                  : "text-text-muted hover:text-text-main"
+              }`}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+        <span className="text-[12px] text-text-muted font-medium">
+          {getPeriodLabel(period)}
+        </span>
+      </div>
+
       {/* AI Insight Banner */}
       <AIInsightBanner insights={aiInsights} />
 
