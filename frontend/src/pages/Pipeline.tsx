@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
 import KanbanBoard from "../components/pipeline/KanbanBoard";
 import DealModal from "../components/pipeline/DealModal";
 import AddDealModal from "../components/pipeline/AddDealModal";
-import { usePipelineQuery, useMoveDeal } from "../api/deals";
+import { usePipelineQuery, useMoveDeal, useDeleteDeal } from "../api/deals";
 import { useFunnel, usePatientsByStage } from "../api/pipeline_ext";
 import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
 
@@ -107,6 +107,8 @@ function PatientsSidePanel({ stage, onClose }: { stage: string; onClose: () => v
 export default function Pipeline() {
   const { data: pipelineData, isLoading: pipelineLoading } = usePipelineQuery();
   const moveDealMutation = useMoveDeal();
+  const deleteDealMutation = useDeleteDeal();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { data: funnel, isLoading: funnelLoading } = useFunnel();
 
   const [selectedDeal, setSelectedDeal] = useState<DealResponse | null>(null);
@@ -267,15 +269,15 @@ export default function Pipeline() {
           ) : (
             /* Table view */
             <div className="rounded-[18px] overflow-hidden" style={{ background: "rgba(255,255,255,0.65)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 4px 20px rgba(120,140,180,0.12)" }}>
-              <div className="grid grid-cols-[1fr_140px_120px_120px_100px] gap-3 px-[18px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
-                {["Пациент / Сделка", "Услуга", "Врач", "Этап", "Сумма"].map((h) => (
+              <div className="grid grid-cols-[1fr_140px_120px_120px_100px_36px] gap-3 px-[18px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
+                {["Пациент / Сделка", "Услуга", "Врач", "Этап", "Сумма", ""].map((h) => (
                   <span key={h} className="text-[10.5px] font-bold text-text-muted uppercase tracking-wider">{h}</span>
                 ))}
               </div>
               {tableRows.length === 0 ? (
                 <div className="text-center py-10 text-text-muted text-[13px]">Нет сделок</div>
               ) : tableRows.map((deal) => (
-                <div key={deal.id} onClick={() => setSelectedDeal(deal)} className="grid grid-cols-[1fr_140px_120px_120px_100px] gap-3 px-[18px] py-[12px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors cursor-pointer">
+                <div key={deal.id} onClick={() => setSelectedDeal(deal)} className="grid grid-cols-[1fr_140px_120px_120px_100px_36px] gap-3 px-[18px] py-[12px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors cursor-pointer">
                   <div className="min-w-0">
                     <div className="text-[13px] font-bold text-text-main truncate">{deal.title}</div>
                     {deal.patient_name && <div className="text-[11px] text-text-muted truncate">{deal.patient_name}</div>}
@@ -289,6 +291,26 @@ export default function Pipeline() {
                   </div>
                   <div className="text-[13px] font-bold text-text-main text-right self-center">
                     {deal.amount ? `${deal.amount.toLocaleString("ru-RU")} ₽` : "—"}
+                  </div>
+                  <div className="self-center flex justify-center" onClick={(e) => e.stopPropagation()}>
+                    {confirmDeleteId === deal.id ? (
+                      <button
+                        onClick={() => deleteDealMutation.mutate(deal.id, { onSuccess: () => setConfirmDeleteId(null) })}
+                        className="px-[6px] py-[2px] rounded-md text-[9.5px] font-bold text-white border-none cursor-pointer"
+                        style={{ background: "#F44B6E" }}
+                        title="Подтвердить удаление"
+                      >
+                        Удалить
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(deal.id)}
+                        className="w-7 h-7 rounded-[7px] flex items-center justify-center text-text-muted hover:text-[#F44B6E] hover:bg-[rgba(244,75,110,0.1)] transition-colors border-none cursor-pointer bg-transparent"
+                        title="Удалить сделку"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

@@ -13,6 +13,7 @@ from app.schemas.communication import (
     ReplyRequest,
 )
 from app.services.communications_service import (
+    delete_communication,
     get_communication_by_id,
     get_communication_stats,
     get_communications,
@@ -83,6 +84,16 @@ async def patch_communication(
             detail="Communication not found",
         )
     return item
+
+
+@router.delete("/{communication_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_communication_endpoint(
+    communication_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> None:
+    """Delete a communication by ID."""
+    await delete_communication(communication_id, db)
 
 
 @router.post("/{communication_id}/reply")

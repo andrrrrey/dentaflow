@@ -159,6 +159,45 @@ class AIService:
         )
 
     # ------------------------------------------------------------------
+    # Reports advice
+    # ------------------------------------------------------------------
+
+    async def generate_reports_advice(self, db=None) -> dict:
+        """Generate AI advice based on clinic reports data."""
+        if settings.APP_ENV == "development":
+            return self._mock_reports_advice()
+
+        kpi_summary = {}
+        if db is not None:
+            try:
+                from app.services.dashboard_service import get_dashboard_overview
+                from datetime import date, timedelta
+                date_to = date.today()
+                date_from = date_to - timedelta(days=30)
+                overview = await get_dashboard_overview(db, date_from=str(date_from), date_to=str(date_to))
+                kpi_summary = {
+                    "revenue": overview.revenue,
+                    "appointments": overview.appointments,
+                    "kpi": overview.kpi.__dict__ if hasattr(overview.kpi, "__dict__") else {},
+                }
+            except Exception:
+                pass
+
+        prompt = (
+            "Ты — AI-аналитик стоматологической клиники DentaFlow. "
+            "Проанализируй показатели клиники и дай 3-5 конкретных совета по улучшению бизнеса. "
+            "Каждый совет должен быть практичным и actionable.\n\n"
+            f"Данные за последние 30 дней: {json.dumps(kpi_summary, ensure_ascii=False, default=str)}\n\n"
+            "Верни JSON с ключами: summary (краткий вывод), advice (список советов строками), priority_action (главное действие)."
+        )
+
+        return await self._chat(
+            system="Ты — бизнес-аналитик стоматологической клиники. Давай конкретные, измеримые советы.",
+            user=prompt,
+            parse_json=True,
+        )
+
+    # ------------------------------------------------------------------
     # Communication prioritisation
     # ------------------------------------------------------------------
 
@@ -246,6 +285,20 @@ class AIService:
                 "Отправить напоминание VIP-пациентам о профосмотре",
                 "Рассмотреть добавление дополнительного приёмного дня к ортодонту",
             ],
+        }
+
+    @staticmethod
+    def _mock_reports_advice() -> dict:
+        return {
+            "summary": "За последние 30 дней клиника показывает стабильную динамику. Выручка на уровне плана, однако есть точки роста в повторных визитах и конверсии новых пациентов.",
+            "advice": [
+                "Запустить акцию «Приведи друга» — конверсия рефералов в 2× выше холодного трафика",
+                "Связаться с пациентами, не посещавшими клинику более 3 месяцев — высокий потенциал реактивации",
+                "Увеличить долю онлайн-записи: снижает нагрузку на администраторов на 30%",
+                "Ввести напоминания за 24 часа до приёма — сокращает неявки на 40%",
+                "Проанализировать загрузку врачей в слабые часы (12-14:00) и предложить скидку в это время",
+            ],
+            "priority_action": "Реактивировать пациентов с последним визитом 60-90 дней назад: позвонить и предложить профгигиену со скидкой 15%",
         }
 
     @staticmethod

@@ -95,17 +95,17 @@ export default function Patients() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="rounded-[18px] p-[18px] flex flex-col gap-4"
-          style={{ background: "rgba(255,255,255,0.80)", backdropFilter: "blur(18px)", border: "1px solid rgba(91,76,245,0.12)", boxShadow: "0 4px 20px rgba(91,76,245,0.10)" }}>
+        <div className="rounded-[18px] p-[20px] flex flex-col gap-5"
+          style={{ background: "rgba(255,255,255,0.90)", backdropFilter: "blur(18px)", border: "1px solid rgba(91,76,245,0.12)", boxShadow: "0 4px 20px rgba(91,76,245,0.10)" }}>
 
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-bold text-text-main">Фильтры</span>
+            <span className="text-[14px] font-bold text-text-main">Фильтры</span>
             <button onClick={() => setShowFilters(false)} className="text-text-muted hover:text-text-main border-none bg-transparent cursor-pointer"><X size={16} /></button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {/* Gender */}
-            <div className="flex flex-col gap-1">
+          {/* Row 1: simple selects */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Пол</label>
               <select value={draft.gender ?? ""} onChange={(e) => set("gender", e.target.value)} className={inputCls} style={inputStyle}>
                 <option value="">Все</option>
@@ -114,8 +114,7 @@ export default function Patients() {
               </select>
             </div>
 
-            {/* Source channel */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Источник</label>
               <select value={draft.source_channel ?? ""} onChange={(e) => set("source_channel", e.target.value)} className={inputCls} style={inputStyle}>
                 <option value="">Все</option>
@@ -123,8 +122,19 @@ export default function Patients() {
               </select>
             </div>
 
-            {/* Visited */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Тип пациента</label>
+              <select value={draft.patient_type ?? ""} onChange={(e) => set("patient_type", e.target.value)} className={inputCls} style={inputStyle}>
+                <option value="">Все</option>
+                <option value="new">Новые пациенты</option>
+                <option value="regular">Постоянные пациенты</option>
+                <option value="refused">Отказавшиеся</option>
+                <option value="potential">Потенциальные</option>
+                <option value="other">Остальные</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Визиты</label>
               <select value={draft.visited ?? ""} onChange={(e) => set("visited", e.target.value)} className={inputCls} style={inputStyle}>
                 <option value="">Все</option>
@@ -132,64 +142,65 @@ export default function Patients() {
                 <option value="not_visited">Не посетили</option>
               </select>
             </div>
+          </div>
 
-            {/* Revenue range */}
-            <div className="flex flex-col gap-1">
+          {/* Row 2: numeric ranges */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Сумма продаж, ₽</label>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-2 items-center">
                 <input type="number" placeholder="от" value={draft.revenue_min ?? ""} onChange={(e) => set("revenue_min", e.target.value ? Number(e.target.value) : undefined)} className={inputCls} style={inputStyle} />
-                <span className="text-text-muted text-[11px]">—</span>
+                <span className="text-text-muted text-[12px] flex-shrink-0">—</span>
                 <input type="number" placeholder="до" value={draft.revenue_max ?? ""} onChange={(e) => set("revenue_max", e.target.value ? Number(e.target.value) : undefined)} className={inputCls} style={inputStyle} />
               </div>
             </div>
 
-            {/* Visits count */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Кол-во визитов</label>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-2 items-center">
                 <input type="number" placeholder="от" value={draft.visits_min ?? ""} onChange={(e) => set("visits_min", e.target.value ? Number(e.target.value) : undefined)} className={inputCls} style={inputStyle} />
-                <span className="text-text-muted text-[11px]">—</span>
+                <span className="text-text-muted text-[12px] flex-shrink-0">—</span>
                 <input type="number" placeholder="до" value={draft.visits_max ?? ""} onChange={(e) => set("visits_max", e.target.value ? Number(e.target.value) : undefined)} className={inputCls} style={inputStyle} />
               </div>
             </div>
+          </div>
 
-            {/* Birth date range */}
-            <div className="flex flex-col gap-1">
+          {/* Row 3: date ranges */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">День рождения</label>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-2 items-center">
                 <input type="date" value={draft.birth_date_from ?? ""} onChange={(e) => set("birth_date_from", e.target.value)} className={inputCls} style={inputStyle} />
-                <span className="text-text-muted text-[11px]">—</span>
+                <span className="text-text-muted text-[12px] flex-shrink-0">—</span>
                 <input type="date" value={draft.birth_date_to ?? ""} onChange={(e) => set("birth_date_to", e.target.value)} className={inputCls} style={inputStyle} />
               </div>
             </div>
 
-            {/* Last visit range */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Последнее посещение</label>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-2 items-center">
                 <input type="date" value={draft.last_visit_from ?? ""} onChange={(e) => set("last_visit_from", e.target.value)} className={inputCls} style={inputStyle} />
-                <span className="text-text-muted text-[11px]">—</span>
+                <span className="text-text-muted text-[12px] flex-shrink-0">—</span>
                 <input type="date" value={draft.last_visit_to ?? ""} onChange={(e) => set("last_visit_to", e.target.value)} className={inputCls} style={inputStyle} />
               </div>
             </div>
 
-            {/* Added to system */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-text-muted uppercase tracking-wide">Добавлен в систему</label>
-              <div className="flex gap-1 items-center">
+              <div className="flex gap-2 items-center">
                 <input type="date" value={draft.created_from ?? ""} onChange={(e) => set("created_from", e.target.value)} className={inputCls} style={inputStyle} />
-                <span className="text-text-muted text-[11px]">—</span>
+                <span className="text-text-muted text-[12px] flex-shrink-0">—</span>
                 <input type="date" value={draft.created_to ?? ""} onChange={(e) => set("created_to", e.target.value)} className={inputCls} style={inputStyle} />
               </div>
             </div>
           </div>
 
           <div className="flex gap-3 pt-1">
-            <button onClick={applyFilters} className="px-6 py-[9px] rounded-[12px] text-[13px] font-bold text-white border-none cursor-pointer"
+            <button onClick={applyFilters} className="px-7 py-[10px] rounded-[12px] text-[13px] font-bold text-white border-none cursor-pointer"
               style={{ background: "linear-gradient(135deg,#5B4CF5,#3B7FED)" }}>
               Применить
             </button>
-            <button onClick={resetFilters} className="px-6 py-[9px] rounded-[12px] text-[13px] font-semibold border-none cursor-pointer"
+            <button onClick={resetFilters} className="px-7 py-[10px] rounded-[12px] text-[13px] font-semibold border-none cursor-pointer"
               style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
               Сбросить
             </button>

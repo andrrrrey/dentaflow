@@ -15,6 +15,7 @@ class AppointmentResponse(BaseModel):
     duration_min: int
     status: str | None
     no_show_risk: int | None
+    comment: str | None = None
     revenue: float | None
     created_at: datetime
 

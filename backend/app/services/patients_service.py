@@ -31,6 +31,7 @@ async def get_patients(
     search: str | None = None,
     visited: str | None = None,
     gender: str | None = None,
+    patient_type: str | None = None,
     source_channel: str | None = None,
     birth_date_from: str | None = None,
     birth_date_to: str | None = None,
@@ -61,6 +62,8 @@ async def get_patients(
         stmt = stmt.where(Patient.last_visit_at.is_(None))
     if gender:
         stmt = stmt.where(Patient.gender == gender)
+    if patient_type:
+        stmt = stmt.where(Patient.patient_type == patient_type)
     if source_channel:
         stmt = stmt.where(Patient.source_channel == source_channel)
     if birth_date_from:
@@ -165,6 +168,7 @@ async def get_patient_detail(
             duration_min=a.duration_min,
             status=a.status,
             no_show_risk=a.no_show_risk,
+            comment=a.comment,
             revenue=float(a.revenue) if a.revenue else None,
             created_at=a.created_at,
         )

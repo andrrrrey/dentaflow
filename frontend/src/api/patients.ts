@@ -30,6 +30,7 @@ export interface AppointmentResponse {
   duration_min: number;
   status: string | null;
   no_show_risk: number | null;
+  comment: string | null;
   revenue: number | null;
   created_at: string;
 }
@@ -119,6 +120,7 @@ export interface PatientFilters {
   search?: string;
   visited?: string;
   gender?: string;
+  patient_type?: string;
   source_channel?: string;
   birth_date_from?: string;
   birth_date_to?: string;

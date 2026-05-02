@@ -52,6 +52,10 @@ async def _sync_patients_async() -> dict:
             result = await session.execute(stmt)
             patient = result.scalar_one_or_none()
 
+            sex_val = p_data.get("sex", 0)
+            gender_val = "female" if sex_val == 2 else ("male" if sex_val == 1 else None)
+            patient_type_val = p_data.get("type")
+
             if patient is None:
                 patient = Patient(
                     external_id=ext_id,
@@ -61,6 +65,8 @@ async def _sync_patients_async() -> dict:
                     is_new_patient=p_data.get("is_new_patient", True),
                     total_revenue=p_data.get("total_revenue", 0),
                     tags=p_data.get("tags"),
+                    gender=gender_val,
+                    patient_type=patient_type_val,
                     raw_1denta_data=p_data,
                     synced_at=datetime.now(timezone.utc),
                 )
@@ -87,6 +93,8 @@ async def _sync_patients_async() -> dict:
                 patient.is_new_patient = p_data.get("is_new_patient", patient.is_new_patient)
                 patient.total_revenue = p_data.get("total_revenue", patient.total_revenue)
                 patient.tags = p_data.get("tags", patient.tags)
+                patient.gender = gender_val or patient.gender
+                patient.patient_type = patient_type_val or patient.patient_type
                 patient.raw_1denta_data = p_data
                 patient.synced_at = datetime.now(timezone.utc)
                 if p_data.get("last_visit_at"):
@@ -159,6 +167,7 @@ async def _sync_appointments_async() -> dict:
                     duration_min=a_data.get("duration_min", 30),
                     status=a_data.get("status"),
                     revenue=a_data.get("revenue"),
+                    comment=a_data.get("comment"),
                     synced_at=datetime.now(timezone.utc),
                 )
                 session.add(appointment)
@@ -173,6 +182,7 @@ async def _sync_appointments_async() -> dict:
                 appointment.duration_min = a_data.get("duration_min", appointment.duration_min)
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)
+                appointment.comment = a_data.get("comment", appointment.comment)
                 appointment.synced_at = datetime.now(timezone.utc)
                 updated += 1
 

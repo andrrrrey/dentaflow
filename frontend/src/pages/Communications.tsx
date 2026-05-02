@@ -7,7 +7,7 @@ import { api } from "../api/client";
 import {
   MessageCircle, Phone, PhoneMissed, Globe, Send,
   ArrowDownLeft, ArrowUpRight, Sparkles, Tag, GitBranch,
-  CheckCircle2,
+  CheckCircle2, Trash2,
 } from "lucide-react";
 import { formatDistanceToNow, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -61,10 +61,12 @@ function RequestRow({
   item,
   active,
   onClick,
+  onDelete,
 }: {
   item: CommunicationItem;
   active: boolean;
   onClick: () => void;
+  onDelete: (id: string) => void;
 }) {
   const pr = priorityStyles[item.priority] ?? priorityStyles.normal;
   const timeAgo = formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ru });
@@ -99,6 +101,13 @@ function RequestRow({
           className="w-[7px] h-[7px] rounded-full flex-shrink-0"
           style={{ background: statusDot[item.status] ?? "#ccc" }}
         />
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+          className="flex-shrink-0 p-[3px] rounded-md hover:bg-[rgba(244,75,110,0.12)] text-text-muted hover:text-[#c52048] transition-colors border-none cursor-pointer bg-transparent"
+          title="Удалить"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
 
       {/* channel + priority + time */}
@@ -267,6 +276,17 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
 export default function Communications() {
   const { filters } = useCommunicationsStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/communications/${id}`);
+    },
+    onSuccess: (_, id) => {
+      if (selectedId === id) setSelectedId(null);
+      queryClient.invalidateQueries({ queryKey: ["communications"] });
+    },
+  });
 
   const { data, isLoading } = useCommunications({
     status: filters.status,
@@ -320,7 +340,7 @@ export default function Communications() {
           >
             <div className="px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)]">
               <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
-                Новые заявки · {items.length}
+                Заявки · {items.length}
               </span>
             </div>
             {items.map((item) => (
@@ -329,6 +349,7 @@ export default function Communications() {
                 item={item}
                 active={item.id === selectedId}
                 onClick={() => setSelectedId(item.id === selectedId ? null : item.id)}
+                onDelete={(id) => deleteMutation.mutate(id)}
               />
             ))}
           </div>

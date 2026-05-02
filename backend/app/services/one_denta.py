@@ -339,11 +339,17 @@ class OneDentaService:
         service_name = services[0]["name"] if services else ""
         client_val = v.get("client")
         resource_val = v.get("resourceId")
+        resource_obj = v.get("resource") or {}
+        doctor_name_val = (
+            resource_obj.get("name")
+            or v.get("resourceName")
+            or ""
+        )
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,
             "doctor_id": str(resource_val) if resource_val is not None else "",
-            "doctor_name": "",
+            "doctor_name": doctor_name_val,
             "service": service_name,
             "services": services,
             "scheduled_at": v.get("datetime"),

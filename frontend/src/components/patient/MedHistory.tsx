@@ -79,6 +79,11 @@ export default function MedHistory({ appointments }: MedHistoryProps) {
                 </span>
               </div>
             </div>
+            {apt.comment && (
+              <div className="mt-2 px-[10px] py-[6px] rounded-[8px] text-[12px] text-text-muted italic" style={{ background: "rgba(91,76,245,0.04)", borderLeft: "2px solid rgba(91,76,245,0.2)" }}>
+                {apt.comment}
+              </div>
+            )}
           </div>
         );
       })}

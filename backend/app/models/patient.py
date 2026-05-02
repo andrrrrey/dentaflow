@@ -34,6 +34,7 @@ class Patient(Base):
         Numeric(12, 2), default=0
     )
     gender: Mapped[str | None] = mapped_column(String(10), nullable=True)  # male|female
+    patient_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # new|regular|refused|potential|noGroup
     ltv_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # AI LTV 0-100
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(

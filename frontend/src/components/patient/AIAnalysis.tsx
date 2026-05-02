@@ -1,17 +1,25 @@
+import { useState } from "react";
 import {
   Sparkles,
   ShieldAlert,
   Target,
   TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import type { AIAnalysis as AIAnalysisType } from "../../api/patients";
+import { useAnalyzePatient, type PatientAiAnalysis } from "../../api/ai";
 
 interface AIAnalysisProps {
   analysis: AIAnalysisType;
+  patientId?: string;
 }
 
-export default function AIAnalysis({ analysis }: AIAnalysisProps) {
-  const prob = analysis.return_probability;
+export default function AIAnalysis({ analysis, patientId }: AIAnalysisProps) {
+  const [liveAnalysis, setLiveAnalysis] = useState<PatientAiAnalysis | null>(null);
+  const analyzeMutation = useAnalyzePatient();
+
+  const displayed = liveAnalysis ?? analysis;
+  const prob = displayed.return_probability;
 
   // Color based on probability
   let barColor = "#00C9A7"; // green
@@ -36,9 +44,24 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
           <Sparkles size={16} className="text-white" />
-          <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">
+          <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase flex-1">
             ИИ-Анализ пациента
           </span>
+          {patientId && (
+            <button
+              onClick={() =>
+                analyzeMutation.mutate(patientId, {
+                  onSuccess: (data) => setLiveAnalysis(data),
+                })
+              }
+              disabled={analyzeMutation.isPending}
+              className="flex items-center gap-1 px-[8px] py-[3px] rounded-full text-[10px] font-semibold border border-white/30 bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50"
+              title="Сгенерировать анализ"
+            >
+              <RefreshCw size={10} className={analyzeMutation.isPending ? "animate-spin" : ""} />
+              {analyzeMutation.isPending ? "..." : "Обновить"}
+            </button>
+          )}
         </div>
 
         {/* Return probability */}
@@ -49,7 +72,7 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
               Вероятность возврата
             </span>
             <span className="text-[16px] font-extrabold text-white">
-              {prob}%
+              {prob ?? 0}%
             </span>
           </div>
           <div className="w-full h-[6px] rounded-full bg-white/20">
@@ -73,7 +96,7 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
             </span>
           </div>
           <div className="space-y-1.5">
-            {analysis.barriers.map((barrier, i) => (
+            {(displayed.barriers ?? []).map((barrier, i) => (
               <div
                 key={i}
                 className="flex items-center gap-2 px-3 py-[6px] rounded-[10px]"
@@ -100,13 +123,13 @@ export default function AIAnalysis({ analysis }: AIAnalysisProps) {
             className="px-3 py-[8px] rounded-[10px] text-[12px] text-white font-medium leading-relaxed"
             style={{ background: "rgba(255,255,255,0.12)" }}
           >
-            {analysis.next_action}
+            {displayed.next_action}
           </div>
         </div>
 
         {/* Summary */}
         <p className="text-[12px] text-white/80 leading-relaxed">
-          {analysis.summary}
+          {displayed.summary}
         </p>
       </div>
     </div>

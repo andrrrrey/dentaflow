@@ -3,7 +3,8 @@ import { format, subDays } from "date-fns";
 import Card from "../components/ui/Card";
 import StatCard from "../components/ui/StatCard";
 import { useRevenueReport, usePatientsReport, useServicesReport, useDoctorsReport } from "../api/reports";
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Sparkles, Lightbulb } from "lucide-react";
+import { useReportsAdvice } from "../api/ai";
 
 const DAY_PAGE = 10;
 const DAY_PREVIEW = 7;
@@ -19,6 +20,7 @@ export default function Reports() {
   const { data: patients, isLoading: patLoading } = usePatientsReport(params);
   const { data: services } = useServicesReport(params);
   const { data: doctors } = useDoctorsReport(params);
+  const { data: advice, isLoading: adviceLoading } = useReportsAdvice();
 
   const inputStyle = {
     border: "1px solid rgba(91,76,245,0.15)",
@@ -45,6 +47,43 @@ export default function Reports() {
           className="rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-text-main outline-none"
           style={inputStyle}
         />
+      </div>
+
+      {/* AI Advice Banner */}
+      <div
+        className="rounded-[18px] p-[18px_22px] relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
+          boxShadow: "0 4px 24px rgba(91,76,245,0.18)",
+        }}
+      >
+        <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full opacity-20" style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }} />
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles size={15} className="text-white" />
+            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Советник</span>
+          </div>
+          {adviceLoading ? (
+            <p className="text-[13px] text-white/80">Анализирую данные...</p>
+          ) : advice ? (
+            <>
+              <p className="text-[14px] font-semibold text-white leading-relaxed mb-3" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>
+                {advice.summary}
+              </p>
+              <div className="flex flex-col gap-[6px] mb-3">
+                {advice.advice.map((tip, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <Lightbulb size={12} className="text-white/70 mt-[2px] flex-shrink-0" />
+                    <span className="text-[12px] text-white/90">{tip}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="px-[12px] py-[8px] rounded-[10px] text-[12px] font-semibold text-white" style={{ background: "rgba(255,255,255,0.15)" }}>
+                → {advice.priority_action}
+              </div>
+            </>
+          ) : null}
+        </div>
       </div>
 
       {/* KPI cards */}

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.services.ai_service import AIService
@@ -43,6 +46,46 @@ async def get_insights(
     ai = AIService()
     insights = await ai.generate_daily_insights(kpi={})
     return insights
+
+
+@router.post("/patient/{patient_id}")
+async def analyze_patient(
+    patient_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate AI analysis for a specific patient."""
+    from app.services.patients_service import get_patient_detail
+
+    detail = await get_patient_detail(patient_id, db=db)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    patient_data = {
+        "name": detail.name,
+        "total_revenue": detail.total_revenue,
+        "is_new_patient": detail.is_new_patient,
+        "last_visit_at": detail.last_visit_at.isoformat() if detail.last_visit_at else None,
+        "tags": detail.tags,
+        "stats": detail.stats.model_dump() if detail.stats else {},
+    }
+    history = [
+        {"service": a.service, "status": a.status, "date": a.scheduled_at.isoformat() if a.scheduled_at else None, "comment": a.comment}
+        for a in (detail.appointments or [])[:20]
+    ]
+
+    ai = AIService()
+    return await ai.analyze_patient(patient_data=patient_data, history=history)
+
+
+@router.get("/reports/advice")
+async def get_reports_advice(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate AI advice summary for the reports page."""
+    ai = AIService()
+    return await ai.generate_reports_advice(db=db)
 
 
 class SuggestionRequest(BaseModel):

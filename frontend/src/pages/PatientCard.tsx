@@ -105,7 +105,7 @@ export default function PatientCard() {
             <MedHistory appointments={patient.appointments} />
           )}
           {activeTab === "stats" && (
-            <PatientStats stats={patient.stats} rawData={patient.raw_1denta_data} />
+            <PatientStats stats={patient.stats} rawData={patient.raw_1denta_data} appointments={patient.appointments} />
           )}
           {activeTab === "communications" && (
             <CommHistory communications={patient.communications} />
@@ -120,7 +120,7 @@ export default function PatientCard() {
 
         {/* Right: AI Analysis */}
         <div className="lg:w-[340px] flex-shrink-0">
-          <AIAnalysis analysis={patient.ai_analysis} />
+          <AIAnalysis analysis={patient.ai_analysis} patientId={patient.id} />
         </div>
       </div>
     </div>

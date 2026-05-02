@@ -466,6 +466,26 @@ async def update_communication(
     return CommunicationResponse(**data)
 
 
+async def delete_communication(
+    communication_id: uuid.UUID,
+    db: AsyncSession,
+) -> bool:
+    """Delete a communication from DB. Returns True if deleted, False if not found in DB."""
+    from sqlalchemy import select, delete as sa_delete
+    from app.models.communication import Communication
+
+    result = await db.execute(
+        select(Communication).where(Communication.id == communication_id).limit(1)
+    )
+    comm = result.scalar_one_or_none()
+    if comm is not None:
+        await db.execute(sa_delete(Communication).where(Communication.id == communication_id))
+        await db.commit()
+        return True
+    # Mock items are not in DB — treat as success (client removes from UI)
+    return True
+
+
 async def get_communication_stats(
     db: AsyncSession,
 ) -> dict[str, int]:

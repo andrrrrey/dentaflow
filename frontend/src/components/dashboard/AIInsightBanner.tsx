@@ -6,10 +6,10 @@ interface AIInsightBannerProps {
 }
 
 const chipColors: Record<AIChip["type"], string> = {
-  ok: "bg-[rgba(0,201,167,0.18)] text-[#007d6e]",
-  warn: "bg-[rgba(245,166,35,0.18)] text-[#b87200]",
-  danger: "bg-[rgba(244,75,110,0.18)] text-[#c52048]",
-  blue: "bg-[rgba(59,127,237,0.18)] text-[#1a55b0]",
+  ok: "bg-[rgba(255,255,255,0.20)] text-white border border-[rgba(255,255,255,0.30)]",
+  warn: "bg-[rgba(255,200,100,0.25)] text-white border border-[rgba(255,200,100,0.35)]",
+  danger: "bg-[rgba(255,100,120,0.25)] text-white border border-[rgba(255,100,120,0.35)]",
+  blue: "bg-[rgba(255,255,255,0.15)] text-white border border-[rgba(255,255,255,0.25)]",
 };
 
 export default function AIInsightBanner({ insights }: AIInsightBannerProps) {
@@ -37,7 +37,7 @@ export default function AIInsightBanner({ insights }: AIInsightBannerProps) {
         </div>
 
         {/* Summary */}
-        <p className="text-sm text-white font-medium leading-relaxed mb-3">
+        <p className="text-[14px] text-white font-semibold leading-relaxed mb-3" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.25)" }}>
           {insights.summary}
         </p>
 

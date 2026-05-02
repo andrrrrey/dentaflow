@@ -1,11 +1,12 @@
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import type { PatientStats as StatsType } from "../../api/patients";
-import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database } from "lucide-react";
+import type { PatientStats as StatsType, AppointmentResponse } from "../../api/patients";
+import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database, BarChart2 } from "lucide-react";
 
 interface Props {
   stats: StatsType;
   rawData: Record<string, unknown> | null;
+  appointments?: AppointmentResponse[];
 }
 
 function StatTile({ label, value, sub, icon }: { label: string; value: string | number; sub?: string; icon: React.ReactNode }) {
@@ -34,8 +35,16 @@ function fmt(dt: string | null): string {
   try { return format(parseISO(dt), "d MMM yyyy", { locale: ru }); } catch { return dt; }
 }
 
-export default function PatientStats({ stats, rawData }: Props) {
+export default function PatientStats({ stats, rawData, appointments = [] }: Props) {
   const showRaw = rawData && Object.keys(rawData).length > 0;
+
+  const frequentServices = (() => {
+    const counts = new Map<string, number>();
+    for (const a of appointments) {
+      if (a.service) counts.set(a.service, (counts.get(a.service) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  })();
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,6 +91,40 @@ export default function PatientStats({ stats, rawData }: Props) {
           <div className="text-[14px] font-bold text-text-main">{fmt(stats.last_visit_at)}</div>
         </div>
       </div>
+
+      {/* Frequent services */}
+      {frequentServices.length > 0 && (
+        <div
+          className="rounded-[16px] p-[14px_16px] flex flex-col gap-3"
+          style={{
+            background: "rgba(255,255,255,0.70)",
+            backdropFilter: "blur(18px)",
+            border: "1px solid rgba(255,255,255,0.85)",
+            boxShadow: "0 4px 18px rgba(120,140,180,0.10)",
+          }}
+        >
+          <div className="flex items-center gap-2 text-[12px] font-bold text-text-muted">
+            <BarChart2 size={14} />
+            Часто посещаемые услуги
+          </div>
+          <div className="flex flex-col gap-2">
+            {frequentServices.map(([service, count]) => {
+              const pct = Math.round((count / stats.total_visits) * 100);
+              return (
+                <div key={service} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-semibold text-text-main truncate">{service}</div>
+                    <div className="w-full h-[4px] rounded-full mt-1" style={{ background: "rgba(91,76,245,0.08)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#5B4CF5,#3B7FED)" }} />
+                    </div>
+                  </div>
+                  <span className="text-[12px] font-bold text-accent2 flex-shrink-0">{count}×</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Raw 1denta data */}
       {showRaw && (
