@@ -24,15 +24,6 @@ const statusLabels: Record<string, string> = {
   no_show: "Не явился",
 };
 
-const statusVariant: Record<string, "green" | "blue" | "yellow" | "red" | "purple" | "gray"> = {
-  confirmed: "green",
-  unconfirmed: "blue",
-  arrived: "purple",
-  completed: "purple",
-  cancelled: "red",
-  no_show: "yellow",
-};
-
 const sexLabels: Record<number, string> = { 1: "Мужской", 2: "Женский" };
 
 function formatDt(iso: string | null): string {
