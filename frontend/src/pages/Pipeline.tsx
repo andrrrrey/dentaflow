@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check } from "lucide-react";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
@@ -9,6 +9,8 @@ import DealModal from "../components/pipeline/DealModal";
 import AddDealModal from "../components/pipeline/AddDealModal";
 import { usePipelineQuery, useMoveDeal, useDeleteDeal } from "../api/deals";
 import { useFunnel, usePatientsByStage } from "../api/pipeline_ext";
+import { usePipelineStages, useRenameStage, useReorderStages } from "../api/pipelineStages";
+import type { PipelineStage } from "../api/pipelineStages";
 import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
 
 /* -- Helpers -- */
@@ -31,7 +33,7 @@ function uniqueAssigned(stages: StageColumn[]) {
 const FUNNEL_COLORS = ["#5B4CF5", "#3B7FED", "#00C9A7", "#F5A623", "#F44B6E", "#a855f7"];
 const TABLE_PAGE = 20;
 
-const STAGE_LABELS: Record<string, string> = {
+const FALLBACK_STAGE_LABELS: Record<string, string> = {
   waiting_list: "Лист ожидания",
   new: "Новые",
   contact: "Контакт",
@@ -42,7 +44,7 @@ const STAGE_LABELS: Record<string, string> = {
   closed_lost: "Закрыто ✗",
 };
 
-const STAGE_COLOR: Record<string, string> = {
+const FALLBACK_STAGE_COLOR: Record<string, string> = {
   waiting_list: "#a855f7",
   new: "#3B7FED",
   contact: "#F5A623",
@@ -52,6 +54,17 @@ const STAGE_COLOR: Record<string, string> = {
   closed_won: "#00C9A7",
   closed_lost: "#f44b6e",
 };
+
+function buildStageMaps(stages: PipelineStage[] | undefined) {
+  if (!stages?.length) return { labels: FALLBACK_STAGE_LABELS, colors: FALLBACK_STAGE_COLOR };
+  const labels: Record<string, string> = {};
+  const colors: Record<string, string> = {};
+  for (const s of stages) {
+    labels[s.key] = s.label;
+    colors[s.key] = s.color;
+  }
+  return { labels, colors };
+}
 
 const qualityVariant: Record<string, "green" | "yellow" | "red" | "gray"> = {
   "Горячий": "green",
@@ -110,6 +123,11 @@ export default function Pipeline() {
   const deleteDealMutation = useDeleteDeal();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { data: funnel, isLoading: funnelLoading } = useFunnel();
+  const { data: apiStages } = usePipelineStages();
+  const renameStageMutation = useRenameStage();
+  const reorderStagesMutation = useReorderStages();
+
+  const { labels: STAGE_LABELS, colors: STAGE_COLOR } = useMemo(() => buildStageMaps(apiStages), [apiStages]);
 
   const [selectedDeal, setSelectedDeal] = useState<DealResponse | null>(null);
   const [filterAssigned, setFilterAssigned] = useState("");
@@ -119,6 +137,36 @@ export default function Pipeline() {
   const [crmView, setCrmView] = useState<"kanban" | "table">("kanban");
   const [tablePage, setTablePage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [showStageManager, setShowStageManager] = useState(false);
+  const dragItemRef = useRef<number | null>(null);
+  const dragOverRef = useRef<number | null>(null);
+
+  const handleRenameStage = useCallback((stageId: string, currentLabel: string) => {
+    setEditingStageId(stageId);
+    setEditLabel(currentLabel);
+  }, []);
+
+  const confirmRename = useCallback(() => {
+    if (editingStageId && editLabel.trim()) {
+      renameStageMutation.mutate({ id: editingStageId, label: editLabel.trim() });
+    }
+    setEditingStageId(null);
+  }, [editingStageId, editLabel, renameStageMutation]);
+
+  const handleDragStart = useCallback((idx: number) => { dragItemRef.current = idx; }, []);
+  const handleDragEnter = useCallback((idx: number) => { dragOverRef.current = idx; }, []);
+  const handleDragEnd = useCallback(() => {
+    if (apiStages && dragItemRef.current !== null && dragOverRef.current !== null && dragItemRef.current !== dragOverRef.current) {
+      const reordered = [...apiStages];
+      const [removed] = reordered.splice(dragItemRef.current, 1);
+      reordered.splice(dragOverRef.current, 0, removed);
+      reorderStagesMutation.mutate(reordered.map((s) => s.id));
+    }
+    dragItemRef.current = null;
+    dragOverRef.current = null;
+  }, [apiStages, reorderStagesMutation]);
 
   const pipeline: PipelineResponse = pipelineData ?? { stages: [], total_pipeline_value: 0 };
   const assignedUsers = useMemo(() => uniqueAssigned(pipeline.stages), [pipeline.stages]);
@@ -158,6 +206,69 @@ export default function Pipeline() {
           </button>
         ))}
       </div>
+
+      {/* Stage manager toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setShowStageManager(!showStageManager)}
+          className="text-[11px] text-accent2 font-semibold bg-transparent border-none cursor-pointer hover:underline"
+        >
+          {showStageManager ? "Скрыть настройку этапов" : "Настроить этапы воронки"}
+        </button>
+      </div>
+
+      {/* Stage manager panel */}
+      {showStageManager && apiStages && (
+        <Card>
+          <div className="text-[13px] font-bold mb-3">Этапы воронки</div>
+          <div className="text-[11px] text-text-muted mb-3">Перетащите для изменения порядка. Дважды кликните для переименования.</div>
+          <div className="flex flex-col gap-1">
+            {apiStages.map((stage, idx) => (
+              <div
+                key={stage.id}
+                draggable
+                onDragStart={() => handleDragStart(idx)}
+                onDragEnter={() => handleDragEnter(idx)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => e.preventDefault()}
+                className="flex items-center gap-2 px-3 py-[8px] rounded-[10px] hover:bg-[rgba(91,76,245,0.04)] cursor-grab active:cursor-grabbing transition-colors"
+                style={{ borderLeft: `3px solid ${stage.color}` }}
+              >
+                <GripVertical size={13} className="text-text-muted flex-shrink-0" />
+                {editingStageId === stage.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); if (e.key === "Escape") setEditingStageId(null); }}
+                      autoFocus
+                      className="flex-1 text-[12.5px] font-semibold rounded-[8px] px-2 py-1 outline-none"
+                      style={{ border: "1px solid rgba(91,76,245,0.3)", background: "rgba(255,255,255,0.9)" }}
+                    />
+                    <button onClick={confirmRename} className="text-[#00C9A7] bg-transparent border-none cursor-pointer p-1"><Check size={14} /></button>
+                  </div>
+                ) : (
+                  <span
+                    className="text-[12.5px] font-semibold flex-1 cursor-text"
+                    onDoubleClick={() => handleRenameStage(stage.id, stage.label)}
+                  >
+                    {stage.label}
+                  </span>
+                )}
+                {!stage.is_system && editingStageId !== stage.id && (
+                  <button
+                    onClick={() => handleRenameStage(stage.id, stage.label)}
+                    className="text-text-muted hover:text-accent2 bg-transparent border-none cursor-pointer p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Переименовать"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {activeTab === "funnel" ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

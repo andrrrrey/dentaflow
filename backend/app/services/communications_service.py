@@ -15,6 +15,9 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_deleted_mock_ids: set[uuid.UUID] = set()
+
+
 def _mock_communications() -> list[CommunicationResponse]:
     """Generate 18 realistic mock communications for a dental clinic."""
     now = _utcnow()
@@ -404,7 +407,7 @@ async def get_communications(
     In development mode, returns realistic mock data.
     In production, will query the database.
     """
-    all_items = _mock_communications()
+    all_items = [i for i in _mock_communications() if i.id not in _deleted_mock_ids]
 
     # Filter
     filtered = all_items
@@ -438,6 +441,8 @@ async def get_communication_by_id(
     db: AsyncSession,
 ) -> CommunicationResponse | None:
     """Return a single communication by ID."""
+    if communication_id in _deleted_mock_ids:
+        return None
     all_items = _mock_communications()
     for item in all_items:
         if item.id == communication_id:
@@ -482,7 +487,8 @@ async def delete_communication(
         await db.execute(sa_delete(Communication).where(Communication.id == communication_id))
         await db.commit()
         return True
-    # Mock items are not in DB — treat as success (client removes from UI)
+    # Mock item — track as deleted so it won't reappear
+    _deleted_mock_ids.add(communication_id)
     return True
 
 
@@ -490,7 +496,7 @@ async def get_communication_stats(
     db: AsyncSession,
 ) -> dict[str, int]:
     """Return counts by status."""
-    all_items = _mock_communications()
+    all_items = [i for i in _mock_communications() if i.id not in _deleted_mock_ids]
     stats: dict[str, int] = {"new": 0, "in_progress": 0, "done": 0, "ignored": 0}
     for item in all_items:
         stats[item.status] = stats.get(item.status, 0) + 1

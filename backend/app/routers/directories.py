@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,7 @@ from app.models.user import User
 from app.services.one_denta import OneDentaService
 
 router = APIRouter(prefix="/api/v1/directories", tags=["directories"])
+logger = logging.getLogger(__name__)
 
 
 def _normalize_service(s: dict) -> dict:
@@ -51,9 +54,13 @@ async def list_services(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    svc = await OneDentaService.from_db(db)
-    raw = await svc.get_services()
-    return {"services": [_normalize_service(s) for s in raw]}
+    try:
+        svc = await OneDentaService.from_db(db)
+        raw = await svc.get_services()
+        return {"services": [_normalize_service(s) for s in raw]}
+    except Exception:
+        logger.exception("Failed to fetch services from 1Denta")
+        return {"services": [], "error": "Не удалось загрузить данные из 1Denta"}
 
 
 @router.get("/resources")
@@ -61,9 +68,13 @@ async def list_resources(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    svc = await OneDentaService.from_db(db)
-    raw = await svc.get_resources()
-    return {"resources": [_normalize_resource(r) for r in raw]}
+    try:
+        svc = await OneDentaService.from_db(db)
+        raw = await svc.get_resources()
+        return {"resources": [_normalize_resource(r) for r in raw]}
+    except Exception:
+        logger.exception("Failed to fetch resources from 1Denta")
+        return {"resources": [], "error": "Не удалось загрузить данные из 1Denta"}
 
 
 @router.get("/commodities")
@@ -71,6 +82,10 @@ async def list_commodities(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    svc = await OneDentaService.from_db(db)
-    raw = await svc.get_commodities()
-    return {"commodities": [_normalize_commodity(c) for c in raw]}
+    try:
+        svc = await OneDentaService.from_db(db)
+        raw = await svc.get_commodities()
+        return {"commodities": [_normalize_commodity(c) for c in raw]}
+    except Exception:
+        logger.exception("Failed to fetch commodities from 1Denta")
+        return {"commodities": [], "error": "Не удалось загрузить данные из 1Denta"}

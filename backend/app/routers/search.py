@@ -66,7 +66,7 @@ async def global_search(
     # Communications
     comms_result = await db.execute(
         select(Communication)
-        .where(or_(Communication.content.ilike(term), Communication.phone.ilike(term)))
+        .where(Communication.content.ilike(term))
         .order_by(Communication.created_at.desc())
         .limit(limit)
     )

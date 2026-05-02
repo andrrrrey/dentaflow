@@ -1,7 +1,7 @@
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import type { PatientStats as StatsType, AppointmentResponse } from "../../api/patients";
-import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database, BarChart2 } from "lucide-react";
+import { TrendingUp, Calendar, UserCheck, Stethoscope, XCircle, AlertTriangle, Database, BarChart2, User, CreditCard, FileText } from "lucide-react";
 
 interface Props {
   stats: StatsType;
@@ -35,15 +35,72 @@ function fmt(dt: string | null): string {
   try { return format(parseISO(dt), "d MMM yyyy", { locale: ru }); } catch { return dt; }
 }
 
-export default function PatientStats({ stats, rawData, appointments = [] }: Props) {
-  const showRaw = rawData && Object.keys(rawData).length > 0;
+function RawDataTile({ title, icon, entries }: { title: string; icon: React.ReactNode; entries: [string, unknown][] }) {
+  return (
+    <div
+      className="rounded-[16px] p-[14px_16px] flex flex-col gap-3"
+      style={{
+        background: "rgba(255,255,255,0.70)",
+        backdropFilter: "blur(18px)",
+        border: "1px solid rgba(255,255,255,0.85)",
+        boxShadow: "0 4px 18px rgba(120,140,180,0.10)",
+      }}
+    >
+      <div className="flex items-center gap-2 text-[12px] font-bold text-text-muted">
+        {icon}
+        {title}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {entries.map(([key, val]) => (
+          <div key={key} className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-text-muted font-semibold uppercase tracking-wide">{key}</span>
+            <span className="text-[12.5px] text-text-main font-medium">{String(val)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
+export default function PatientStats({ stats, rawData, appointments = [] }: Props) {
   const frequentServices = (() => {
     const counts = new Map<string, number>();
     for (const a of appointments) {
       if (a.service) counts.set(a.service, (counts.get(a.service) ?? 0) + 1);
     }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  })();
+
+  const favoriteDoctors = (() => {
+    const counts = new Map<string, number>();
+    for (const a of appointments) {
+      if (a.doctor_name) counts.set(a.doctor_name, (counts.get(a.doctor_name) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  })();
+
+  const rawGroups = (() => {
+    if (!rawData || Object.keys(rawData).length === 0) return null;
+    const contact: [string, unknown][] = [];
+    const medical: [string, unknown][] = [];
+    const financial: [string, unknown][] = [];
+    const other: [string, unknown][] = [];
+
+    const contactKeys = ["phone", "email", "secondPhone", "secondEmail", "address", "city", "zip", "birthDate", "gender", "name", "firstName", "lastName", "middleName", "surname"];
+    const medicalKeys = ["allergies", "diagnosis", "contraindications", "notes", "medicalNotes", "bloodType", "diseases", "health"];
+    const financialKeys = ["balance", "discount", "discountPercent", "debt", "totalPaid", "bonuses", "price", "revenue"];
+
+    for (const [key, val] of Object.entries(rawData)) {
+      if (val === null || val === undefined || val === "") continue;
+      if (typeof val === "object") continue;
+      const k = key.toLowerCase();
+      if (contactKeys.some(ck => k.includes(ck.toLowerCase()))) contact.push([key, val]);
+      else if (medicalKeys.some(mk => k.includes(mk.toLowerCase()))) medical.push([key, val]);
+      else if (financialKeys.some(fk => k.includes(fk.toLowerCase()))) financial.push([key, val]);
+      else other.push([key, val]);
+    }
+
+    return { contact, medical, financial, other };
   })();
 
   return (
@@ -126,8 +183,8 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
         </div>
       )}
 
-      {/* Raw 1denta data */}
-      {showRaw && (
+      {/* Favorite doctors */}
+      {favoriteDoctors.length > 0 && (
         <div
           className="rounded-[16px] p-[14px_16px] flex flex-col gap-3"
           style={{
@@ -138,22 +195,44 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
           }}
         >
           <div className="flex items-center gap-2 text-[12px] font-bold text-text-muted">
-            <Database size={14} />
-            Данные из 1Denta
+            <Stethoscope size={14} />
+            Любимые врачи
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {Object.entries(rawData!).map(([key, val]) => {
-              if (val === null || val === undefined || val === "") return null;
-              if (typeof val === "object") return null;
+          <div className="flex flex-col gap-2">
+            {favoriteDoctors.map(([doctor, count]) => {
+              const pct = Math.round((count / stats.total_visits) * 100);
               return (
-                <div key={key} className="flex flex-col gap-0.5">
-                  <span className="text-[10px] text-text-muted font-semibold uppercase tracking-wide">{key}</span>
-                  <span className="text-[12.5px] text-text-main font-medium">{String(val)}</span>
+                <div key={doctor} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-semibold text-text-main truncate">{doctor}</div>
+                    <div className="w-full h-[4px] rounded-full mt-1" style={{ background: "rgba(0,201,167,0.12)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#00C9A7,#3B7FED)" }} />
+                    </div>
+                  </div>
+                  <span className="text-[12px] font-bold text-[#00C9A7] flex-shrink-0">{count}×</span>
                 </div>
               );
             })}
           </div>
         </div>
+      )}
+
+      {/* 1Denta data in separate tiles */}
+      {rawGroups && (
+        <>
+          {rawGroups.contact.length > 0 && (
+            <RawDataTile title="Контактные данные" icon={<User size={14} />} entries={rawGroups.contact} />
+          )}
+          {rawGroups.medical.length > 0 && (
+            <RawDataTile title="Медицинские данные" icon={<FileText size={14} />} entries={rawGroups.medical} />
+          )}
+          {rawGroups.financial.length > 0 && (
+            <RawDataTile title="Финансы" icon={<CreditCard size={14} />} entries={rawGroups.financial} />
+          )}
+          {rawGroups.other.length > 0 && (
+            <RawDataTile title="Прочие данные из 1Denta" icon={<Database size={14} />} entries={rawGroups.other} />
+          )}
+        </>
       )}
     </div>
   );

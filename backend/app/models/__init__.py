@@ -9,6 +9,7 @@ from app.models.notification import Notification
 from app.models.integration_setting import IntegrationSetting
 from app.models.deal_note import DealNote
 from app.models.script import Script
+from app.models.pipeline_stage import PipelineStage
 
 __all__ = [
     "Base",
@@ -23,4 +24,5 @@ __all__ = [
     "Notification",
     "IntegrationSetting",
     "Script",
+    "PipelineStage",
 ]

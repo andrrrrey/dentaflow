@@ -1,4 +1,5 @@
-import { Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import type { AIInsights, AIChip } from "../../types";
 
 interface AIInsightBannerProps {
@@ -12,7 +13,15 @@ const chipColors: Record<AIChip["type"], string> = {
   blue: "bg-[rgba(255,255,255,0.15)] text-white border border-[rgba(255,255,255,0.25)]",
 };
 
+const SUMMARY_LIMIT = 120;
+
 export default function AIInsightBanner({ insights }: AIInsightBannerProps) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = insights.summary.length > SUMMARY_LIMIT;
+  const displayText = isLong && !expanded
+    ? insights.summary.slice(0, SUMMARY_LIMIT) + "…"
+    : insights.summary;
+
   return (
     <div
       className="rounded-glass p-[20px_22px] relative overflow-hidden"
@@ -37,9 +46,17 @@ export default function AIInsightBanner({ insights }: AIInsightBannerProps) {
         </div>
 
         {/* Summary */}
-        <p className="text-[14px] text-white font-semibold leading-relaxed mb-3" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.25)" }}>
-          {insights.summary}
+        <p className="text-[14px] text-white font-semibold leading-relaxed mb-1" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.25)" }}>
+          {displayText}
         </p>
+        {isLong && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-[11px] text-white/70 hover:text-white font-semibold mb-2 bg-transparent border-none cursor-pointer p-0 transition-colors"
+          >
+            {expanded ? <><ChevronUp size={12} /> Свернуть</> : <><ChevronDown size={12} /> Развернуть</>}
+          </button>
+        )}
 
         {/* Chips */}
         <div className="flex flex-wrap gap-2">

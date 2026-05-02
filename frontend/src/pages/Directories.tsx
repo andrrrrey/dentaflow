@@ -14,13 +14,17 @@ const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
 export default function Directories() {
   const [tab, setTab] = useState<Tab>("services");
 
-  const { data: servicesData, isLoading: servicesLoading } = useServices();
-  const { data: resourcesData, isLoading: resourcesLoading } = useResources();
-  const { data: commoditiesData, isLoading: commoditiesLoading } = useCommodities();
+  const { data: servicesData, isLoading: servicesLoading, isError: servicesError } = useServices();
+  const { data: resourcesData, isLoading: resourcesLoading, isError: resourcesError } = useResources();
+  const { data: commoditiesData, isLoading: commoditiesLoading, isError: commoditiesError } = useCommodities();
 
   const services = servicesData?.services ?? [];
   const resources = resourcesData?.resources ?? [];
   const commodities = commoditiesData?.commodities ?? [];
+
+  const servicesApiError = (servicesData as Record<string, unknown>)?.error as string | undefined;
+  const resourcesApiError = (resourcesData as Record<string, unknown>)?.error as string | undefined;
+  const commoditiesApiError = (commoditiesData as Record<string, unknown>)?.error as string | undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,6 +50,8 @@ export default function Directories() {
         {tab === "services" && (
           servicesLoading ? (
             <Loading />
+          ) : servicesError || servicesApiError ? (
+            <ErrorMsg text={servicesApiError || "Ошибка загрузки данных из 1Denta"} />
           ) : services.length === 0 ? (
             <Empty text="Нет данных об услугах" />
           ) : (
@@ -76,6 +82,8 @@ export default function Directories() {
         {tab === "resources" && (
           resourcesLoading ? (
             <Loading />
+          ) : resourcesError || resourcesApiError ? (
+            <ErrorMsg text={resourcesApiError || "Ошибка загрузки данных из 1Denta"} />
           ) : resources.length === 0 ? (
             <Empty text="Нет данных о врачах" />
           ) : (
@@ -104,6 +112,8 @@ export default function Directories() {
         {tab === "commodities" && (
           commoditiesLoading ? (
             <Loading />
+          ) : commoditiesError || commoditiesApiError ? (
+            <ErrorMsg text={commoditiesApiError || "Ошибка загрузки данных из 1Denta"} />
           ) : commodities.length === 0 ? (
             <Empty text="Нет данных о товарах" />
           ) : (
@@ -135,6 +145,10 @@ export default function Directories() {
 
 function Loading() {
   return <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных из 1Denta...</div>;
+}
+
+function ErrorMsg({ text }: { text: string }) {
+  return <div className="text-center py-12 text-[13px] text-[#c52048]">{text}</div>;
 }
 
 function Empty({ text }: { text: string }) {

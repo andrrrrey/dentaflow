@@ -21,6 +21,7 @@ from app.routers import (
     notifications,
     patients,
     pipeline_ext,
+    pipeline_stages,
     reports,
     schedule,
     scripts,
@@ -81,6 +82,7 @@ app.include_router(integrations.router)
 app.include_router(scripts.router)
 app.include_router(directories.router)
 app.include_router(reports.router)
+app.include_router(pipeline_stages.router)
 app.include_router(marketing.router)
 
 # --- Static files (avatars, uploads) ---

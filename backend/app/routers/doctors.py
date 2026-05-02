@@ -66,43 +66,51 @@ async def doctors_load(
     if target_date is None:
         target_date = date.today()
 
-    dt_from = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
-    dt_to = dt_from + timedelta(days=1)
-
     # Max working slots per doctor per day (08:00–20:00 at 30-min slots)
     MAX_SLOTS = 24
 
-    stmt = (
-        select(
-            Appointment.doctor_name,
-            Appointment.doctor_id,
-            func.count(Appointment.id).label("count"),
-            func.sum(Appointment.revenue).label("revenue"),
+    async def _query_doctors(dt_from: datetime, dt_to: datetime, slots: int):
+        stmt = (
+            select(
+                Appointment.doctor_name,
+                Appointment.doctor_id,
+                func.count(Appointment.id).label("count"),
+                func.sum(Appointment.revenue).label("revenue"),
+            )
+            .where(
+                Appointment.scheduled_at >= dt_from,
+                Appointment.scheduled_at < dt_to,
+                Appointment.status.notin_(["cancelled"]),
+            )
+            .where(Appointment.doctor_name.isnot(None))
+            .group_by(Appointment.doctor_name, Appointment.doctor_id)
+            .order_by(func.count(Appointment.id).desc())
         )
-        .where(
-            Appointment.scheduled_at >= dt_from,
-            Appointment.scheduled_at < dt_to,
-            Appointment.status.notin_(["cancelled"]),
-        )
-        .where(Appointment.doctor_name.isnot(None))
-        .group_by(Appointment.doctor_name, Appointment.doctor_id)
-        .order_by(func.count(Appointment.id).desc())
-    )
+        result = await db.execute(stmt)
+        rows = result.all()
+        doctors = []
+        for row in rows:
+            load_pct = min(round(row.count / slots * 100), 100)
+            doctors.append({
+                "doctor_id": row.doctor_id,
+                "doctor_name": row.doctor_name,
+                "appointments": row.count,
+                "max_slots": slots,
+                "load_pct": load_pct,
+                "revenue": float(row.revenue or 0),
+                "status": "overloaded" if load_pct >= 90 else "busy" if load_pct >= 70 else "normal",
+            })
+        return doctors
 
-    result = await db.execute(stmt)
-    rows = result.all()
+    dt_from = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
+    dt_to = dt_from + timedelta(days=1)
+    doctors = await _query_doctors(dt_from, dt_to, MAX_SLOTS)
 
-    doctors = []
-    for row in rows:
-        load_pct = min(round(row.count / MAX_SLOTS * 100), 100)
-        doctors.append({
-            "doctor_id": row.doctor_id,
-            "doctor_name": row.doctor_name,
-            "appointments": row.count,
-            "max_slots": MAX_SLOTS,
-            "load_pct": load_pct,
-            "revenue": float(row.revenue or 0),
-            "status": "overloaded" if load_pct >= 90 else "busy" if load_pct >= 70 else "normal",
-        })
+    # Fallback: if no data for today, try current week
+    if not doctors:
+        week_start = target_date - timedelta(days=target_date.weekday())
+        wk_from = datetime(week_start.year, week_start.month, week_start.day, tzinfo=timezone.utc)
+        wk_to = wk_from + timedelta(days=7)
+        doctors = await _query_doctors(wk_from, wk_to, MAX_SLOTS * 5)
 
     return {"date": target_date.isoformat(), "doctors": doctors}
