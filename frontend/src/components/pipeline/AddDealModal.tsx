@@ -97,11 +97,27 @@ export default function AddDealModal({
     }
     setError("");
     try {
-      const result = await createMutation.mutateAsync(form);
+      const payload: DealCreateData = {
+        title: form.title,
+        patient_name: form.patient_name,
+        patient_phone: form.patient_phone,
+        stage: form.stage || "new",
+        amount: form.amount,
+        source_channel: form.source_channel || "manual",
+        ...(form.patient_id ? { patient_id: form.patient_id } : {}),
+        ...(form.service ? { service: form.service } : {}),
+        ...(form.doctor_name ? { doctor_name: form.doctor_name } : {}),
+        ...(form.notes ? { notes: form.notes } : {}),
+      };
+      const result = await createMutation.mutateAsync(payload);
       onCreated?.(result.id);
       onClose();
-    } catch {
-      setError("Ошибка при создании сделки");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : undefined;
+      setError(msg || "Ошибка при создании сделки");
     }
   }
 

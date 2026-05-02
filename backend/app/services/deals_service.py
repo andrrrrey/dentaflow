@@ -1,5 +1,6 @@
 """CRM pipeline deals service — real database queries."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -19,6 +20,8 @@ from app.schemas.deal import (
     StageColumn,
     StageHistoryEntry,
 )
+
+logger = logging.getLogger(__name__)
 
 FALLBACK_STAGES = [
     ("waiting_list", "Лист ожидания"),
@@ -138,51 +141,62 @@ async def create_deal(
     patient_name: str | None = None,
     patient_phone: str | None = None,
 ) -> DealResponse:
+    service = service or None
+    doctor_name = doctor_name or None
+    notes = notes or None
+    source_channel = source_channel or None
+
     async with async_session_factory() as db:
-        if not patient_id and patient_phone:
-            existing = (await db.execute(
-                select(Patient).where(Patient.phone == patient_phone)
-            )).scalar_one_or_none()
-            if existing:
-                patient_id = existing.id
-            elif patient_name:
-                patient = Patient(
-                    name=patient_name,
-                    phone=patient_phone,
-                    source_channel=source_channel or "manual",
-                    is_new_patient=True,
-                )
-                db.add(patient)
-                await db.flush()
-                patient_id = patient.id
+        try:
+            if not patient_id and patient_phone:
+                existing = (await db.execute(
+                    select(Patient).where(Patient.phone == patient_phone)
+                )).scalar_one_or_none()
+                if existing:
+                    patient_id = existing.id
+                elif patient_name:
+                    patient = Patient(
+                        name=patient_name,
+                        phone=patient_phone,
+                        source_channel=source_channel or "manual",
+                        is_new_patient=True,
+                    )
+                    db.add(patient)
+                    await db.flush()
+                    patient_id = patient.id
 
-        now = _now()
-        deal = Deal(
-            patient_id=patient_id,
-            title=title,
-            stage=stage,
-            amount=amount,
-            service=service,
-            doctor_name=doctor_name,
-            assigned_to=assigned_to,
-            source_channel=source_channel,
-            notes=notes,
-            stage_changed_at=now,
-            created_at=now,
-        )
-        db.add(deal)
+            now = _now()
+            deal = Deal(
+                patient_id=patient_id,
+                title=title,
+                stage=stage,
+                amount=amount,
+                service=service,
+                doctor_name=doctor_name,
+                assigned_to=assigned_to,
+                source_channel=source_channel,
+                notes=notes,
+                stage_changed_at=now,
+                created_at=now,
+            )
+            db.add(deal)
+            await db.flush()
 
-        history = DealStageHistory(
-            deal_id=deal.id,
-            from_stage=None,
-            to_stage=stage,
-            changed_by=None,
-            comment="Сделка создана",
-        )
-        db.add(history)
+            history = DealStageHistory(
+                deal_id=deal.id,
+                from_stage=None,
+                to_stage=stage,
+                changed_by=None,
+                comment="Сделка создана",
+            )
+            db.add(history)
 
-        await db.commit()
-        return await _deal_to_response(deal, db)
+            await db.commit()
+            return await _deal_to_response(deal, db)
+        except Exception:
+            await db.rollback()
+            logger.exception("Failed to create deal title=%s", title)
+            raise
 
 
 async def update_deal(

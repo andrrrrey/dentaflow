@@ -1,8 +1,9 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown, ExternalLink } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Pill from "../ui/Pill";
 import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export default function AppointmentDetailModal({ appointmentId, onClose }: Props) {
+  const navigate = useNavigate();
   const { data, isLoading } = useAppointmentDetail(appointmentId);
   const updateStatus = useUpdateAppointmentStatus();
   const updateAppt = useUpdateAppointment();
@@ -259,16 +261,40 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
             {/* Patient info */}
             {patient && (
               <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
-                <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Пациент</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Пациент</div>
+                  <button
+                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-accent2 hover:underline border-none bg-transparent cursor-pointer"
+                  >
+                    Карточка пациента
+                    <ExternalLink size={11} />
+                  </button>
+                </div>
                 <div className="flex items-center gap-3 mb-1">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[14px] font-bold" style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}>
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[14px] font-bold cursor-pointer hover:opacity-80"
+                    style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
+                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                  >
                     {patient.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
                   </div>
-                  <div>
-                    <div className="text-[15px] font-bold">{patient.name}</div>
-                    {age !== null && <div className="text-[12px] text-text-muted">{age} лет</div>}
+                  <div className="flex-1 min-w-0">
+                    <button
+                      onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                      className="text-[15px] font-bold text-text-main hover:text-accent2 transition-colors border-none bg-transparent cursor-pointer p-0 text-left"
+                    >
+                      {patient.name}
+                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {age !== null && <span className="text-[12px] text-text-muted">{age} лет</span>}
+                      {medicalCard && (
+                        <span className="text-[11px] px-2 py-[1px] rounded-md font-medium" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+                          Карта №{medicalCard}
+                        </span>
+                      )}
+                    </div>
                     {patient.external_id && <div className="text-[11px] text-text-muted">ID: {patient.external_id}</div>}
-                    {medicalCard && <div className="text-[11px] text-text-muted">Мед. карта №{medicalCard}</div>}
                   </div>
                   {patient.is_new_patient && <Pill variant="blue">Новый</Pill>}
                 </div>

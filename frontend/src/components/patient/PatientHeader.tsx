@@ -7,6 +7,10 @@ import {
   Phone,
   User,
   Trash2,
+  CreditCard,
+  Wallet,
+  Percent,
+  FileText,
 } from "lucide-react";
 import Pill from "../ui/Pill";
 import Button from "../ui/Button";
@@ -47,6 +51,12 @@ export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: 
   const deletePatient = useDeletePatient();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const raw = patient.raw_1denta_data as Record<string, unknown> | null;
+  const medicalCard = raw?.medical_card as string | null | undefined;
+  const balance = raw?.balance as number | null | undefined;
+  const deposit = raw?.deposit as number | null | undefined;
+  const discount = raw?.discount as number | null | undefined;
+
   const handleDelete = () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     deletePatient.mutate(patient.id, {
@@ -79,6 +89,12 @@ export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: 
             <h1 className="text-[20px] font-extrabold text-text-main truncate">
               {patient.name}
             </h1>
+            {medicalCard && (
+              <span className="flex items-center gap-1 px-2 py-[2px] rounded-lg text-[11px] font-semibold" style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}>
+                <FileText size={11} />
+                Карта №{medicalCard}
+              </span>
+            )}
             {patient.source_channel && (
               <Pill variant={channelColor[patient.source_channel] ?? "blue"}>
                 {channelLabel[patient.source_channel] ?? patient.source_channel}
@@ -108,6 +124,36 @@ export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: 
               </span>
             )}
           </div>
+
+          {/* 1Denta financial info */}
+          {(balance != null || deposit != null || discount != null) && (
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              {balance != null && (
+                <span
+                  className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-lg text-[12px] font-semibold"
+                  style={{
+                    background: balance < 0 ? "rgba(244,75,110,0.08)" : "rgba(0,201,167,0.08)",
+                    color: balance < 0 ? "#c52048" : "#007d6e",
+                  }}
+                >
+                  <CreditCard size={12} />
+                  Баланс: {balance.toLocaleString("ru-RU")} ₽
+                </span>
+              )}
+              {deposit != null && deposit > 0 && (
+                <span className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-lg text-[12px] font-semibold" style={{ background: "rgba(59,127,237,0.08)", color: "#2563eb" }}>
+                  <Wallet size={12} />
+                  Депозит: {deposit.toLocaleString("ru-RU")} ₽
+                </span>
+              )}
+              {discount != null && discount > 0 && (
+                <span className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-lg text-[12px] font-semibold" style={{ background: "rgba(245,166,35,0.08)", color: "#b45309" }}>
+                  <Percent size={12} />
+                  Скидка: {discount}%
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Tags */}
           {patient.tags && patient.tags.length > 0 && (

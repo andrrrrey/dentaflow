@@ -342,6 +342,10 @@ class OneDentaService:
             or c.get("medCardNumber")
             or c.get("med_card")
         )
+        balance = float(c.get("balance") or 0)
+        deposit = float(c.get("deposit") or 0)
+        discount = c.get("discount") or c.get("discountPercent") or 0
+
         return {
             "external_id": str(c["id"]),
             "name": c.get("name", ""),
@@ -358,6 +362,9 @@ class OneDentaService:
             "type": c.get("type"),
             "average_check": average_check,
             "medical_card": medical_card,
+            "balance": balance,
+            "deposit": deposit,
+            "discount": discount,
         }
 
     @staticmethod

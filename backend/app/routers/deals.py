@@ -1,9 +1,12 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import get_current_user
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 from app.schemas.deal import (
     DealCreate,
     DealNote,
@@ -41,19 +44,26 @@ async def create_new_deal(
     body: DealCreate,
     current_user: User = Depends(get_current_user),
 ) -> DealResponse:
-    return await create_deal(
-        title=body.title,
-        stage=body.stage,
-        patient_id=body.patient_id,
-        amount=body.amount,
-        service=body.service,
-        assigned_to=body.assigned_to,
-        notes=body.notes,
-        doctor_name=body.doctor_name,
-        source_channel=body.source_channel,
-        patient_name=body.patient_name,
-        patient_phone=body.patient_phone,
-    )
+    try:
+        return await create_deal(
+            title=body.title,
+            stage=body.stage,
+            patient_id=body.patient_id,
+            amount=body.amount,
+            service=body.service,
+            assigned_to=body.assigned_to,
+            notes=body.notes,
+            doctor_name=body.doctor_name,
+            source_channel=body.source_channel,
+            patient_name=body.patient_name,
+            patient_phone=body.patient_phone,
+        )
+    except Exception:
+        logger.exception("Error creating deal: %s", body.model_dump())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось создать сделку. Проверьте логи сервера.",
+        )
 
 
 @router.get("/{deal_id}", response_model=DealResponse)
