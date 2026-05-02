@@ -1,10 +1,12 @@
 import { createPortal } from "react-dom";
 import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
 import Pill from "../ui/Pill";
-import { useAppointmentDetail, useUpdateAppointmentStatus } from "../../api/schedule";
+import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment } from "../../api/schedule";
+import { useDoctorsList } from "../../api/doctors";
+import { useServices } from "../../api/directories";
 
 const STATUS_OPTIONS = [
   { value: "unconfirmed", label: "Не подтверждён" },
@@ -35,6 +37,15 @@ function formatDt(iso: string | null): string {
   }
 }
 
+function calcAge(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  try {
+    return differenceInYears(new Date(), new Date(birthDate));
+  } catch {
+    return null;
+  }
+}
+
 interface Props {
   appointmentId: string;
   onClose: () => void;
@@ -43,32 +54,61 @@ interface Props {
 export default function AppointmentDetailModal({ appointmentId, onClose }: Props) {
   const { data, isLoading } = useAppointmentDetail(appointmentId);
   const updateStatus = useUpdateAppointmentStatus();
+  const updateAppt = useUpdateAppointment();
+  const { data: doctorsData } = useDoctorsList();
+  const { data: servicesData } = useServices();
+
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
+  const [doctorDropdownOpen, setDoctorDropdownOpen] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const serviceDropdownRef = useRef<HTMLDivElement>(null);
+  const doctorDropdownRef = useRef<HTMLDivElement>(null);
 
   const appt = data?.appointment;
   const patient = data?.patient;
   const raw = patient?.raw_1denta_data as Record<string, unknown> | null;
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setStatusDropdownOpen(false);
       }
+      if (serviceDropdownRef.current && !serviceDropdownRef.current.contains(e.target as Node)) {
+        setServiceDropdownOpen(false);
+      }
+      if (doctorDropdownRef.current && !doctorDropdownRef.current.contains(e.target as Node)) {
+        setDoctorDropdownOpen(false);
+      }
     }
-    if (statusDropdownOpen) document.addEventListener("mousedown", handler);
+    const anyOpen = statusDropdownOpen || serviceDropdownOpen || doctorDropdownOpen;
+    if (anyOpen) document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [statusDropdownOpen]);
+  }, [statusDropdownOpen, serviceDropdownOpen, doctorDropdownOpen]);
 
   function handleStatusChange(newStatus: string) {
     setStatusDropdownOpen(false);
     updateStatus.mutate({ appointmentId, status: newStatus });
   }
 
+  function handleServiceChange(newService: string) {
+    setServiceDropdownOpen(false);
+    updateAppt.mutate({ appointmentId, service: newService });
+  }
+
+  function handleDoctorChange(doctorName: string, doctorId?: string | null) {
+    setDoctorDropdownOpen(false);
+    updateAppt.mutate({ appointmentId, doctor_name: doctorName, ...(doctorId ? { doctor_id: doctorId } : {}) });
+  }
+
   const currentStatus = appt?.status ?? "";
   const averageCheck = raw?.average_check as number | null | undefined;
   const medicalCard = raw?.medical_card as string | null | undefined;
+  const age = calcAge(patient?.birth_date ?? null);
+
+  const servicesList = servicesData?.services ?? [];
+  const doctorsList = doctorsData?.doctors ?? [];
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -97,13 +137,81 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
               <div className="grid grid-cols-2 gap-3">
                 <InfoRow icon={<Calendar size={13} />} label="Дата и время" value={formatDt(appt.scheduled_at)} />
                 <InfoRow icon={<Clock size={13} />} label="Длительность" value={`${appt.duration_min} мин`} />
-                <InfoRow icon={<User size={13} />} label="Врач" value={appt.doctor_name || "—"} />
                 <InfoRow icon={<MapPin size={13} />} label="Филиал" value={appt.branch || "—"} />
               </div>
+
+              {/* Service with dropdown edit */}
               <div className="flex items-center gap-3 mt-1">
                 <span className="text-[12px] text-text-muted">Услуга:</span>
-                <span className="text-[13px] font-medium">{appt.service || "—"}</span>
+                {servicesList.length > 0 ? (
+                  <div className="relative" ref={serviceDropdownRef}>
+                    <button
+                      onClick={() => setServiceDropdownOpen((o) => !o)}
+                      className="flex items-center gap-1 text-[13px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0"
+                      disabled={updateAppt.isPending}
+                    >
+                      {appt.service || "— Выбрать —"}
+                      <ChevronDown size={11} className="text-text-muted ml-1" />
+                    </button>
+                    {serviceDropdownOpen && (
+                      <div
+                        className="absolute left-0 top-full mt-1 z-[300] rounded-xl overflow-y-auto flex flex-col"
+                        style={{ background: "rgba(255,255,255,0.98)", boxShadow: "0 8px 24px rgba(91,76,245,0.18)", minWidth: 240, maxHeight: 220 }}
+                      >
+                        {servicesList.map((s) => (
+                          <button
+                            key={String(s.id)}
+                            onClick={() => handleServiceChange(s.name)}
+                            className="px-4 py-[8px] text-[12.5px] text-left border-none cursor-pointer hover:bg-[rgba(91,76,245,0.06)] transition-colors truncate"
+                            style={{ color: s.name === appt.service ? "#5B4CF5" : "#1e293b", fontWeight: s.name === appt.service ? 600 : 400 }}
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[13px] font-medium">{appt.service || "—"}</span>
+                )}
               </div>
+
+              {/* Doctor with dropdown edit */}
+              <div className="flex items-center gap-3">
+                <span className="text-[12px] text-text-muted flex-shrink-0"><User size={13} className="inline mr-1" />Врач:</span>
+                {doctorsList.length > 0 ? (
+                  <div className="relative" ref={doctorDropdownRef}>
+                    <button
+                      onClick={() => setDoctorDropdownOpen((o) => !o)}
+                      className="flex items-center gap-1 text-[13px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0"
+                      disabled={updateAppt.isPending}
+                    >
+                      {appt.doctor_name || "— Выбрать —"}
+                      <ChevronDown size={11} className="text-text-muted ml-1" />
+                    </button>
+                    {doctorDropdownOpen && (
+                      <div
+                        className="absolute left-0 top-full mt-1 z-[300] rounded-xl overflow-y-auto flex flex-col"
+                        style={{ background: "rgba(255,255,255,0.98)", boxShadow: "0 8px 24px rgba(91,76,245,0.18)", minWidth: 220, maxHeight: 200 }}
+                      >
+                        {doctorsList.map((d) => (
+                          <button
+                            key={d.doctor_id ?? d.doctor_name}
+                            onClick={() => handleDoctorChange(d.doctor_name, d.doctor_id)}
+                            className="px-4 py-[8px] text-[12.5px] text-left border-none cursor-pointer hover:bg-[rgba(91,76,245,0.06)] transition-colors"
+                            style={{ color: d.doctor_name === appt.doctor_name ? "#5B4CF5" : "#1e293b", fontWeight: d.doctor_name === appt.doctor_name ? 600 : 400 }}
+                          >
+                            {d.doctor_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[13px] font-medium">{appt.doctor_name || "—"}</span>
+                )}
+              </div>
+
               {/* Status with change dropdown */}
               <div className="flex items-center gap-3">
                 <span className="text-[12px] text-text-muted">Статус:</span>
@@ -139,6 +247,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   )}
                 </div>
               </div>
+
               {appt.revenue > 0 && (
                 <div className="flex items-center gap-3">
                   <CreditCard size={13} className="text-text-muted" />
@@ -157,6 +266,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   </div>
                   <div>
                     <div className="text-[15px] font-bold">{patient.name}</div>
+                    {age !== null && <div className="text-[12px] text-text-muted">{age} лет</div>}
                     {patient.external_id && <div className="text-[11px] text-text-muted">ID: {patient.external_id}</div>}
                     {medicalCard && <div className="text-[11px] text-text-muted">Мед. карта №{medicalCard}</div>}
                   </div>

@@ -156,6 +156,7 @@ async def create_deal(
                 await db.flush()
                 patient_id = patient.id
 
+        now = _now()
         deal = Deal(
             patient_id=patient_id,
             title=title,
@@ -166,6 +167,8 @@ async def create_deal(
             assigned_to=assigned_to,
             source_channel=source_channel,
             notes=notes,
+            stage_changed_at=now,
+            created_at=now,
         )
         db.add(deal)
 
@@ -179,7 +182,6 @@ async def create_deal(
         db.add(history)
 
         await db.commit()
-        await db.refresh(deal)
         return await _deal_to_response(deal, db)
 
 

@@ -38,7 +38,7 @@ function timeOf(isoStr: string | null): string {
 
 /* -- Calendar view -- */
 
-const HOURS = Array.from({ length: 12 }, (_, i) => 8 + i);
+const HOURS = Array.from({ length: 13 }, (_, i) => 8 + i);
 
 function CalendarView({ appointments, weekStart, onSelectAppointment }: { appointments: Appointment[]; weekStart: Date; onSelectAppointment: (id: string) => void }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));

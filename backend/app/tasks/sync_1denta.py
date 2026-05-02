@@ -11,9 +11,6 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-# 1denta API returns datetimes in Moscow time (UTC+3) without explicit timezone offset
-MOSCOW_TZ = timezone(timedelta(hours=3))
-
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -155,10 +152,9 @@ async def _sync_appointments_async() -> dict:
             if a_data.get("scheduled_at"):
                 try:
                     dt = datetime.fromisoformat(a_data["scheduled_at"])
-                    if dt.tzinfo is None:
-                        # 1denta returns naive datetimes in Moscow time (UTC+3)
-                        dt = dt.replace(tzinfo=MOSCOW_TZ)
-                    scheduled_at = dt.astimezone(timezone.utc)
+                    # Store naive datetimes as-is; 1denta returns Moscow local time
+                    # and we display it without timezone conversion on the frontend
+                    scheduled_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 except ValueError:
                     pass
 
