@@ -76,14 +76,6 @@ export default function Dashboard() {
   const { data: patientFunnel } = useFunnel();
   const refreshInsights = useRefreshDashboardInsights();
 
-  if (overviewLoading || !overview) {
-    return (
-      <div className="flex flex-col gap-[18px]">
-        <div className="text-center text-text-muted py-16 text-[13px]">Загрузка данных...</div>
-      </div>
-    );
-  }
-
   const aiInsights = adaptAiInsights(refreshInsights.data ?? rawInsights);
   const doctorsLoad = adaptDoctorsLoad(rawDoctors);
   const funnel = adaptPatientFunnel(patientFunnel);
@@ -118,18 +110,26 @@ export default function Dashboard() {
       />
 
       {/* KPI Cards */}
-      <KpiCards kpi={overview.kpi} />
+      {overview ? (
+        <KpiCards kpi={overview.kpi} />
+      ) : overviewLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-[88px] rounded-[16px] animate-pulse" style={{ background: "rgba(91,76,245,0.06)" }} />
+          ))}
+        </div>
+      ) : null}
 
       {/* Patient Funnel + Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
-        <FunnelChart funnel={funnel.length ? funnel : overview.funnel} />
-        <SourcesTable sources={overview.sources} />
+        <FunnelChart funnel={funnel.length ? funnel : (overview?.funnel ?? [])} />
+        <SourcesTable sources={overview?.sources ?? []} />
       </div>
 
       {/* Doctors Load + Admins Rating */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
-        <DoctorsLoad doctors={doctorsLoad.length ? doctorsLoad : overview.doctors_load} />
-        <AdminsRating admins={overview.admins_rating} />
+        <DoctorsLoad doctors={doctorsLoad.length ? doctorsLoad : (overview?.doctors_load ?? [])} />
+        <AdminsRating admins={overview?.admins_rating ?? []} />
       </div>
     </div>
   );

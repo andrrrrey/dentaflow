@@ -35,6 +35,19 @@ export function useRenameStage() {
   });
 }
 
+export function useResetPipelineStages() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post("/pipeline-stages/reset-defaults");
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline-stages"] });
+    },
+  });
+}
+
 export function useReorderStages() {
   const qc = useQueryClient();
   return useMutation({

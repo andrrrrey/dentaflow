@@ -129,8 +129,12 @@ class OneDentaService:
         # Build resource_id → name lookup to enrich visits that lack inline resource obj
         resource_map: dict[str, str] = {}
         try:
-            resources_data = await self._request("GET", "/api/v2/resource")
-            for r in resources_data.get("resources", []):
+            resources = await self._fetch_all_pages("/api/v2/resource")
+            if not resources:
+                # Fallback: some versions return resources at top-level, not in data[]
+                raw = await self._request("GET", "/api/v2/resource")
+                resources = raw.get("resources", [])
+            for r in resources:
                 rid = str(r.get("id", ""))
                 rname = r.get("name", "")
                 if rid and rname:
@@ -329,6 +333,15 @@ class OneDentaService:
 
     @staticmethod
     def _map_client(c: dict) -> dict:
+        visits_count = int(c.get("visitsCount") or 0)
+        total_revenue = float(c.get("totalArrival") or 0)
+        average_check = round(total_revenue / visits_count, 2) if visits_count > 0 else None
+        medical_card = (
+            c.get("medCard")
+            or c.get("medicalCard")
+            or c.get("medCardNumber")
+            or c.get("med_card")
+        )
         return {
             "external_id": str(c["id"]),
             "name": c.get("name", ""),
@@ -336,13 +349,15 @@ class OneDentaService:
             "email": c.get("email") or None,
             "birth_date": c.get("birthDate"),
             "last_visit_at": None,
-            "total_revenue": float(c.get("totalArrival") or 0),
+            "total_revenue": total_revenue,
             "is_new_patient": c.get("type") == "new",
             "tags": c.get("tags", []),
-            "visits_count": c.get("visitsCount", 0),
+            "visits_count": visits_count,
             "sex": c.get("sex", 0),
             "comment": c.get("comment"),
             "type": c.get("type"),
+            "average_check": average_check,
+            "medical_card": medical_card,
         }
 
     @staticmethod

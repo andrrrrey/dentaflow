@@ -179,6 +179,7 @@ async def create_deal(
         db.add(history)
 
         await db.commit()
+        await db.refresh(deal)
         return await _deal_to_response(deal, db)
 
 

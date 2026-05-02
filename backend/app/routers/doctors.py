@@ -28,7 +28,8 @@ async def list_doctors(
     """Return distinct doctors extracted from appointments (last 30 days)."""
     today = date.today()
     dt_to = datetime(today.year, today.month, today.day, tzinfo=timezone.utc) + timedelta(days=1)
-    dt_from = dt_to - timedelta(days=30)
+    # Use a 2-year window to capture all doctors who have ever had appointments
+    dt_from = dt_to - timedelta(days=365 * 2)
 
     stmt = (
         select(
@@ -55,7 +56,21 @@ async def list_doctors(
         if row.doctor_name  # skip empty names
     ]
 
-    # Fallback: if no doctors found from appointments, query cached resources (1denta staff)
+    # Fallback: try to fetch doctors from 1denta resources if none in DB
+    if not doctors:
+        try:
+            from app.services.one_denta import OneDentaService
+            svc = await OneDentaService.from_db(db)
+            resources = await svc.get_resources()
+            for r in resources:
+                rid = str(r.get("id", ""))
+                rname = r.get("name", "")
+                if rname:
+                    doctors.append({"doctor_id": rid or None, "doctor_name": rname, "appointments_today": 0})
+        except Exception:
+            pass
+
+    # Second fallback: directory_cache table
     if not doctors:
         from sqlalchemy import text
         res_result = await db.execute(

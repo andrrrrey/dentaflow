@@ -132,6 +132,20 @@ export interface Doctor {
   appointments_today: number;
 }
 
+export function useUpdateAppointmentStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ appointmentId, status }: { appointmentId: string; status: string }) => {
+      const { data } = await api.patch(`/schedule/${appointmentId}/status`, { status });
+      return data;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["appointment-detail", vars.appointmentId] });
+    },
+  });
+}
+
 export function useDoctorsList() {
   return useQuery<{ doctors: Doctor[] }>({
     queryKey: ["doctors-list"],

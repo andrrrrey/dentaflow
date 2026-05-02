@@ -37,6 +37,17 @@ async def _ensure_defaults(db: AsyncSession) -> None:
     await db.commit()
 
 
+async def _sync_default_labels(db: AsyncSession) -> None:
+    """Update labels for default stages if they have drifted from correct values."""
+    result = await db.execute(select(PipelineStage))
+    existing = {s.key: s for s in result.scalars().all()}
+    for defaults in DEFAULT_STAGES:
+        stage = existing.get(defaults["key"])
+        if stage and stage.label != defaults["label"]:
+            stage.label = defaults["label"]
+    await db.commit()
+
+
 class StageResponse(BaseModel):
     id: str
     key: str
@@ -52,6 +63,35 @@ class StageRenameRequest(BaseModel):
 
 class StageReorderRequest(BaseModel):
     stage_ids: list[str]
+
+
+@router.post("/reset-defaults", response_model=list[StageResponse])
+async def reset_to_defaults(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> list[StageResponse]:
+    """Reset all pipeline stage labels back to default values."""
+    result = await db.execute(select(PipelineStage))
+    existing = {s.key: s for s in result.scalars().all()}
+
+    for defaults in DEFAULT_STAGES:
+        stage = existing.get(defaults["key"])
+        if stage:
+            stage.label = defaults["label"]
+            stage.color = defaults["color"]
+        else:
+            db.add(PipelineStage(**defaults))
+
+    await db.commit()
+    result2 = await db.execute(select(PipelineStage).order_by(PipelineStage.position))
+    stages = result2.scalars().all()
+    return [
+        StageResponse(
+            id=str(s.id), key=s.key, label=s.label,
+            color=s.color, position=s.position, is_system=s.is_system,
+        )
+        for s in stages
+    ]
 
 
 @router.get("/", response_model=list[StageResponse])
