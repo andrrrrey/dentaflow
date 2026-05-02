@@ -35,11 +35,10 @@ class AIService:
 
     async def generate_daily_insights(self, kpi: dict) -> dict:
         """Generate a brief AI summary of the day's KPI."""
-        if settings.APP_ENV == "development":
-            return self._mock_insights()
-
-        # Fallback: template-based insights from real KPI (no OpenAI needed)
+        # If an API key is configured, always call OpenAI (regardless of APP_ENV)
         if not self._api_key:
+            if settings.APP_ENV == "development":
+                return self._mock_insights()
             return self._template_insights(kpi)
 
         prompt = (
@@ -169,7 +168,7 @@ class AIService:
 
     async def generate_reports_advice(self, db=None) -> dict:
         """Generate AI advice based on clinic reports data."""
-        if settings.APP_ENV == "development":
+        if not self._api_key:
             return self._mock_reports_advice()
 
         kpi_summary = {}
