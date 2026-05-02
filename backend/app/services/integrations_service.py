@@ -162,7 +162,9 @@ async def _check_one_denta(db: AsyncSession) -> dict:
         if resp.status_code == 200 and body.get("token"):
             org = body.get("user", {}).get("orgId", "")
             return {"ok": True, "message": f"Подключено (orgId: {org})"}
-        detail = body.get("message") or body.get("detail") or resp.text[:200]
+        detail = body.get("message") or body.get("detail") or body.get("error") or resp.text[:200]
+        if resp.status_code == 423:
+            return {"ok": False, "message": f"Аккаунт временно заблокирован (слишком много попыток входа). Подождите 15–30 минут и попробуйте снова. Ответ 1Denta: {detail}"}
         return {"ok": False, "message": f"Ошибка {resp.status_code}: {detail}"}
 
 
