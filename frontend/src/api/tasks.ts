@@ -31,6 +31,7 @@ export interface TaskCreateInput {
   title: string;
   due_at: string;
   patient_id?: string | null;
+  deal_id?: string | null;
   assigned_to?: string | null;
 }
 
@@ -46,6 +47,17 @@ export function useTasks(filters?: { assigned_to?: string; is_done?: boolean }) 
       const { data } = await api.get("/tasks/", { params });
       return data;
     },
+  });
+}
+
+export function useDealTasks(dealId: string | null) {
+  return useQuery<TaskListResponse>({
+    queryKey: ["tasks", { deal_id: dealId }],
+    queryFn: async () => {
+      const { data } = await api.get("/tasks/", { params: { deal_id: dealId } });
+      return data;
+    },
+    enabled: !!dealId,
   });
 }
 

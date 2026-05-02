@@ -19,12 +19,14 @@ interface KanbanBoardProps {
   pipeline: PipelineResponse;
   onMoveDeal: (dealId: string, toStage: string) => void;
   onDealClick: (deal: DealResponse) => void;
+  onDeleteDeal?: (dealId: string) => void;
 }
 
 export default function KanbanBoard({
   pipeline,
   onMoveDeal,
   onDealClick,
+  onDeleteDeal,
 }: KanbanBoardProps) {
   const [activeDeal, setActiveDeal] = useState<DealResponse | null>(null);
 
@@ -101,6 +103,7 @@ export default function KanbanBoard({
             key={col.stage}
             column={col}
             onDealClick={onDealClick}
+            onDeleteDeal={onDeleteDeal}
           />
         ))}
       </div>

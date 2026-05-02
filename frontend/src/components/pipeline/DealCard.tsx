@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -7,6 +8,7 @@ import {
   Send,
   Instagram,
   Clock,
+  Trash2,
 } from "lucide-react";
 import type { DealResponse } from "../../api/deals";
 
@@ -44,9 +46,11 @@ const sourceIcons: Record<string, typeof Globe> = {
 interface DealCardProps {
   deal: DealResponse;
   onClick: () => void;
+  onDelete?: (dealId: string) => void;
 }
 
-export default function DealCard({ deal, onClick }: DealCardProps) {
+export default function DealCard({ deal, onClick, onDelete }: DealCardProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const {
     attributes,
     listeners,
@@ -75,7 +79,7 @@ export default function DealCard({ deal, onClick }: DealCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className="rounded-[14px] p-[14px] cursor-grab active:cursor-grabbing select-none"
+      className="group rounded-[14px] p-[14px] cursor-grab active:cursor-grabbing select-none"
       onClick={onClick}
       {...attributes}
       {...listeners}
@@ -104,15 +108,35 @@ export default function DealCard({ deal, onClick }: DealCardProps) {
           <Clock size={11} />
           {days} {days === 1 ? "день" : days >= 2 && days <= 4 ? "дня" : "дней"}
         </span>
-        {deal.assigned_to_name && (
-          <div
-            className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
-            title={deal.assigned_to_name}
-          >
-            {initials(deal.assigned_to_name)}
-          </div>
-        )}
+        <div className="flex items-center gap-[6px]">
+          {onDelete && (
+            confirmDelete ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(deal.id); }}
+                className="px-[6px] py-[2px] rounded-md text-[9px] font-bold text-white border-none cursor-pointer"
+                style={{ background: "#F44B6E" }}
+              >
+                Удалить
+              </button>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                className="w-[20px] h-[20px] rounded-[5px] flex items-center justify-center text-text-muted hover:text-[#F44B6E] hover:bg-[rgba(244,75,110,0.1)] transition-colors border-none cursor-pointer bg-transparent opacity-0 group-hover:opacity-100"
+              >
+                <Trash2 size={11} />
+              </button>
+            )
+          )}
+          {deal.assigned_to_name && (
+            <div
+              className="w-[22px] h-[22px] rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
+              title={deal.assigned_to_name}
+            >
+              {initials(deal.assigned_to_name)}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
 
+export interface DoctorListItem {
+  doctor_id: string | null;
+  doctor_name: string;
+  appointments_today: number;
+}
+
+export interface DoctorListResponse {
+  doctors: DoctorListItem[];
+}
+
+export function useDoctorsList() {
+  return useQuery<DoctorListResponse>({
+    queryKey: ["doctors-list"],
+    queryFn: async () => {
+      const { data } = await api.get("/doctors/");
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export interface DoctorLoad {
   doctor_id: string | null;
   doctor_name: string;

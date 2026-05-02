@@ -287,7 +287,7 @@ export default function Pipeline() {
           {pipelineLoading ? (
             <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных...</div>
           ) : crmView === "kanban" ? (
-            <KanbanBoard pipeline={filteredPipeline} onMoveDeal={handleMoveDeal} onDealClick={setSelectedDeal} />
+            <KanbanBoard pipeline={filteredPipeline} onMoveDeal={handleMoveDeal} onDealClick={setSelectedDeal} onDeleteDeal={(id) => deleteDealMutation.mutate(id)} />
           ) : (
             /* Table view */
             <div className="rounded-[18px] overflow-hidden" style={{ background: "rgba(255,255,255,0.65)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 4px 20px rgba(120,140,180,0.12)" }}>
@@ -312,7 +312,7 @@ export default function Pipeline() {
                     </span>
                   </div>
                   <div className="text-[13px] font-bold text-text-main text-right self-center">
-                    {deal.amount ? `${deal.amount.toLocaleString("ru-RU")} ₽` : "—"}
+                    {deal.amount ? `${deal.amount.toLocaleString("ru-RU").replace(/,/g, " ")} ₽` : "—"}
                   </div>
                   <div className="self-center flex justify-center" onClick={(e) => e.stopPropagation()}>
                     {confirmDeleteId === deal.id ? (

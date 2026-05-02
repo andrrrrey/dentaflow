@@ -55,6 +55,7 @@ async def list_tasks(
     db: AsyncSession,
     assigned_to: str | None = None,
     is_done: bool | None = None,
+    deal_id: str | None = None,
 ) -> TaskListResponse:
     stmt = select(Task)
 
@@ -66,6 +67,12 @@ async def list_tasks(
 
     if is_done is not None:
         stmt = stmt.where(Task.is_done == is_done)
+
+    if deal_id:
+        try:
+            stmt = stmt.where(Task.deal_id == uuid.UUID(deal_id))
+        except ValueError:
+            pass
 
     stmt = stmt.order_by(Task.created_at.desc())
     result = await db.execute(stmt)
@@ -84,10 +91,12 @@ async def create_task(
     title: str,
     due_at: datetime,
     patient_id: uuid.UUID | None = None,
+    deal_id: uuid.UUID | None = None,
     assigned_to: uuid.UUID | None = None,
 ) -> TaskResponse:
     task = Task(
         patient_id=patient_id,
+        deal_id=deal_id,
         assigned_to=assigned_to,
         type=type,
         title=title,

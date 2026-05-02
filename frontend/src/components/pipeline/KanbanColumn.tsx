@@ -30,9 +30,10 @@ function formatAmount(v: number): string {
 interface KanbanColumnProps {
   column: StageColumn;
   onDealClick: (deal: DealResponse) => void;
+  onDeleteDeal?: (dealId: string) => void;
 }
 
-export default function KanbanColumn({ column, onDealClick }: KanbanColumnProps) {
+export default function KanbanColumn({ column, onDealClick, onDeleteDeal }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.stage });
 
   const colors = stageColors[column.stage] ?? stageColors.new;
@@ -87,6 +88,7 @@ export default function KanbanColumn({ column, onDealClick }: KanbanColumnProps)
               key={deal.id}
               deal={deal}
               onClick={() => onDealClick(deal)}
+              onDelete={onDeleteDeal}
             />
           ))}
         </SortableContext>

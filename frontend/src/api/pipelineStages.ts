@@ -28,7 +28,10 @@ export function useRenameStage() {
       const { data } = await api.patch(`/pipeline-stages/${id}`, { label });
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline-stages"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
   });
 }
 
@@ -39,6 +42,9 @@ export function useReorderStages() {
       const { data } = await api.put("/pipeline-stages/reorder", { stage_ids: stageIds });
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline-stages"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
   });
 }

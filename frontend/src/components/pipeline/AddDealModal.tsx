@@ -2,12 +2,32 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Plus } from "lucide-react";
 import Button from "../ui/Button";
-import { useCreateDeal, STAGES } from "../../api/deals";
+import { useCreateDeal } from "../../api/deals";
+import { usePipelineStages } from "../../api/pipelineStages";
+import { useDoctorsList } from "../../api/doctors";
+import { useIntegrations } from "../../api/integrations";
 import type { DealCreateData } from "../../api/deals";
 
 const inputStyle = {
   border: "1px solid rgba(91,76,245,0.15)",
   background: "rgba(255,255,255,0.5)",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  manual: "Ручной ввод",
+  telegram: "Telegram",
+  novofon: "Телефон (Novofon)",
+  site: "Сайт",
+  max_vk: "ВКонтакте / MAX",
+  mail: "Email",
+};
+
+const CHANNEL_INTEGRATION_KEYS: Record<string, string> = {
+  telegram: "telegram_bot_token",
+  novofon: "novofon_api_key",
+  site: "site_webhook_url",
+  max_vk: "max_api_key",
+  mail: "mail_host",
 };
 
 interface AddDealModalProps {
@@ -16,6 +36,10 @@ interface AddDealModalProps {
 
 export default function AddDealModal({ onClose }: AddDealModalProps) {
   const createMutation = useCreateDeal();
+  const { data: apiStages } = usePipelineStages();
+  const { data: doctorsList } = useDoctorsList();
+  const { data: integrations } = useIntegrations();
+
   const [form, setForm] = useState<DealCreateData>({
     title: "",
     patient_name: "",
@@ -28,6 +52,20 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
     notes: "",
   });
   const [error, setError] = useState("");
+
+  const stages = apiStages?.map((s) => ({ key: s.key, label: s.label })) ?? [];
+
+  const connectedChannels = (() => {
+    const channels: { key: string; label: string }[] = [{ key: "manual", label: "Ручной ввод" }];
+    if (!integrations) return channels;
+    for (const [channelKey, settingKey] of Object.entries(CHANNEL_INTEGRATION_KEYS)) {
+      const val = integrations[settingKey];
+      if (val && !val.startsWith("****") && val !== "") {
+        channels.push({ key: channelKey, label: CHANNEL_LABELS[channelKey] ?? channelKey });
+      }
+    }
+    return channels;
+  })();
 
   function set(key: keyof DealCreateData, val: string | number | undefined) {
     setForm((p) => ({ ...p, [key]: val }));
@@ -84,7 +122,7 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Этап</label>
               <select value={form.stage} onChange={(e) => set("stage", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
-                {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                {stages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </div>
           </div>
@@ -96,19 +134,21 @@ export default function AddDealModal({ onClose }: AddDealModalProps) {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Врач</label>
-              <input value={form.doctor_name ?? ""} onChange={(e) => set("doctor_name", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Козлова Е.А." />
+              <select value={form.doctor_name ?? ""} onChange={(e) => set("doctor_name", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
+                <option value="">— Выбрать врача —</option>
+                {doctorsList?.doctors.map((d) => (
+                  <option key={d.doctor_id ?? d.doctor_name} value={d.doctor_name}>{d.doctor_name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Канал</label>
             <select value={form.source_channel ?? ""} onChange={(e) => set("source_channel", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
-              <option value="manual">Ручной ввод</option>
-              <option value="phone">Телефон</option>
-              <option value="telegram">Telegram</option>
-              <option value="website">Сайт</option>
-              <option value="instagram">Instagram</option>
-              <option value="referral">Рекомендация</option>
+              {connectedChannels.map((ch) => (
+                <option key={ch.key} value={ch.key}>{ch.label}</option>
+              ))}
             </select>
           </div>
 

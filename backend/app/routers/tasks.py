@@ -16,10 +16,11 @@ router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 async def get_tasks(
     assigned_to: str | None = Query(None),
     is_done: bool | None = Query(None),
+    deal_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> TaskListResponse:
-    return await list_tasks(db=db, assigned_to=assigned_to, is_done=is_done)
+    return await list_tasks(db=db, assigned_to=assigned_to, is_done=is_done, deal_id=deal_id)
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)
@@ -34,6 +35,7 @@ async def create_new_task(
         title=body.title,
         due_at=body.due_at,
         patient_id=body.patient_id,
+        deal_id=body.deal_id,
         assigned_to=body.assigned_to,
     )
 

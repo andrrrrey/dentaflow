@@ -10,6 +10,7 @@ from app.database import async_session_factory
 from app.models.deal import Deal, DealStageHistory
 from app.models.deal_note import DealNote
 from app.models.patient import Patient
+from app.models.pipeline_stage import PipelineStage
 from app.models.user import User
 from app.schemas.deal import (
     DealNote as DealNoteSchema,
@@ -19,7 +20,7 @@ from app.schemas.deal import (
     StageHistoryEntry,
 )
 
-STAGES = [
+FALLBACK_STAGES = [
     ("waiting_list", "Лист ожидания"),
     ("new", "Новые"),
     ("contact", "Контакт"),
@@ -77,6 +78,12 @@ async def get_pipeline(
     assigned_to: str | None = None,
 ) -> PipelineResponse:
     async with async_session_factory() as db:
+        stages_result = await db.execute(
+            select(PipelineStage).order_by(PipelineStage.position)
+        )
+        db_stages = stages_result.scalars().all()
+        stage_list = [(s.key, s.label) for s in db_stages] if db_stages else FALLBACK_STAGES
+
         stmt = select(Deal).order_by(Deal.stage_changed_at.desc())
         if stage:
             stmt = stmt.where(Deal.stage == stage)
@@ -91,7 +98,7 @@ async def get_pipeline(
         columns: list[StageColumn] = []
         total_value = 0.0
 
-        for stage_key, label in STAGES:
+        for stage_key, label in stage_list:
             stage_deals = [d for d in deal_responses if d.stage == stage_key]
             stage_total = sum(d.amount or 0 for d in stage_deals)
             total_value += stage_total

@@ -25,6 +25,7 @@ class TaskResponse(BaseModel):
 
 class TaskCreate(BaseModel):
     patient_id: uuid.UUID | None = None
+    deal_id: uuid.UUID | None = None
     type: str
     title: str
     due_at: datetime
