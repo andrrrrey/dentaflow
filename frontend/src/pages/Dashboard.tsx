@@ -8,16 +8,17 @@ import SourcesTable from "../components/dashboard/SourcesTable";
 import DoctorsLoad from "../components/dashboard/DoctorsLoad";
 import AdminsRating from "../components/dashboard/AdminsRating";
 import { useDashboardOverview } from "../api/dashboard";
-import { useAiInsights } from "../api/ai";
+import { useAiInsights, useRefreshDashboardInsights } from "../api/ai";
 import { useDoctorsLoad } from "../api/doctors";
-import type { AIInsights, DoctorLoad } from "../types";
+import { useFunnel } from "../api/pipeline_ext";
+import type { AIInsights, DoctorLoad, FunnelItem } from "../types";
 
 /* ── Adapters ────────────────────────────────────────────── */
 
 function adaptAiInsights(raw: ReturnType<typeof useAiInsights>["data"]): AIInsights {
   if (!raw || raw.error) {
     return {
-      summary: "Загрузка ИИ-аналитики...",
+      summary: "Нажмите «Обновить» для получения AI-совета на основе данных клиники.",
       chips: [],
       recommendations: [],
     };
@@ -25,17 +26,11 @@ function adaptAiInsights(raw: ReturnType<typeof useAiInsights>["data"]): AIInsig
 
   const highlights: string[] = raw.highlights ?? [];
   const summaryParts = [raw.summary ?? raw.text ?? "Анализ данных завершён.", ...highlights].filter(Boolean);
-  const fullSummary = summaryParts.join(" ");
-
-  const recommendations = (raw.recommendations ?? []).map((r) => ({
-    title: r.slice(0, 60),
-    body: r,
-  }));
 
   return {
-    summary: fullSummary,
+    summary: summaryParts.join(" "),
     chips: [],
-    recommendations,
+    recommendations: (raw.recommendations ?? []).map((r) => ({ title: r.slice(0, 60), body: r })),
   };
 }
 
@@ -47,11 +42,17 @@ function adaptDoctorsLoad(doctors: ReturnType<typeof useDoctorsLoad>["data"]): D
   }));
 }
 
+function adaptPatientFunnel(raw: ReturnType<typeof useFunnel>["data"]): FunnelItem[] {
+  return (raw?.stages ?? []).map((s) => ({
+    stage: s.label,
+    count: s.count,
+    pct: s.pct,
+  }));
+}
+
 function getPeriodLabel(period: "day" | "week" | "month"): string {
   const now = new Date();
-  if (period === "day") {
-    return format(now, "d MMMM yyyy", { locale: ru });
-  }
+  if (period === "day") return format(now, "d MMMM yyyy", { locale: ru });
   if (period === "week") {
     const start = startOfWeek(now, { weekStartsOn: 1 });
     const end = endOfWeek(now, { weekStartsOn: 1 });
@@ -72,19 +73,20 @@ export default function Dashboard() {
   const { data: overview, isLoading: overviewLoading } = useDashboardOverview(period);
   const { data: rawInsights } = useAiInsights();
   const { data: rawDoctors } = useDoctorsLoad();
+  const { data: patientFunnel } = useFunnel();
+  const refreshInsights = useRefreshDashboardInsights();
 
   if (overviewLoading || !overview) {
     return (
       <div className="flex flex-col gap-[18px]">
-        <div className="text-center text-text-muted py-16 text-[13px]">
-          Загрузка данных...
-        </div>
+        <div className="text-center text-text-muted py-16 text-[13px]">Загрузка данных...</div>
       </div>
     );
   }
 
-  const aiInsights = adaptAiInsights(rawInsights);
-  const doctorsLoad = adaptDoctorsLoad(rawDoctors) || overview.doctors_load;
+  const aiInsights = adaptAiInsights(refreshInsights.data ?? rawInsights);
+  const doctorsLoad = adaptDoctorsLoad(rawDoctors);
+  const funnel = adaptPatientFunnel(patientFunnel);
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -105,20 +107,22 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
-        <span className="text-[12px] text-text-muted font-medium">
-          {getPeriodLabel(period)}
-        </span>
+        <span className="text-[12px] text-text-muted font-medium">{getPeriodLabel(period)}</span>
       </div>
 
       {/* AI Insight Banner */}
-      <AIInsightBanner insights={aiInsights} />
+      <AIInsightBanner
+        insights={aiInsights}
+        onRefresh={() => refreshInsights.mutate(period)}
+        isRefreshing={refreshInsights.isPending}
+      />
 
       {/* KPI Cards */}
       <KpiCards kpi={overview.kpi} />
 
-      {/* Funnel + Sources */}
+      {/* Patient Funnel + Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
-        <FunnelChart funnel={overview.funnel} />
+        <FunnelChart funnel={funnel.length ? funnel : overview.funnel} />
         <SourcesTable sources={overview.sources} />
       </div>
 

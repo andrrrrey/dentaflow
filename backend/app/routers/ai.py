@@ -48,6 +48,40 @@ async def get_insights(
     return insights
 
 
+@router.post("/insights/refresh")
+async def refresh_insights(
+    period: str = "week",
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Force-regenerate AI insights using real KPI data for the given period."""
+    from app.services.dashboard_service import _kpi, _period_range
+
+    dt_from, dt_to = _period_range(period)
+    kpi = await _kpi(db, dt_from, dt_to)
+    kpi_data = {
+        "period": period,
+        "new_leads": kpi.new_leads,
+        "appointments": kpi.appointments_created,
+        "confirmed": kpi.appointments_confirmed,
+        "no_shows": kpi.no_shows,
+        "revenue": kpi.revenue_planned,
+        "conversion_rate": kpi.conversion_rate,
+    }
+
+    ai = AIService()
+    insights = await ai.generate_daily_insights(kpi=kpi_data)
+
+    try:
+        r = _redis()
+        await r.set(INSIGHTS_CACHE_KEY, json.dumps(insights), ex=INSIGHTS_TTL)
+        await r.aclose()
+    except Exception:
+        pass
+
+    return insights
+
+
 @router.post("/patient/{patient_id}")
 async def analyze_patient(
     patient_id: uuid.UUID,

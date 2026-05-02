@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
 export interface AiInsights {
@@ -27,6 +27,19 @@ export function useAiInsights() {
     },
     staleTime: 60 * 60 * 1000,
     refetchInterval: 60 * 60 * 1000,
+  });
+}
+
+export function useRefreshDashboardInsights() {
+  const qc = useQueryClient();
+  return useMutation<AiInsights, Error, string>({
+    mutationFn: async (period: string) => {
+      const { data } = await api.post(`/ai/insights/refresh?period=${period}`);
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["ai-insights"], data);
+    },
   });
 }
 

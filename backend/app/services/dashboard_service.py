@@ -172,13 +172,17 @@ async def _sources(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list
 
 
 async def _doctors_load(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[DoctorLoad]:
+    # Always use 30-day window so doctors are visible regardless of selected period
+    window_from = dt_to - timedelta(days=30)
+    query_from = min(dt_from, window_from)
+
     stmt = (
         select(
             Appointment.doctor_name,
             func.count().label("cnt"),
         )
         .where(
-            Appointment.scheduled_at >= dt_from,
+            Appointment.scheduled_at >= query_from,
             Appointment.scheduled_at <= dt_to,
             Appointment.doctor_name.isnot(None),
         )
