@@ -158,7 +158,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                     {serviceDropdownOpen && (
                       <div
                         className="absolute left-0 top-full mt-1 z-[300] rounded-xl overflow-y-auto flex flex-col"
-                        style={{ background: "rgba(255,255,255,0.98)", boxShadow: "0 8px 24px rgba(91,76,245,0.18)", minWidth: 240, maxHeight: 220 }}
+                        style={{ background: "rgba(255,255,255,0.98)", boxShadow: "0 8px 24px rgba(91,76,245,0.18)", minWidth: 340, maxHeight: 320 }}
                       >
                         {servicesList.map((s) => (
                           <button

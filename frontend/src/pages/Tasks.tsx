@@ -5,6 +5,7 @@ import { ru } from "date-fns/locale";
 import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
+import PatientSearchInput from "../components/ui/PatientSearchInput";
 import { useTasks, useCreateTask, useToggleTask, useDeleteTask } from "../api/tasks";
 
 const typeIcon: Record<string, React.ReactNode> = {
@@ -27,7 +28,7 @@ export default function Tasks() {
   const [filter, setFilter] = useState<"all" | "active" | "done">("all");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: "callback", title: "", due_at: "" });
+  const [form, setForm] = useState({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "" });
 
   const { data, isLoading } = useTasks(
     filter === "active" ? { is_done: false } : filter === "done" ? { is_done: true } : undefined
@@ -55,11 +56,11 @@ export default function Tasks() {
         type: form.type,
         title: form.title.trim(),
         due_at: new Date(form.due_at).toISOString(),
-        patient_id: null,
+        patient_id: form.patient_id || null,
       },
       {
         onSuccess: () => {
-          setForm({ type: "callback", title: "", due_at: "" });
+          setForm({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "" });
           setShowForm(false);
           setPage(1);
         },
@@ -126,6 +127,16 @@ export default function Tasks() {
               <option value="confirm_appointment">Подтвердить визит</option>
               <option value="other">Другое</option>
             </select>
+            <div className="w-[220px]">
+              <PatientSearchInput
+                value={form.patient_name}
+                onChangeName={(name) => setForm((f) => ({ ...f, patient_name: name, patient_id: "" }))}
+                onSelectPatient={(id, name) => setForm((f) => ({ ...f, patient_id: id, patient_name: name }))}
+                placeholder="Пациент (необязательно)"
+                className="border border-[rgba(91,76,245,0.18)] bg-white focus:border-accent2"
+                inputStyle={{ padding: "7px 12px" }}
+              />
+            </div>
             <input
               type="text"
               placeholder="Название задачи"

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWeek, addMonths, subMonths, isSameDay, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Sparkles } from "lucide-react";
 import StatCard from "../components/ui/StatCard";
 import Button from "../components/ui/Button";
 import { useSchedule, useDoctorsList, useSyncSchedule } from "../api/schedule";
@@ -30,7 +30,7 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
 const CLINIC_START = 9;
 const CLINIC_END = 20;
 const HOURS = Array.from({ length: CLINIC_END - CLINIC_START + 1 }, (_, i) => CLINIC_START + i);
-const SLOT_HEIGHT = 60;
+const SLOT_HEIGHT = 80;
 
 function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   selected: Date;
@@ -117,20 +117,62 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
       }}
       onClick={onClick}
     >
-      <div className="px-2 py-1 h-full flex flex-col justify-start overflow-hidden">
-        <div className="text-[10px] font-mono font-semibold" style={{ color: colors.text }}>
+      <div className="px-2 py-[5px] h-full flex flex-col justify-start overflow-hidden">
+        <div className="text-[10px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
           {format(start, "HH:mm")} – {format(new Date(start.getTime() + appt.duration_min * 60000), "HH:mm")}
         </div>
-        <div className="text-[11px] font-bold text-text-main truncate leading-tight mt-[1px]">
+        <div className="text-[12px] font-bold text-text-main truncate leading-tight mt-[2px]">
           {appt.patient_name}
         </div>
-        {height > 44 && appt.patient_phone && (
-          <div className="text-[10px] text-text-muted truncate">{appt.patient_phone}</div>
+        {height > 46 && appt.patient_phone && (
+          <div className="text-[11px] text-text-muted truncate mt-[1px]">{appt.patient_phone}</div>
         )}
-        {height > 58 && appt.service && (
-          <div className="text-[10px] text-text-muted truncate mt-auto">{appt.service}</div>
+        {height > 62 && appt.service && (
+          <div className="text-[11px] text-text-muted truncate mt-[2px]">{appt.service}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AiScheduleBanner({ appointments }: { appointments: Appointment[] }) {
+  const doctorMap = new Map<string, number>();
+  for (const a of appointments) {
+    const doc = a.doctor_name || "Без врача";
+    doctorMap.set(doc, (doctorMap.get(doc) ?? 0) + 1);
+  }
+
+  const total = appointments.length;
+  const cancelled = appointments.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
+  const confirmed = appointments.filter((a) => a.status === "confirmed").length;
+
+  const CLINIC_TOTAL_SLOTS = (CLINIC_END - CLINIC_START) * doctorMap.size;
+  const usedSlots = appointments.reduce((s, a) => s + Math.ceil(a.duration_min / 60), 0);
+  const freeSlots = Math.max(0, CLINIC_TOTAL_SLOTS - usedSlots);
+
+  const parts: string[] = [];
+  if (freeSlots > 0) {
+    const busyDoctors = Array.from(doctorMap.entries()).filter(([, c]) => c >= 4).map(([n]) => n.split(" ")[0]);
+    const freeDoctors = Array.from(doctorMap.entries()).filter(([, c]) => c <= 2).map(([n]) => n.split(" ")[0]);
+    if (busyDoctors.length) parts.push(`Д-р ${busyDoctors[0]} загружен — переводите новых пациентов к ${freeDoctors[0] ?? "другим врачам"}`);
+    else parts.push(`${freeSlots} свободных окон — рекомендую направить первичку`);
+  }
+  if (cancelled > 0) parts.push(`${cancelled} отмен${cancelled === 1 ? "а" : "ений"} — есть возможность заполнить`);
+  if (confirmed < total && total > 0) parts.push(`Подтверждено ${confirmed} из ${total} — обзвоните неподтверждённых`);
+
+  const text = parts.length ? parts.slice(0, 2).join(" · ") : `${total} записей, расписание сбалансировано`;
+
+  return (
+    <div
+      className="mx-4 my-3 px-4 py-[9px] rounded-[12px] flex items-center gap-3"
+      style={{
+        background: "linear-gradient(90deg, rgba(91,76,245,0.08) 0%, rgba(59,127,237,0.06) 100%)",
+        border: "1px solid rgba(91,76,245,0.14)",
+      }}
+    >
+      <Sparkles size={14} style={{ color: "#5B4CF5", flexShrink: 0 }} />
+      <span className="text-[12px] font-semibold" style={{ color: "#5B4CF5" }}>ИИ-РЕКОМЕНДАЦИИ</span>
+      <span className="text-[12px] text-text-muted" style={{ borderLeft: "1px solid rgba(91,76,245,0.15)", paddingLeft: 10 }}>{text}</span>
     </div>
   );
 }
@@ -274,6 +316,11 @@ export default function Schedule() {
               <ChevronRight size={16} />
             </button>
           </div>
+
+          {/* AI recommendation banner */}
+          {!isLoading && doctorsWithAppointments.length > 0 && (
+            <AiScheduleBanner appointments={appointments} />
+          )}
 
           {isLoading ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Загрузка данных...</div>

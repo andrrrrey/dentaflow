@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check } from "lucide-react";
+import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check, Sparkles } from "lucide-react";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
@@ -103,6 +103,57 @@ function PatientsSidePanel({ stage, onClose }: { stage: string; onClose: () => v
           Всего: {data.total}
         </div>
       )}
+    </div>
+  );
+}
+
+/* -- AI banner -- */
+
+function AiPipelineBanner({ pipeline }: { pipeline: PipelineResponse }) {
+  const allDeals = pipeline.stages.flatMap((s) => s.deals);
+  const total = allDeals.length;
+  if (total === 0) return null;
+
+  const stageCounts: Record<string, number> = {};
+  for (const d of allDeals) stageCounts[d.stage] = (stageCounts[d.stage] ?? 0) + 1;
+
+  const stuckStage = pipeline.stages
+    .filter((s) => !["closed_won", "closed_lost"].includes(s.stage))
+    .sort((a, b) => b.count - a.count)[0];
+
+  const hotLeads = allDeals.filter((d) => d.stage === "negotiation" || d.stage === "scheduled").length;
+  const lostDeals = allDeals.filter((d) => d.stage === "closed_lost").length;
+  const totalValue = pipeline.total_pipeline_value;
+
+  const parts: string[] = [];
+  if (stuckStage && stuckStage.count >= 3) {
+    parts.push(`${stuckStage.count} пациент${stuckStage.count >= 5 ? "ов" : "а"} зависли на «${stuckStage.label}» — требуется контакт`);
+  }
+  if (hotLeads > 0) parts.push(`${hotLeads} горячих лида — позвоните сегодня`);
+  if (lostDeals > 0) parts.push(`${lostDeals} закрытых отказов — запустите реактивацию`);
+  if (parts.length === 0) parts.push(`${total} сделок в воронке, всё под контролем`);
+
+  const valueStr = totalValue >= 1_000_000
+    ? (totalValue / 1_000_000).toFixed(1) + " млн ₽"
+    : Math.round(totalValue).toLocaleString("ru-RU") + " ₽";
+
+  return (
+    <div
+      className="rounded-[14px] px-4 py-[10px] flex items-center gap-3"
+      style={{
+        background: "linear-gradient(90deg, rgba(91,76,245,0.08) 0%, rgba(59,127,237,0.06) 100%)",
+        border: "1px solid rgba(91,76,245,0.14)",
+      }}
+    >
+      <Sparkles size={14} style={{ color: "#5B4CF5", flexShrink: 0 }} />
+      <span className="text-[12px] font-semibold" style={{ color: "#5B4CF5" }}>ИИ · ВОРОНКА</span>
+      <span
+        className="text-[12px] text-text-muted flex-1"
+        style={{ borderLeft: "1px solid rgba(91,76,245,0.15)", paddingLeft: 10 }}
+      >
+        {parts.slice(0, 2).join(" · ")}
+      </span>
+      <span className="text-[12px] font-bold flex-shrink-0" style={{ color: "#5B4CF5" }}>{valueStr}</span>
     </div>
   );
 }
@@ -250,6 +301,9 @@ export default function Pipeline() {
           </div>
         </Card>
       )}
+
+      {/* AI pipeline banner */}
+      {!pipelineLoading && <AiPipelineBanner pipeline={filteredPipeline} />}
 
       {/* CRM view */}
       <div className="flex flex-col gap-[14px] min-h-0">

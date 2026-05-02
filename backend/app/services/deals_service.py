@@ -253,12 +253,18 @@ async def update_deal(
 
 
 async def delete_deal(deal_id: uuid.UUID) -> bool:
+    from sqlalchemy import delete as sql_delete, update as sql_update
+    from app.models.task import Task
+
     async with async_session_factory() as db:
         deal = (await db.execute(
             select(Deal).where(Deal.id == deal_id)
         )).scalar_one_or_none()
         if not deal:
             return False
+        await db.execute(sql_delete(DealStageHistory).where(DealStageHistory.deal_id == deal_id))
+        await db.execute(sql_delete(DealNote).where(DealNote.deal_id == deal_id))
+        await db.execute(sql_update(Task).where(Task.deal_id == deal_id).values(deal_id=None))
         await db.delete(deal)
         await db.commit()
         return True
