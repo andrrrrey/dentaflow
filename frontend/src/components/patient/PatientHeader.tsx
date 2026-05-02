@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CalendarPlus,
-  Phone,
   PlusCircle,
   Mail,
+  Phone,
   User,
   CheckCircle2,
 } from "lucide-react";
@@ -40,6 +41,7 @@ function ltvColor(score: number | null): "green" | "yellow" | "red" | "blue" {
 }
 
 export default function PatientHeader({ patient }: PatientHeaderProps) {
+  const navigate = useNavigate();
   const createDeal = useCreateDeal();
   const [dealCreated, setDealCreated] = useState(false);
 
@@ -130,7 +132,7 @@ export default function PatientHeader({ patient }: PatientHeaderProps) {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2 flex-shrink-0">
-          <Button variant="primary" size="sm">
+          <Button variant="primary" size="sm" onClick={() => navigate("/schedule")}>
             <CalendarPlus size={14} className="mr-1.5" />
             Записать
           </Button>

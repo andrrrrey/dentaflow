@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -114,6 +114,19 @@ export function usePatientDetail(id: string | undefined) {
   });
 
   return { data, isLoading };
+}
+
+export function useSyncPatient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patientId: string) => {
+      const { data } = await api.post(`/patients/${patientId}/sync-1denta`);
+      return data as { ok: boolean; synced: number; created: number; updated: number; message?: string };
+    },
+    onSuccess: (_data, patientId) => {
+      qc.invalidateQueries({ queryKey: ["patient", patientId] });
+    },
+  });
 }
 
 export interface PatientFilters {

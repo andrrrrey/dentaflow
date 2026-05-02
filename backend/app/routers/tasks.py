@@ -1,11 +1,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Response
 
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
-from app.services.tasks_service import create_task, list_tasks, update_task
+from app.services.tasks_service import create_task, delete_task, list_tasks, update_task
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
@@ -31,6 +32,15 @@ async def create_new_task(
         patient_id=body.patient_id,
         assigned_to=body.assigned_to,
     )
+
+
+@router.delete("/{task_id}", status_code=204)
+async def remove_task(
+    task_id: uuid.UUID,
+    _current_user: User = Depends(get_current_user),
+) -> Response:
+    await delete_task(task_id)
+    return Response(status_code=204)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)

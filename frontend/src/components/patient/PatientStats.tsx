@@ -174,7 +174,12 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
     <div className="flex flex-col gap-4">
       {/* KPI grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatTile label="Всего визитов" value={stats.total_visits} icon={<Calendar size={16} className="text-accent2" />} />
+        <StatTile
+          label="Всего визитов"
+          value={stats.total_visits}
+          sub={stats.total_visits === 0 && rawData?.visits_count ? `В 1Denta: ${rawData.visits_count}` : undefined}
+          icon={<Calendar size={16} className="text-accent2" />}
+        />
         <StatTile label="Завершено" value={stats.completed_visits} icon={<UserCheck size={16} className="text-[#00C9A7]" />} />
         <StatTile label="Отменено" value={stats.cancelled_visits} icon={<XCircle size={16} className="text-[#F5A623]" />} />
         <StatTile label="Неявок" value={stats.no_show_visits} icon={<AlertTriangle size={16} className="text-[#f44b6e]" />} />
@@ -187,6 +192,7 @@ export default function PatientStats({ stats, rawData, appointments = [] }: Prop
         <StatTile
           label="Суммарная выручка"
           value={`${stats.total_revenue.toLocaleString("ru-RU")} ₽`}
+          sub={stats.total_revenue === 0 && rawData?.totalArrival ? `В 1Denta: ${Number(rawData.totalArrival).toLocaleString("ru-RU")} ₽` : undefined}
           icon={<TrendingUp size={16} className="text-accent2" />}
         />
         <StatTile

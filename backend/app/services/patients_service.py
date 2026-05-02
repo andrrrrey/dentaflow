@@ -63,12 +63,15 @@ async def get_patients(
     if gender:
         stmt = stmt.where(Patient.gender == gender)
     if patient_type:
-        _type_map = {"regular": "noGroup", "new": "new", "potential": "potential", "refused": "refused"}
         if patient_type == "other":
-            stmt = stmt.where(Patient.patient_type.notin_(list(_type_map.values())))
+            known = ["noGroup", "new", "potential", "refuse", "refused"]
+            stmt = stmt.where(Patient.patient_type.notin_(known))
+        elif patient_type == "regular":
+            stmt = stmt.where(Patient.patient_type == "noGroup")
+        elif patient_type == "refused":
+            stmt = stmt.where(Patient.patient_type.in_(["refuse", "refused"]))
         else:
-            mapped = _type_map.get(patient_type, patient_type)
-            stmt = stmt.where(Patient.patient_type == mapped)
+            stmt = stmt.where(Patient.patient_type == patient_type)
     if source_channel:
         stmt = stmt.where(Patient.source_channel == source_channel)
     if birth_date_from:

@@ -1,11 +1,15 @@
-import { Calendar, Clock, Stethoscope } from "lucide-react";
+import { useState } from "react";
+import { Calendar, Clock, Stethoscope, RefreshCw, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import Pill from "../ui/Pill";
 import type { AppointmentResponse } from "../../api/patients";
+import { useSyncPatient } from "../../api/patients";
 
 interface MedHistoryProps {
   appointments: AppointmentResponse[];
+  patientId: string;
+  oneDentaVisitsCount?: number | null;
 }
 
 const statusMap: Record<string, { variant: "green" | "blue" | "yellow" | "red"; label: string }> = {
@@ -18,18 +22,57 @@ const statusMap: Record<string, { variant: "green" | "blue" | "yellow" | "red"; 
 
 function formatRevenue(v: number | null): string {
   if (v === null) return "---";
-  return v.toLocaleString("ru-RU") + " \u20BD";
+  return v.toLocaleString("ru-RU") + " ₽";
 }
 
-export default function MedHistory({ appointments }: MedHistoryProps) {
+export default function MedHistory({ appointments, patientId, oneDentaVisitsCount }: MedHistoryProps) {
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const sync = useSyncPatient();
+
   const sorted = [...appointments].sort((a, b) => {
     const da = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
     const db = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
     return db - da;
   });
 
+  const handleSync = () => {
+    setSyncMsg(null);
+    sync.mutate(patientId, {
+      onSuccess: (res) => {
+        if (res.ok) setSyncMsg(`Загружено ${res.synced} визитов из 1Denta`);
+        else setSyncMsg(res.message ?? "Ошибка синхронизации");
+      },
+      onError: () => setSyncMsg("Ошибка подключения к 1Denta"),
+    });
+  };
+
+  const showHint = appointments.length === 0 && oneDentaVisitsCount && oneDentaVisitsCount > 0;
+
   return (
     <div className="space-y-3">
+      {/* Sync toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          {showHint && (
+            <span className="flex items-center gap-1.5 text-[12px] text-[#F5A623] font-semibold">
+              <AlertCircle size={13} />
+              В 1Denta {oneDentaVisitsCount} визитов — загрузите историю
+            </span>
+          )}
+          {syncMsg && (
+            <span className="text-[12px] text-[#00C9A7] font-semibold">{syncMsg}</span>
+          )}
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={sync.isPending}
+          className="flex items-center gap-1.5 text-[12px] font-semibold text-accent2 hover:opacity-70 transition-opacity disabled:opacity-40"
+        >
+          <RefreshCw size={13} className={sync.isPending ? "animate-spin" : ""} />
+          {sync.isPending ? "Загружаем..." : "Загрузить из 1Denta"}
+        </button>
+      </div>
+
       {sorted.map((apt) => {
         const st = statusMap[apt.status ?? ""] ?? { variant: "yellow" as const, label: apt.status ?? "---" };
         return (
@@ -88,7 +131,7 @@ export default function MedHistory({ appointments }: MedHistoryProps) {
         );
       })}
 
-      {sorted.length === 0 && (
+      {sorted.length === 0 && !showHint && (
         <div className="text-center py-8 text-text-muted text-[13px]">
           Нет записей о визитах
         </div>

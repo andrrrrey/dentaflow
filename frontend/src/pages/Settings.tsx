@@ -301,7 +301,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     title: "1Denta (CRM)",
     description: "Синхронизация пациентов и записей",
     fields: [
-      { key: "one_denta_api_url", label: "API URL", placeholder: "https://crmexchange.1denta.ru" },
+      { key: "one_denta_api_url", label: "API URL (адрес вашей 1Denta, например https://app3.sqns.ru)", placeholder: "https://app3.sqns.ru" },
       { key: "one_denta_email", label: "Email", type: "email", placeholder: "email@clinic.ru" },
       { key: "one_denta_password", label: "Пароль", type: "password", placeholder: "Пароль" },
     ],

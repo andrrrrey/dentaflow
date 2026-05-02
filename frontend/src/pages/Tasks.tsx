@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, AlertTriangle, Plus, X } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
-import { useTasks, useCreateTask, useToggleTask } from "../api/tasks";
+import { useTasks, useCreateTask, useToggleTask, useDeleteTask } from "../api/tasks";
 
 const typeIcon: Record<string, React.ReactNode> = {
   callback: <Phone size={14} className="text-[#3B7FED]" />,
@@ -19,8 +19,11 @@ const typeLabel: Record<string, string> = {
   other: "Другое",
 };
 
+const PAGE_SIZE = 15;
+
 export default function Tasks() {
   const [filter, setFilter] = useState<"all" | "active" | "done">("all");
+  const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: "callback", title: "", due_at: "" });
 
@@ -29,9 +32,18 @@ export default function Tasks() {
   );
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
+  const deleteTask = useDeleteTask();
 
-  const tasks = data?.items ?? [];
+  const allTasks = data?.items ?? [];
   const now = new Date();
+
+  const totalPages = Math.max(1, Math.ceil(allTasks.length / PAGE_SIZE));
+  const pageTasks = allTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const handleFilterChange = (f: typeof filter) => {
+    setFilter(f);
+    setPage(1);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +59,7 @@ export default function Tasks() {
         onSuccess: () => {
           setForm({ type: "callback", title: "", due_at: "" });
           setShowForm(false);
+          setPage(1);
         },
       }
     );
@@ -56,12 +69,11 @@ export default function Tasks() {
     <div className="flex flex-col gap-5">
       {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          {/* Filter tabs */}
+        <div className="flex items-center gap-3 flex-wrap">
           {(["all", "active", "done"] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => handleFilterChange(f)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${
                 filter === f
                   ? "bg-accent2 text-white"
@@ -149,83 +161,138 @@ export default function Tasks() {
       >
         {isLoading ? (
           <div className="p-8 text-center text-text-muted text-[13px]">Загрузка...</div>
-        ) : tasks.length === 0 ? (
+        ) : allTasks.length === 0 ? (
           <div className="p-8 text-center text-text-muted text-[13px]">Нет задач</div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
-                {["", "Задача", "Тип", "Пациент", "Срок", "Статус"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[11px] font-bold text-text-muted uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task, idx) => {
-                const isOverdue = !task.is_done && task.due_at && new Date(task.due_at) < now;
-                return (
-                  <tr
-                    key={task.id}
-                    style={{
-                      borderBottom: idx < tasks.length - 1 ? "1px solid rgba(91,76,245,0.06)" : "none",
-                      opacity: task.is_done ? 0.65 : 1,
-                    }}
-                  >
-                    <td className="px-4 py-3 w-9">
-                      <button
-                        className="hover:opacity-70 transition-opacity"
-                        onClick={() => toggleTask.mutate({ taskId: task.id, isDone: !task.is_done })}
-                      >
-                        {task.is_done ? (
-                          <CheckCircle2 size={17} className="text-[#00C9A7]" />
-                        ) : (
-                          <Circle size={17} className="text-text-muted" />
-                        )}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 max-w-[280px]">
-                      <span className={`text-[13px] font-semibold ${task.is_done ? "text-text-muted line-through" : "text-text-main"}`}>
-                        {task.title ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
-                        {task.type && typeIcon[task.type]}
-                        {typeLabel[task.type ?? ""] ?? task.type ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[12.5px] text-text-muted">
-                      {task.patient_name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {task.due_at ? (
-                        <span className={`flex items-center gap-1 text-[12px] ${isOverdue ? "text-[#f44b6e] font-semibold" : "text-text-muted"}`}>
-                          <Clock size={11} />
-                          {format(new Date(task.due_at), "dd MMM yyyy, HH:mm", { locale: ru })}
+          <>
+            <table className="w-full">
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
+                  {["", "Задача", "Тип", "Пациент", "Срок", "Статус", ""].map((h, i) => (
+                    <th
+                      key={i}
+                      className="px-4 py-3 text-left text-[11px] font-bold text-text-muted uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageTasks.map((task, idx) => {
+                  const isOverdue = !task.is_done && task.due_at && new Date(task.due_at) < now;
+                  return (
+                    <tr
+                      key={task.id}
+                      style={{
+                        borderBottom: idx < pageTasks.length - 1 ? "1px solid rgba(91,76,245,0.06)" : "none",
+                        opacity: task.is_done ? 0.65 : 1,
+                      }}
+                    >
+                      <td className="px-4 py-3 w-9">
+                        <button
+                          className="hover:opacity-70 transition-opacity"
+                          onClick={() => toggleTask.mutate({ taskId: task.id, isDone: !task.is_done })}
+                        >
+                          {task.is_done ? (
+                            <CheckCircle2 size={17} className="text-[#00C9A7]" />
+                          ) : (
+                            <Circle size={17} className="text-text-muted" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 max-w-[280px]">
+                        <span className={`text-[13px] font-semibold ${task.is_done ? "text-text-muted line-through" : "text-text-main"}`}>
+                          {task.title ?? "—"}
                         </span>
-                      ) : (
-                        <span className="text-[12px] text-text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {task.is_done ? (
-                        <Pill variant="green">Выполнено</Pill>
-                      ) : isOverdue ? (
-                        <Pill variant="red">Просрочено</Pill>
-                      ) : (
-                        <Pill variant="yellow">В работе</Pill>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="flex items-center gap-1.5 text-[12px] text-text-muted">
+                          {task.type && typeIcon[task.type]}
+                          {typeLabel[task.type ?? ""] ?? task.type ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[12.5px] text-text-muted">
+                        {task.patient_name ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {task.due_at ? (
+                          <span className={`flex items-center gap-1 text-[12px] ${isOverdue ? "text-[#f44b6e] font-semibold" : "text-text-muted"}`}>
+                            <Clock size={11} />
+                            {format(new Date(task.due_at), "dd MMM yyyy, HH:mm", { locale: ru })}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] text-text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {task.is_done ? (
+                          <Pill variant="green">Выполнено</Pill>
+                        ) : isOverdue ? (
+                          <Pill variant="red">Просрочено</Pill>
+                        ) : (
+                          <Pill variant="yellow">В работе</Pill>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 w-9">
+                        <button
+                          className="text-text-muted hover:text-[#f44b6e] transition-colors"
+                          onClick={() => deleteTask.mutate(task.id)}
+                          title="Удалить"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+                <span className="text-[12px] text-text-muted">
+                  Стр. {page} из {totalPages} · {allTasks.length} задач
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="w-8 h-8 rounded-[9px] flex items-center justify-center border-none cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let p: number;
+                    if (totalPages <= 5) p = i + 1;
+                    else if (page <= 3) p = i + 1;
+                    else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                    else p = page - 2 + i;
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p)}
+                        className="w-8 h-8 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer"
+                        style={p === page ? { background: "linear-gradient(135deg,#5B4CF5,#3B7FED)", color: "#fff" } : { background: "rgba(91,76,245,0.06)", color: "#5B4CF5" }}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="w-8 h-8 rounded-[9px] flex items-center justify-center border-none cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

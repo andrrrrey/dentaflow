@@ -102,7 +102,15 @@ export default function PatientCard() {
 
           {/* Tab content */}
           {activeTab === "1denta" && (
-            <MedHistory appointments={patient.appointments} />
+            <MedHistory
+              appointments={patient.appointments}
+              patientId={patient.id}
+              oneDentaVisitsCount={
+                typeof patient.raw_1denta_data?.visits_count === "number"
+                  ? patient.raw_1denta_data.visits_count
+                  : null
+              }
+            />
           )}
           {activeTab === "stats" && (
             <PatientStats stats={patient.stats} rawData={patient.raw_1denta_data} appointments={patient.appointments} />

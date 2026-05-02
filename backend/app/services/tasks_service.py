@@ -229,6 +229,13 @@ async def create_task(
     return new_task
 
 
+async def delete_task(task_id: uuid.UUID) -> None:
+    for i, task in enumerate(MOCK_TASKS):
+        if task.id == task_id:
+            MOCK_TASKS.pop(i)
+            return
+
+
 async def update_task(
     task_id: uuid.UUID,
     is_done: bool | None = None,

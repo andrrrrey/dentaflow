@@ -99,6 +99,97 @@ async def create_new_patient(
     )
 
 
+@router.post("/{patient_id}/sync-1denta")
+async def sync_patient_from_1denta(
+    patient_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Fetch all historical visits for this patient from 1Denta and store them locally."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.models.appointment import Appointment
+    from app.models.patient import Patient
+    from app.services.one_denta import OneDentaService
+
+    patient = await db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    if not patient.external_id:
+        return {"ok": False, "message": "Пациент не связан с 1Denta (нет external_id)"}
+
+    try:
+        service = await OneDentaService.from_db(db)
+        now = datetime.now(timezone.utc)
+        appointments_data = await service.get_appointments(
+            date_from=now - timedelta(days=5 * 365),
+            date_to=now + timedelta(days=365),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Не удалось подключиться к 1Denta: {exc}")
+
+    patient_visits = [
+        a for a in appointments_data
+        if a.get("patient_external_id") == patient.external_id
+    ]
+
+    created = 0
+    updated = 0
+    for a_data in patient_visits:
+        ext_id = a_data.get("external_id")
+        if not ext_id:
+            continue
+
+        stmt = select(Appointment).where(Appointment.external_id == ext_id).limit(1)
+        result = await db.execute(stmt)
+        appointment = result.scalar_one_or_none()
+
+        scheduled_at = None
+        if a_data.get("scheduled_at"):
+            try:
+                scheduled_at = datetime.fromisoformat(a_data["scheduled_at"])
+            except ValueError:
+                pass
+
+        if appointment is None:
+            appointment = Appointment(
+                external_id=ext_id,
+                patient_id=patient_id,
+                doctor_name=a_data.get("doctor_name"),
+                doctor_id=a_data.get("doctor_id"),
+                service=a_data.get("service"),
+                branch=a_data.get("branch"),
+                scheduled_at=scheduled_at,
+                duration_min=a_data.get("duration_min", 30),
+                status=a_data.get("status"),
+                revenue=a_data.get("revenue"),
+                comment=a_data.get("comment"),
+                synced_at=now,
+            )
+            db.add(appointment)
+            created += 1
+        else:
+            appointment.patient_id = patient_id
+            appointment.doctor_name = a_data.get("doctor_name", appointment.doctor_name)
+            appointment.service = a_data.get("service", appointment.service)
+            appointment.scheduled_at = scheduled_at or appointment.scheduled_at
+            appointment.status = a_data.get("status", appointment.status)
+            appointment.revenue = a_data.get("revenue", appointment.revenue)
+            appointment.synced_at = now
+            updated += 1
+
+    # Update patient last_visit_at and total_revenue
+    if patient_visits:
+        dates = [a.get("scheduled_at") for a in patient_visits if a.get("scheduled_at")]
+        if dates:
+            patient.last_visit_at = datetime.fromisoformat(max(dates))
+        revenues = [a.get("revenue", 0) or 0 for a in patient_visits]
+        patient.total_revenue = sum(revenues)
+
+    await db.commit()
+    return {"ok": True, "synced": len(patient_visits), "created": created, "updated": updated}
+
+
 @router.patch("/{patient_id}", response_model=PatientResponse)
 async def patch_patient(
     patient_id: uuid.UUID,

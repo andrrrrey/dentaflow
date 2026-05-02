@@ -121,8 +121,8 @@ async def _sync_appointments_async() -> dict:
     service = await OneDentaService.from_db_session_factory()
     now = datetime.now(timezone.utc)
     appointments_data = await service.get_appointments(
-        date_from=now - timedelta(days=90),
-        date_to=now + timedelta(days=60),
+        date_from=now - timedelta(days=5 * 365),
+        date_to=now + timedelta(days=365),
     )
 
     created = 0

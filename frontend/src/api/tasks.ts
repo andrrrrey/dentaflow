@@ -76,3 +76,16 @@ export function useToggleTask() {
     },
   });
 }
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      await api.delete(`/tasks/${taskId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["patient"] });
+    },
+  });
+}

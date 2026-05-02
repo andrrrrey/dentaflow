@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, Plus, X } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, Plus, X, Trash2 } from "lucide-react";
 import Pill from "../ui/Pill";
 import Button from "../ui/Button";
 import type { TaskBrief } from "../../api/patients";
-import { useCreateTask, useToggleTask } from "../../api/tasks";
+import { useCreateTask, useToggleTask, useDeleteTask } from "../../api/tasks";
 
 interface TasksListProps {
   tasks: TaskBrief[];
@@ -31,6 +31,7 @@ export default function TasksList({ tasks, patientId, patientName: _patientName 
   const [form, setForm] = useState({ type: "callback", title: "", due_at: "" });
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
+  const deleteTask = useDeleteTask();
 
   const sorted = [...tasks].sort((a, b) => {
     if (a.is_done !== b.is_done) return a.is_done ? 1 : -1;
@@ -180,8 +181,8 @@ export default function TasksList({ tasks, patientId, patientName: _patientName 
                 </div>
               </div>
 
-              {/* Status */}
-              <div className="flex-shrink-0">
+              {/* Status + delete */}
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {task.is_done ? (
                   <Pill variant="green">Выполнено</Pill>
                 ) : isOverdue ? (
@@ -189,6 +190,13 @@ export default function TasksList({ tasks, patientId, patientName: _patientName 
                 ) : (
                   <Pill variant="yellow">В работе</Pill>
                 )}
+                <button
+                  className="text-text-muted hover:text-[#f44b6e] transition-colors"
+                  onClick={() => deleteTask.mutate(task.id)}
+                  title="Удалить"
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             </div>
           </div>
