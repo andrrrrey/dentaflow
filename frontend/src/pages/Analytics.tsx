@@ -92,8 +92,10 @@ export default function Analytics() {
           icon={<UserPlus size={18} className="text-accent2" />}
         />
         <StatCard
-          label="Конверсия"
+          label="Конверсия в визит"
           value={`${conversionRate}%`}
+          delta="пришли / записались"
+          deltaType="up"
           icon={<Target size={18} className="text-accent3" />}
         />
       </div>

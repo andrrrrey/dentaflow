@@ -196,65 +196,109 @@ async def sync_from_1denta(
 
     try:
         from datetime import datetime, timedelta, timezone
-        date_from = datetime.now(timezone.utc) - timedelta(days=365)
-        visits = await svc.get_appointments(date_from=date_from)
+        now = datetime.now(timezone.utc)
 
-        # Extract certificates from visits
-        seen_cert_names: set[str] = set()
         existing_codes = {
             row[0] for row in (await db.execute(select(GiftCertificate.code))).all()
         }
+        existing_discount_names = {
+            row[0] for row in (await db.execute(select(Discount.name))).all()
+        }
 
-        for visit in visits:
-            raw = visit.get("services", [])
-            # Check the raw visit data for certificates
-            # Certificates come from the original API data, not our mapped visit
-            pass
-
-        # Try to fetch certificates from services that contain "сертификат" in name
+        # ── Discounts from dedicated endpoint ──────────────────────────────
         try:
-            services = await svc.get_services()
-            for s in services:
-                title = (s.get("title") or "").strip()
-                if not title:
+            raw_discounts = await svc.get_discounts()
+            for d in raw_discounts:
+                name = (d.get("name") or d.get("title") or "").strip()
+                if not name or name in existing_discount_names:
                     continue
-                title_lower = title.lower()
-                price_range = s.get("price", {}).get("range", [])
-                price = float(price_range[0]) if price_range else 0
-
-                if "сертификат" in title_lower or "certificate" in title_lower:
-                    code = f"1D-CERT-{s.get('id', '')}"
-                    if code not in existing_codes and title not in seen_cert_names:
-                        seen_cert_names.add(title)
-                        cert = GiftCertificate(
-                            code=code,
-                            amount=price,
-                            remaining_amount=price,
-                            recipient_name=None,
-                            valid_from=datetime.now(timezone.utc).date(),
-                            valid_to=(datetime.now(timezone.utc) + timedelta(days=365)).date(),
-                            note=f"Импорт из 1Denta: {title}",
-                            status="active",
-                        )
-                        db.add(cert)
-                        synced_certs += 1
-
-                elif "скидк" in title_lower or "бонус" in title_lower or "акци" in title_lower:
-                    existing = await db.execute(
-                        select(Discount).where(Discount.name == title)
-                    )
-                    if existing.scalar_one_or_none() is None:
-                        discount = Discount(
-                            name=title,
-                            type="percent" if price < 100 else "fixed",
-                            value=price,
-                            is_active=True,
-                            description=f"Импорт из 1Denta (ID: {s.get('id', '')})",
-                        )
-                        db.add(discount)
-                        synced_discounts += 1
+                value_raw = d.get("value") or d.get("percent") or d.get("amount") or d.get("size") or 0
+                try:
+                    value = float(value_raw)
+                except (TypeError, ValueError):
+                    value = 0.0
+                dtype = "percent" if value <= 100 else "fixed"
+                discount = Discount(
+                    name=name,
+                    type=dtype,
+                    value=value,
+                    is_active=bool(d.get("active", d.get("isActive", True))),
+                    description=f"Импорт из 1Denta (ID: {d.get('id', '')})",
+                )
+                db.add(discount)
+                existing_discount_names.add(name)
+                synced_discounts += 1
         except Exception as e:
-            logger.warning("Failed to fetch services from 1Denta for marketing sync: %s", e)
+            logger.warning("Failed to fetch discounts from 1Denta: %s", e)
+
+        # ── Certificates from dedicated endpoint ───────────────────────────
+        try:
+            raw_certs = await svc.get_certificates()
+            for c in raw_certs:
+                cert_id = str(c.get("id", ""))
+                code = f"1D-CERT-{cert_id}" if cert_id else None
+                if not code or code in existing_codes:
+                    continue
+                amount_raw = c.get("amount") or c.get("nominal") or c.get("value") or c.get("sum") or 0
+                try:
+                    amount = float(amount_raw)
+                except (TypeError, ValueError):
+                    amount = 0.0
+                recipient = c.get("clientName") or c.get("name") or c.get("recipient") or None
+                cert = GiftCertificate(
+                    code=code,
+                    amount=amount,
+                    remaining_amount=float(c.get("remaining") or c.get("remainingAmount") or amount),
+                    recipient_name=recipient,
+                    valid_from=now.date(),
+                    valid_to=(now + timedelta(days=365)).date(),
+                    note=f"Импорт из 1Denta (ID: {cert_id})",
+                    status="active",
+                )
+                db.add(cert)
+                existing_codes.add(code)
+                synced_certs += 1
+        except Exception as e:
+            logger.warning("Failed to fetch certificates from 1Denta: %s", e)
+
+        # ── Fallback: scan services for discount/cert keywords ─────────────
+        if synced_discounts == 0 and synced_certs == 0:
+            try:
+                services = await svc.get_services()
+                for s in services:
+                    title = (s.get("title") or s.get("name") or "").strip()
+                    if not title:
+                        continue
+                    title_lower = title.lower()
+                    price_range = s.get("price", {}).get("range", []) if isinstance(s.get("price"), dict) else []
+                    price = float(price_range[0]) if price_range else float(s.get("price") or 0)
+
+                    if "сертификат" in title_lower or "certificate" in title_lower:
+                        code = f"1D-SVC-CERT-{s.get('id', '')}"
+                        if code not in existing_codes:
+                            cert = GiftCertificate(
+                                code=code, amount=price, remaining_amount=price,
+                                recipient_name=None,
+                                valid_from=now.date(),
+                                valid_to=(now + timedelta(days=365)).date(),
+                                note=f"Импорт из 1Denta: {title}", status="active",
+                            )
+                            db.add(cert)
+                            existing_codes.add(code)
+                            synced_certs += 1
+                    elif any(k in title_lower for k in ("скидк", "бонус", "акци")):
+                        if title not in existing_discount_names:
+                            discount = Discount(
+                                name=title,
+                                type="percent" if price < 100 else "fixed",
+                                value=price, is_active=True,
+                                description=f"Импорт из 1Denta (ID: {s.get('id', '')})",
+                            )
+                            db.add(discount)
+                            existing_discount_names.add(title)
+                            synced_discounts += 1
+            except Exception as e:
+                logger.warning("Fallback service scan for marketing sync failed: %s", e)
 
         await db.flush()
 

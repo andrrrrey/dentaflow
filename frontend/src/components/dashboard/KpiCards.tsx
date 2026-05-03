@@ -22,15 +22,11 @@ export default function KpiCards({ kpi }: KpiCardsProps) {
     {
       label: "Новые лиды",
       value: String(kpi.new_leads),
-      delta: "+12%",
-      deltaType: "up" as const,
       icon: <Users size={18} className="text-accent2" />,
     },
     {
       label: "Записи",
       value: String(kpi.appointments_created),
-      delta: "+8%",
-      deltaType: "up" as const,
       icon: <CalendarCheck size={18} className="text-accent" />,
     },
     {
@@ -43,15 +39,15 @@ export default function KpiCards({ kpi }: KpiCardsProps) {
     {
       label: "Неявки",
       value: String(kpi.no_shows),
-      delta: "-2",
-      deltaType: "down" as const,
+      delta: kpi.no_shows_delta !== 0 ? `${kpi.no_shows_delta > 0 ? "+" : ""}${kpi.no_shows_delta}` : undefined,
+      deltaType: kpi.no_shows_delta > 0 ? "down" as const : "up" as const,
       icon: <XCircle size={18} className="text-danger" />,
     },
     {
       label: "Потеряно",
       value: String(kpi.leads_lost),
-      delta: "-3",
-      deltaType: "down" as const,
+      delta: kpi.leads_lost_delta !== 0 ? `${kpi.leads_lost_delta > 0 ? "+" : ""}${kpi.leads_lost_delta}` : undefined,
+      deltaType: kpi.leads_lost_delta > 0 ? "down" as const : "up" as const,
       icon: <TrendingDown size={18} className="text-[#f5a623]" />,
     },
     {

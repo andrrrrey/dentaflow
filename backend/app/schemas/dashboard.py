@@ -9,6 +9,8 @@ class KpiData(BaseModel):
     leads_lost: int
     revenue_planned: float
     conversion_rate: float
+    no_shows_delta: int = 0
+    leads_lost_delta: int = 0
 
 
 class FunnelItem(BaseModel):

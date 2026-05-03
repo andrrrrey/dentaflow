@@ -3,7 +3,7 @@ import { format, subDays } from "date-fns";
 import Card from "../components/ui/Card";
 import StatCard from "../components/ui/StatCard";
 import { useRevenueReport, usePatientsReport, useServicesReport, useDoctorsReport } from "../api/reports";
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Sparkles, Lightbulb } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Sparkles, Lightbulb, RefreshCw } from "lucide-react";
 import { useReportsAdvice } from "../api/ai";
 
 const DAY_PAGE = 10;
@@ -20,7 +20,7 @@ export default function Reports() {
   const { data: patients, isLoading: patLoading } = usePatientsReport(params);
   const { data: services } = useServicesReport(params);
   const { data: doctors } = useDoctorsReport(params);
-  const { data: advice, isLoading: adviceLoading } = useReportsAdvice();
+  const { data: advice, isLoading: adviceLoading, refetch: refetchAdvice } = useReportsAdvice();
 
   const inputStyle = {
     border: "1px solid rgba(91,76,245,0.15)",
@@ -59,9 +59,20 @@ export default function Reports() {
       >
         <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full opacity-20" style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }} />
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={15} className="text-white" />
-            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Советник</span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} className="text-white" />
+              <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Советник</span>
+            </div>
+            <button
+              onClick={() => refetchAdvice()}
+              disabled={adviceLoading}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-white/80 hover:text-white hover:bg-white/10 transition-all border-none cursor-pointer bg-transparent disabled:opacity-50"
+              title="Обновить рекомендацию"
+            >
+              <RefreshCw size={12} className={adviceLoading ? "animate-spin" : ""} />
+              Обновить
+            </button>
           </div>
           {adviceLoading ? (
             <p className="text-[13px] text-white/80">Анализирую данные...</p>

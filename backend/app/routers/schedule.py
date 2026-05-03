@@ -205,6 +205,17 @@ async def update_appointment_status(
     appt.status = body.status
     await db.commit()
     await db.refresh(appt)
+
+    # Push attendance change to 1Denta if the appointment originated there
+    if appt.external_id and not appt.external_id.startswith("local-"):
+        try:
+            svc = await OneDentaService.from_db(db)
+            attendance = svc._ATTENDANCE_MAP.get(body.status)
+            if attendance is not None:
+                await svc.update_visit(appt.external_id, attendance=attendance)
+        except Exception:
+            pass  # 1Denta sync is best-effort; don't fail the local update
+
     return {"id": str(appt.id), "status": appt.status}
 
 

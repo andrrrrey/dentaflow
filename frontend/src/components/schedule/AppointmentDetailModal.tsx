@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown, ExternalLink } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown, ExternalLink, UserCheck, Hash } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
@@ -121,7 +121,15 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-[17px] font-extrabold">Детали записи</h2>
+          <div>
+            <h2 className="text-[17px] font-extrabold">Детали записи</h2>
+            {appt?.external_id && !appt.external_id.startsWith("local-") && (
+              <span className="flex items-center gap-1 text-[11px] text-text-muted mt-[2px]">
+                <Hash size={10} />
+                Визит № {appt.external_id}
+              </span>
+            )}
+          </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-main">
             <X size={18} />
           </button>
@@ -254,6 +262,25 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                 <div className="flex items-center gap-3">
                   <CreditCard size={13} className="text-text-muted" />
                   <span className="text-[13px] font-semibold">{appt.revenue.toLocaleString("ru-RU")} ₽</span>
+                </div>
+              )}
+
+              {/* "Пациент пришёл" quick-action button */}
+              {currentStatus !== "arrived" && currentStatus !== "completed" && currentStatus !== "cancelled" && (
+                <button
+                  onClick={() => handleStatusChange("arrived")}
+                  disabled={updateStatus.isPending}
+                  className="flex items-center justify-center gap-2 w-full mt-1 py-[10px] rounded-xl text-[13px] font-bold border-none cursor-pointer transition-all disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, rgba(0,201,167,0.15), rgba(0,201,167,0.08))", color: "#007d6e", border: "1.5px solid rgba(0,201,167,0.3)" }}
+                >
+                  <UserCheck size={15} />
+                  Пациент пришёл
+                </button>
+              )}
+              {(currentStatus === "arrived" || currentStatus === "completed") && (
+                <div className="flex items-center justify-center gap-2 w-full mt-1 py-[10px] rounded-xl text-[13px] font-bold" style={{ background: "rgba(0,201,167,0.08)", color: "#007d6e" }}>
+                  <UserCheck size={15} />
+                  Пациент в клинике
                 </div>
               )}
             </div>

@@ -8,6 +8,8 @@ export interface KpiData {
   leads_lost: number;
   revenue_planned: number;
   conversion_rate: number;
+  no_shows_delta: number;
+  leads_lost_delta: number;
 }
 
 export interface FunnelItem {

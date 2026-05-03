@@ -167,30 +167,80 @@ function AiScheduleBanner({ appointments, selectedDate }: { appointments: Appoin
   }
 
   const total = appointments.length;
-  const cancelled = appointments.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
+  const arrived = appointments.filter((a) => a.status === "arrived").length;
+  const completed = appointments.filter((a) => a.status === "completed").length;
+  const cancelled = appointments.filter((a) => a.status === "cancelled").length;
+  const noShow = appointments.filter((a) => a.status === "no_show").length;
   const confirmed = appointments.filter((a) => a.status === "confirmed").length;
-  const unconfirmed = total - confirmed - cancelled;
+  const unconfirmed = appointments.filter((a) => a.status === "unconfirmed").length;
+
+  const totalRevenue = appointments.reduce((s, a) => s + (a.revenue ?? 0), 0);
+  const avgCheck = (arrived + completed) > 0 ? Math.round(totalRevenue / (arrived + completed)) : 0;
 
   const sortedDoctors = Array.from(doctorMap.entries()).sort((a, b) => b[1] - a[1]);
   const busiest = sortedDoctors[0];
   const freest = sortedDoctors[sortedDoctors.length - 1];
 
+  const noShowRate = total > 0 ? Math.round((noShow / total) * 100) : 0;
+  const confirmRate = total > 0 ? Math.round(((confirmed + arrived + completed) / total) * 100) : 0;
+
+  // Build time-slot utilization (count per hour)
+  const hourCounts = new Map<number, number>();
+  for (const a of appointments) {
+    if (a.scheduled_at) {
+      const h = new Date(a.scheduled_at).getHours();
+      hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
+    }
+  }
+  const peakHour = Array.from(hourCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+  const quietSlots = HOURS.filter((h) => !hourCounts.has(h) || (hourCounts.get(h) ?? 0) === 0);
+
   const insights: { emoji: string; text: string }[] = [];
 
+  // 1. Unconfirmed patients — action needed
   if (unconfirmed > 0) {
-    insights.push({ emoji: "📞", text: `${unconfirmed} пациент${unconfirmed === 1 ? "" : "ов"} ещё не подтверждено — обзвоните до начала приёма` });
+    insights.push({ emoji: "📞", text: `${unconfirmed} ${unconfirmed === 1 ? "пациент не подтверждён" : "пациентов не подтверждено"} — обзвоните до начала приёма` });
   }
+
+  // 2. No-shows alert
+  if (noShow > 0) {
+    insights.push({ emoji: "⚠️", text: `${noShow} неявк${noShow === 1 ? "а" : (noShow < 5 ? "и" : "")} сегодня (${noShowRate}%) — свяжитесь, предложите перезапись` });
+  }
+
+  // 3. Cancellations
   if (cancelled > 0) {
-    insights.push({ emoji: "🔄", text: `${cancelled} отмен${cancelled === 1 ? "а" : "ений"} — предложите альтернативное время или другого врача` });
+    insights.push({ emoji: "🔄", text: `${cancelled} отмен${cancelled === 1 ? "а" : "ений"} — образовались окна, предложите ожидающим пациентам` });
   }
-  if (busiest && freest && busiest[0] !== freest[0] && busiest[1] >= freest[1] * 2) {
-    insights.push({ emoji: "⚖️", text: `Д-р ${busiest[0].split(" ")[0]} перегружен (${busiest[1]}) — направляйте первичных к д-ру ${freest[0].split(" ")[0]} (${freest[1]})` });
+
+  // 4. Doctor workload imbalance
+  if (busiest && freest && busiest[0] !== freest[0] && sortedDoctors.length >= 2 && busiest[1] >= freest[1] * 2) {
+    insights.push({ emoji: "⚖️", text: `Д-р ${busiest[0].split(" ")[0]} перегружен (${busiest[1]} зап.) — направляйте первичных к д-ру ${freest[0].split(" ")[0]} (${freest[1]} зап.)` });
   }
-  if (insights.length < 2 && confirmed > 0 && confirmed / total < 0.5) {
-    insights.push({ emoji: "✅", text: `Подтверждено только ${confirmed} из ${total} — запустите автоуведомления для остальных` });
+
+  // 5. Revenue & avg check
+  if (totalRevenue > 0) {
+    const revenueStr = totalRevenue >= 1_000_000
+      ? `${(totalRevenue / 1_000_000).toFixed(1)} млн ₽`
+      : `${Math.round(totalRevenue / 1000)} тыс ₽`;
+    insights.push({ emoji: "💰", text: `Выручка дня: ${revenueStr}${avgCheck > 0 ? `, средний чек ${avgCheck.toLocaleString("ru-RU")} ₽` : ""}` });
   }
-  if (insights.length === 0) {
+
+  // 6. Confirmation rate
+  if (total > 0 && confirmRate < 60 && confirmed + arrived + completed > 0) {
+    insights.push({ emoji: "✅", text: `Подтверждено ${confirmRate}% из записей — запустите автоуведомления для остальных` });
+  }
+
+  // 7. Peak hour & free slots
+  if (peakHour && peakHour[1] >= 3) {
+    insights.push({ emoji: "🕐", text: `Пиковая загрузка в ${peakHour[0]}:00 (${peakHour[1]} записей)${quietSlots.length > 0 ? ` — есть свободные слоты в ${quietSlots.slice(0, 2).map((h) => `${h}:00`).join(", ")}` : ""}` });
+  }
+
+  // 8. All good fallback
+  if (insights.length === 0 && total > 0) {
     insights.push({ emoji: "✨", text: `${total} записей, расписание сбалансировано — хороший рабочий день` });
+  }
+  if (total === 0) {
+    insights.push({ emoji: "📅", text: `Нет записей на ${format(selectedDate, "d MMMM", { locale: ru })} — хорошее время для плановых задач и обзвона` });
   }
 
   return (
@@ -207,12 +257,15 @@ function AiScheduleBanner({ appointments, selectedDate }: { appointments: Appoin
           <Sparkles size={15} className="text-white" />
           <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Ассистент · Расписание</span>
           <span className="ml-2 text-[11px] text-white/60 capitalize">{format(selectedDate, "d MMMM", { locale: ru })}</span>
+          {total > 0 && (
+            <span className="ml-auto text-[11px] text-white/70 font-semibold">{total} записей · {confirmed + arrived + completed} активных</span>
+          )}
         </div>
-        <div className="flex flex-col gap-[8px]">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-[8px]">
           {insights.map((ins, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
-              <span className="text-[13.5px] text-white font-medium leading-snug" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>{ins.text}</span>
+              <span className="text-[13px] text-white font-medium leading-snug" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>{ins.text}</span>
             </div>
           ))}
         </div>

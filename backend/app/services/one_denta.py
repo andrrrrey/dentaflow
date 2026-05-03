@@ -172,21 +172,60 @@ class OneDentaService:
         data = await self._request("POST", "/api/v2/visit", json_body=body)
         return data.get("visit", data)
 
+    # Status string → 1Denta attendance int
+    _ATTENDANCE_MAP: dict[str, int] = {
+        "unconfirmed": 0,
+        "confirmed": 2,
+        "arrived": 1,
+        "completed": 1,
+        "cancelled": -1,
+        "no_show": -1,
+    }
+
     async def update_visit(
         self,
         visit_id: int | str,
         *,
         comment: str | None = None,
         dt: str | None = None,
+        attendance: int | None = None,
     ) -> dict:
-        """Update comment or datetime of an existing visit."""
+        """Update comment, datetime, or attendance of an existing visit."""
         body: dict[str, Any] = {}
         if comment is not None:
             body["comment"] = comment
         if dt is not None:
             body["datetime"] = dt
+        if attendance is not None:
+            body["attendance"] = attendance
         data = await self._request("PUT", f"/api/v2/visit/{visit_id}", json_body=body)
         return data.get("visit", data)
+
+    async def get_discounts(self) -> list[dict]:
+        """Return clinic discounts / loyalty items from 1Denta."""
+        if self._no_credentials():
+            return []
+        for path in ("/api/v2/discount", "/api/v2/loyalty", "/api/v2/card"):
+            try:
+                items = await self._fetch_all_pages(path)
+                if items is not None:
+                    return items
+            except Exception:
+                continue
+        return []
+
+    async def get_certificates(self) -> list[dict]:
+        """Return gift certificates from 1Denta."""
+        if self._no_credentials():
+            return []
+        for path in ("/api/v2/gift_certificate", "/api/v2/certificate", "/api/v2/abonement"):
+            try:
+                items = await self._fetch_all_pages(path)
+                if items is not None:
+                    return items
+            except Exception:
+                continue
+        return []
 
     async def delete_visit(self, visit_id: int | str) -> None:
         """Cancel / delete a visit."""

@@ -19,6 +19,26 @@ from app.schemas.dashboard import (
 )
 
 
+def _prev_period_range(period: str) -> tuple[datetime, datetime]:
+    now = datetime.now(timezone.utc)
+    if period == "day":
+        prev = now - timedelta(days=1)
+        start = prev.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = prev.replace(hour=23, minute=59, second=59, microsecond=999999)
+    elif period == "month":
+        curr_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = curr_month_start - timedelta(microseconds=1)
+        if now.month == 1:
+            start = now.replace(year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            start = now.replace(month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:  # week
+        curr_week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = curr_week_start - timedelta(microseconds=1)
+        start = curr_week_start - timedelta(days=7)
+    return start, end
+
+
 def _period_range(period: str) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
     if period == "day":
@@ -290,8 +310,12 @@ def _fallback_ai_insights() -> AIInsights:
 
 async def get_overview(period: str, db: AsyncSession) -> DashboardOverview:
     dt_from, dt_to = _period_range(period)
+    prev_from, prev_to = _prev_period_range(period)
 
     kpi = await _kpi(db, dt_from, dt_to)
+    prev_kpi = await _kpi(db, prev_from, prev_to)
+    kpi.no_shows_delta = kpi.no_shows - prev_kpi.no_shows
+    kpi.leads_lost_delta = kpi.leads_lost - prev_kpi.leads_lost
     funnel = await _funnel(db, dt_from, dt_to)
     sources = await _sources(db, dt_from, dt_to)
     doctors_load = await _doctors_load(db, dt_from, dt_to)
