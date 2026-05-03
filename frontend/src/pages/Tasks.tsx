@@ -27,13 +27,15 @@ const PAGE_SIZE = 15;
 export default function Tasks() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<"all" | "active" | "done">("all");
+  const [filterAssigned, setFilterAssigned] = useState("");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "", assigned_to: "" });
 
-  const { data, isLoading } = useTasks(
-    filter === "active" ? { is_done: false } : filter === "done" ? { is_done: true } : undefined
-  );
+  const { data, isLoading } = useTasks({
+    ...(filter === "active" ? { is_done: false } : filter === "done" ? { is_done: true } : {}),
+    ...(filterAssigned ? { assigned_to: filterAssigned } : {}),
+  });
   const { data: staffData } = useStaff();
   const admins = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
   const createTask = useCreateTask();
@@ -96,6 +98,15 @@ export default function Tasks() {
               {data.overdue_count} просрочено
             </span>
           )}
+          <select
+            value={filterAssigned}
+            onChange={(e) => { setFilterAssigned(e.target.value); setPage(1); }}
+            className="rounded-xl px-3 py-[6px] text-[12.5px] font-medium text-text-main outline-none cursor-pointer"
+            style={{ background: "rgba(255,255,255,0.65)", border: "1px solid rgba(91,76,245,0.15)" }}
+          >
+            <option value="">Все ответственные</option>
+            {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
         </div>
         <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
           <Plus size={14} className="mr-1.5" />

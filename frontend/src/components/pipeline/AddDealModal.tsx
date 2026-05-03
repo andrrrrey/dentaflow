@@ -8,6 +8,7 @@ import { usePipelineStages } from "../../api/pipelineStages";
 import { useDoctorsList } from "../../api/doctors";
 import { useIntegrations } from "../../api/integrations";
 import { useServices } from "../../api/directories";
+import { useStaff } from "../../api/staff";
 import type { DealCreateData } from "../../api/deals";
 
 const inputStyle = {
@@ -52,6 +53,8 @@ export default function AddDealModal({
   const { data: doctorsList } = useDoctorsList();
   const { data: integrations } = useIntegrations();
   const { data: servicesData } = useServices();
+  const { data: staffData } = useStaff();
+  const admins = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
 
   const [form, setForm] = useState<DealCreateData & { patient_id?: string }>({
     title: initialPatientName ? `Лид: ${initialPatientName}` : "",
@@ -64,6 +67,7 @@ export default function AddDealModal({
     doctor_name: "",
     source_channel: "manual",
     notes: "",
+    assigned_to: "",
   });
   const [error, setError] = useState("");
 
@@ -108,6 +112,7 @@ export default function AddDealModal({
         ...(form.service ? { service: form.service } : {}),
         ...(form.doctor_name ? { doctor_name: form.doctor_name } : {}),
         ...(form.notes ? { notes: form.notes } : {}),
+        ...(form.assigned_to ? { assigned_to: form.assigned_to } : {}),
       };
       const result = await createMutation.mutateAsync(payload);
       onCreated?.(result.id);
@@ -191,13 +196,22 @@ export default function AddDealModal({
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Канал</label>
-            <select value={form.source_channel ?? ""} onChange={(e) => set("source_channel", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
-              {connectedChannels.map((ch) => (
-                <option key={ch.key} value={ch.key}>{ch.label}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Канал</label>
+              <select value={form.source_channel ?? ""} onChange={(e) => set("source_channel", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
+                {connectedChannels.map((ch) => (
+                  <option key={ch.key} value={ch.key}>{ch.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Ответственный</label>
+              <select value={form.assigned_to ?? ""} onChange={(e) => set("assigned_to", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
+                <option value="">— Не назначен —</option>
+                {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">

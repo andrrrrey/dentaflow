@@ -7,6 +7,7 @@ import { usePipelineStages } from "../../api/pipelineStages";
 import { useDoctorsList } from "../../api/doctors";
 import { useIntegrations } from "../../api/integrations";
 import { useDealTasks, useCreateTask, useToggleTask, useDeleteTask } from "../../api/tasks";
+import { useStaff } from "../../api/staff";
 import type { DealResponse } from "../../api/deals";
 
 /* -- Helpers -- */
@@ -78,6 +79,9 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
   const { data: apiStages } = usePipelineStages();
   const { data: doctorsList } = useDoctorsList();
   const { data: integrations } = useIntegrations();
+  const { data: staffData } = useStaff();
+  const [assignedTo, setAssignedTo] = useState(deal.assigned_to ?? "");
+  const admins = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
 
   const { data: dealTasks } = useDealTasks(deal.id);
   const createTaskMutation = useCreateTask();
@@ -118,6 +122,7 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
         source_channel: sourceChannel !== (deal.source_channel ?? "") ? sourceChannel : undefined,
         notes: notes !== (deal.notes ?? "") ? notes : undefined,
         lost_reason: lostReason !== (deal.lost_reason ?? "") ? lostReason : undefined,
+        assigned_to: assignedTo !== (deal.assigned_to ?? "") ? (assignedTo || undefined) : undefined,
       },
     });
     onClose();
@@ -241,9 +246,13 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
 
             <div>
               <label className="block text-[11px] font-semibold text-text-muted mb-1">Ответственный</label>
-              <div className="rounded-xl px-3 py-[8px] text-[13px] text-text-muted" style={{ background: "rgba(120,140,180,0.06)", border: "1px solid rgba(91,76,245,0.1)" }}>
-                {deal.assigned_to_name ?? "—"}
-              </div>
+              <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full rounded-xl px-3 py-[8px] text-[13px] font-medium text-text-main outline-none cursor-pointer" style={inputStyle}>
+                <option value="">— Не назначен —</option>
+                {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {assignedTo && !admins.some((a) => a.id === assignedTo) && (
+                  <option value={assignedTo}>{deal.assigned_to_name ?? assignedTo}</option>
+                )}
+              </select>
             </div>
 
             {(stage === "closed_lost" || deal.lost_reason) && (

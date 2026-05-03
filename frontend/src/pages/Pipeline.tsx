@@ -10,6 +10,7 @@ import AddDealModal from "../components/pipeline/AddDealModal";
 import { usePipelineQuery, useMoveDeal, useDeleteDeal } from "../api/deals";
 import { usePatientsByStage } from "../api/pipeline_ext";
 import { usePipelineStages, useRenameStage, useReorderStages } from "../api/pipelineStages";
+import { useStaff } from "../api/staff";
 import type { PipelineStage } from "../api/pipelineStages";
 import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
 
@@ -20,15 +21,6 @@ function formatValue(v: number): string {
   return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " ₽";
 }
 
-function uniqueAssigned(stages: StageColumn[]) {
-  const map = new Map<string, string>();
-  for (const col of stages) {
-    for (const d of col.deals) {
-      if (d.assigned_to && d.assigned_to_name) map.set(d.assigned_to, d.assigned_to_name);
-    }
-  }
-  return Array.from(map, ([id, name]) => ({ id, name }));
-}
 
 const TABLE_PAGE = 20;
 
@@ -185,6 +177,8 @@ export default function Pipeline() {
   const { data: apiStages } = usePipelineStages();
   const renameStageMutation = useRenameStage();
   const reorderStagesMutation = useReorderStages();
+  const { data: staffData } = useStaff();
+  const adminUsers = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
 
   const { labels: STAGE_LABELS, colors: STAGE_COLOR } = useMemo(() => buildStageMaps(apiStages), [apiStages]);
 
@@ -227,7 +221,7 @@ export default function Pipeline() {
   }, [apiStages, reorderStagesMutation]);
 
   const pipeline: PipelineResponse = pipelineData ?? { stages: [], total_pipeline_value: 0 };
-  const assignedUsers = useMemo(() => uniqueAssigned(pipeline.stages), [pipeline.stages]);
+  const assignedUsers = adminUsers;
 
   const filteredPipeline: PipelineResponse = useMemo(() => {
     if (!filterAssigned) return pipeline;
