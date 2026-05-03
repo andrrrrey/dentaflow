@@ -4,6 +4,7 @@ import { api } from "./client";
 export interface RevenueReport {
   total_revenue: number;
   total_appointments: number;
+  conversion_rate: number;
   by_day: { date: string; revenue: number; count: number }[];
 }
 

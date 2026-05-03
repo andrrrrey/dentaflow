@@ -11,8 +11,10 @@ function WebSocketProvider({ children }: { children: ReactNode }) {
 
 export default function ProtectedRoute({
   children,
+  denyRoles,
 }: {
   children: ReactNode;
+  denyRoles?: string[];
 }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -40,6 +42,11 @@ export default function ProtectedRoute({
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  const user = useAuthStore.getState().user;
+  if (denyRoles && user?.role && denyRoles.includes(user.role)) {
+    return <Navigate to="/" replace />;
   }
 
   return <WebSocketProvider>{children}</WebSocketProvider>;

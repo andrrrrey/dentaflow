@@ -6,6 +6,7 @@ import Pill from "../ui/Pill";
 import Button from "../ui/Button";
 import type { TaskBrief } from "../../api/patients";
 import { useCreateTask, useToggleTask, useDeleteTask } from "../../api/tasks";
+import { useStaff } from "../../api/staff";
 
 interface TasksListProps {
   tasks: TaskBrief[];
@@ -28,7 +29,9 @@ const typeLabel: Record<string, string> = {
 
 export default function TasksList({ tasks, patientId, patientName: _patientName }: TasksListProps) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: "callback", title: "", due_at: "" });
+  const [form, setForm] = useState({ type: "callback", title: "", due_at: "", assigned_to: "" });
+  const { data: staffData } = useStaff();
+  const adminsList = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
@@ -49,10 +52,11 @@ export default function TasksList({ tasks, patientId, patientName: _patientName 
         title: form.title.trim(),
         due_at: new Date(form.due_at).toISOString(),
         patient_id: patientId ?? null,
+        assigned_to: form.assigned_to || null,
       },
       {
         onSuccess: () => {
-          setForm({ type: "callback", title: "", due_at: "" });
+          setForm({ type: "callback", title: "", due_at: "", assigned_to: "" });
           setShowForm(false);
         },
       }
@@ -110,6 +114,16 @@ export default function TasksList({ tasks, patientId, patientName: _patientName 
               onChange={(e) => setForm((f) => ({ ...f, due_at: e.target.value }))}
               className="w-full rounded-[10px] border border-[rgba(91,76,245,0.18)] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none focus:border-accent2"
             />
+            <select
+              value={form.assigned_to}
+              onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
+              className="w-full rounded-[10px] border border-[rgba(91,76,245,0.18)] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none focus:border-accent2"
+            >
+              <option value="">Ответственный</option>
+              {adminsList.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
             <div className="flex gap-2">
               <Button
                 type="submit"

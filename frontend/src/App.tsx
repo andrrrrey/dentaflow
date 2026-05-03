@@ -110,7 +110,7 @@ function App() {
         <Route
           path="/analytics"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute denyRoles={["admin"]}>
               <AppLayout title="Финансы & KPI">
                 <Analytics />
               </AppLayout>
@@ -130,7 +130,7 @@ function App() {
         <Route
           path="/reports"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute denyRoles={["admin"]}>
               <AppLayout title="Отчёты">
                 <Reports />
               </AppLayout>
@@ -150,7 +150,7 @@ function App() {
         <Route
           path="/staff"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute denyRoles={["admin"]}>
               <AppLayout title="Сотрудники">
                 <Staff />
               </AppLayout>
@@ -170,7 +170,7 @@ function App() {
         <Route
           path="/settings"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute denyRoles={["admin"]}>
               <AppLayout title="Настройки">
                 <Settings />
               </AppLayout>

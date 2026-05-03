@@ -49,7 +49,7 @@ export default function Analytics() {
   const totalAppts = revenue?.total_appointments ?? 0;
   const avgCheck = totalAppts > 0 ? Math.round(totalRevenue / totalAppts) : 0;
   const newPatients = patients?.new_patients ?? 0;
-  const conversionRate = dashboard?.kpi?.conversion_rate ?? 0;
+  const conversionRate = revenue?.conversion_rate ?? dashboard?.kpi?.conversion_rate ?? 0;
 
   const sourcesData = dashboard?.sources ?? [];
   const servicesData = services?.services ?? [];

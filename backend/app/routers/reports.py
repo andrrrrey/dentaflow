@@ -54,9 +54,20 @@ async def revenue_report(
     total_revenue = sum(float(r.revenue or 0) for r in rows)
     total_appointments = sum(r.count for r in rows)
 
+    # Conversion: arrived/completed vs total appointments in period
+    arrived = (await db.execute(
+        select(func.count()).where(
+            Appointment.scheduled_at >= dt_from,
+            Appointment.scheduled_at <= dt_to,
+            Appointment.status.in_(["arrived", "completed"]),
+        )
+    )).scalar() or 0
+    conversion_rate = round(arrived / total_appointments * 100, 1) if total_appointments else 0
+
     return {
         "total_revenue": total_revenue,
         "total_appointments": total_appointments,
+        "conversion_rate": conversion_rate,
         "by_day": [
             {"date": str(r.day), "revenue": float(r.revenue or 0), "count": r.count}
             for r in rows

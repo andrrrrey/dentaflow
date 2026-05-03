@@ -55,11 +55,12 @@ export default function PatientSearchInput({
       />
       {open && results.length > 0 && (
         <div
-          className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-hidden z-[300]"
+          className="absolute top-full left-0 right-0 mt-1 rounded-xl overflow-y-auto z-[300]"
           style={{
             background: "rgba(255,255,255,0.98)",
             boxShadow: "0 8px 24px rgba(91,76,245,0.15)",
             border: "1px solid rgba(91,76,245,0.12)",
+            maxHeight: 240,
           }}
         >
           {results.map((p) => (

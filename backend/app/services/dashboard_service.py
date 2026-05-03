@@ -199,47 +199,85 @@ async def _doctors_load(db: AsyncSession, dt_from: datetime, dt_to: datetime) ->
     )
     rows = (await db.execute(stmt)).all()
 
-    if not rows:
+    doctors_map: dict[str, int] = {}
+    for r in rows:
+        if r.doctor_name:
+            doctors_map[r.doctor_name.lower()] = r.cnt
+
+    # Merge doctors from directory_cache so all known doctors appear
+    from sqlalchemy import text
+    try:
+        res = await db.execute(
+            text(
+                "SELECT name FROM directory_cache "
+                "WHERE category = 'resource' AND name IS NOT NULL AND name != '' "
+                "ORDER BY name LIMIT 100"
+            )
+        )
+        for r in res.all():
+            if r[0] and r[0].lower() not in doctors_map:
+                doctors_map[r[0].lower()] = 0
+    except Exception:
+        pass
+
+    if not doctors_map:
         return []
 
-    max_count = max(r.cnt for r in rows) or 1
-    return [
-        DoctorLoad(
-            name=r.doctor_name or "",
-            spec=f"{r.cnt} приёмов",
-            load_pct=round(r.cnt / max_count * 100, 1),
+    max_count = max(doctors_map.values()) or 1
+    items: list[DoctorLoad] = []
+    for name_lower, cnt in sorted(doctors_map.items(), key=lambda x: -x[1]):
+        original_name = next(
+            (r.doctor_name for r in rows if r.doctor_name and r.doctor_name.lower() == name_lower),
+            name_lower.title(),
         )
-        for r in rows
-    ]
+        items.append(DoctorLoad(
+            name=original_name,
+            spec=f"{cnt} приёмов",
+            load_pct=round(cnt / max_count * 100, 1) if cnt > 0 else 0,
+        ))
+
+    return items
 
 
 async def _admins_rating(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[AdminRating]:
-    stmt = (
-        select(
-            User.name,
-            func.count(Communication.id).label("calls"),
-            func.count(case((Deal.stage == "closed_won", 1))).label("won"),
-            func.count(Deal.id).label("total_deals"),
-        )
-        .select_from(User)
-        .outerjoin(Communication, Communication.assigned_to == User.id)
-        .outerjoin(Deal, Deal.assigned_to == User.id)
-        .where(User.role.in_(["admin", "manager"]))
-        .group_by(User.id, User.name)
-        .having(func.count(Communication.id) > 0)
-        .order_by(func.count(Communication.id).desc())
+    # Query all admin/manager users
+    users_stmt = select(User.id, User.name).where(
+        User.role.in_(["admin", "manager"]),
+        User.is_active.is_(True),
     )
-    rows = (await db.execute(stmt)).all()
+    users = (await db.execute(users_stmt)).all()
 
-    return [
-        AdminRating(
-            name=r.name,
-            conversion=round(r.won / r.total_deals * 100, 1) if r.total_deals else 0,
-            calls=r.calls,
-            score=round(min((r.won / r.total_deals * 5) if r.total_deals else 0, 5.0), 1),
-        )
-        for r in rows
-    ]
+    items: list[AdminRating] = []
+    for user in users:
+        # Count communications assigned to this user
+        calls_count = (await db.execute(
+            select(func.count(Communication.id)).where(Communication.assigned_to == user.id)
+        )).scalar() or 0
+
+        # Count deals assigned to this user
+        total_deals = (await db.execute(
+            select(func.count(Deal.id)).where(Deal.assigned_to == user.id)
+        )).scalar() or 0
+
+        won_deals = (await db.execute(
+            select(func.count(Deal.id)).where(
+                Deal.assigned_to == user.id,
+                Deal.stage == "closed_won",
+            )
+        )).scalar() or 0
+
+        conversion = round(won_deals / total_deals * 100, 1) if total_deals else 0
+        score = round(min((won_deals / total_deals * 5) if total_deals else 3.0, 5.0), 1)
+
+        items.append(AdminRating(
+            name=user.name,
+            conversion=conversion,
+            calls=calls_count,
+            score=score,
+        ))
+
+    items.sort(key=lambda x: x.calls, reverse=True)
+    return items
 
 
 def _fallback_ai_insights() -> AIInsights:

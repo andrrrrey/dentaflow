@@ -27,6 +27,7 @@ interface NavItem {
   path: string;
   badge?: string;
   badgeColor?: "red" | "blue" | "green";
+  hideForRoles?: string[];
 }
 
 interface NavSection {
@@ -47,7 +48,7 @@ const sections: NavSection[] = [
       { label: "Пациенты", icon: <UserCheck size={15} />, path: "/patients" },
       { label: "Контроль звонков", icon: <PhoneCall size={15} />, path: "/calls" },
       { label: "Контроль скриптов", icon: <ClipboardList size={15} />, path: "/scripts" },
-      { label: "Аналитика", icon: <BarChart3 size={15} />, path: "/analytics" },
+      { label: "Аналитика", icon: <BarChart3 size={15} />, path: "/analytics", hideForRoles: ["admin"] },
     ],
   },
   {
@@ -73,9 +74,9 @@ const sections: NavSection[] = [
     items: [
       { label: "Маркетинг", icon: <Megaphone size={15} />, path: "/marketing/discounts" },
       { label: "Справочники", icon: <BookOpen size={15} />, path: "/directories" },
-      { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports" },
-      { label: "Сотрудники", icon: <Users size={15} />, path: "/staff" },
-      { label: "Настройки", icon: <Settings size={15} />, path: "/settings" },
+      { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports", hideForRoles: ["admin"] },
+      { label: "Сотрудники", icon: <Users size={15} />, path: "/staff", hideForRoles: ["admin"] },
+      { label: "Настройки", icon: <Settings size={15} />, path: "/settings", hideForRoles: ["admin"] },
     ],
   },
 ];
@@ -98,6 +99,7 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
   const displayName = authUser?.name ?? _currentUser?.name ?? "Пользователь";
   const displayRole = authUser?.role ?? _currentUser?.role ?? "";
   const avatarUrl = authUser?.avatar_url;
+  const userRole = authUser?.role ?? _currentUser?.role ?? "";
 
   const initials = displayName
     .split(" ")
@@ -142,12 +144,17 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-[14px] px-[10px]">
-        {sections.map((section, idx) => (
+        {sections.map((section, idx) => {
+          const visibleItems = section.items.filter(
+            (item) => !item.hideForRoles || !item.hideForRoles.includes(userRole)
+          );
+          if (visibleItems.length === 0) return null;
+          return (
           <div
             key={idx}
             className={clsx("mb-1", idx > 0 && "mt-2 pt-2 border-t border-[rgba(91,76,245,0.1)]")}
           >
-            {section.items.map((item) => {
+            {visibleItems.map((item) => {
               const active = item.path.includes("*")
                 ? location.pathname.startsWith(item.path.replace("/*", ""))
                 : location.pathname === item.path ||
@@ -189,7 +196,8 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* User */}

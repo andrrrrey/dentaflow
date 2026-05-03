@@ -7,6 +7,7 @@ import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
 import PatientSearchInput from "../components/ui/PatientSearchInput";
 import { useTasks, useCreateTask, useToggleTask, useDeleteTask } from "../api/tasks";
+import { useStaff } from "../api/staff";
 
 const typeIcon: Record<string, React.ReactNode> = {
   callback: <Phone size={14} className="text-[#3B7FED]" />,
@@ -28,11 +29,13 @@ export default function Tasks() {
   const [filter, setFilter] = useState<"all" | "active" | "done">("all");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "" });
+  const [form, setForm] = useState({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "", assigned_to: "" });
 
   const { data, isLoading } = useTasks(
     filter === "active" ? { is_done: false } : filter === "done" ? { is_done: true } : undefined
   );
+  const { data: staffData } = useStaff();
+  const admins = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
@@ -57,10 +60,11 @@ export default function Tasks() {
         title: form.title.trim(),
         due_at: new Date(form.due_at).toISOString(),
         patient_id: form.patient_id || null,
+        assigned_to: form.assigned_to || null,
       },
       {
         onSuccess: () => {
-          setForm({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "" });
+          setForm({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "", assigned_to: "" });
           setShowForm(false);
           setPage(1);
         },
@@ -108,6 +112,9 @@ export default function Tasks() {
             backdropFilter: "blur(18px)",
             border: "1px solid rgba(255,255,255,0.85)",
             boxShadow: "0 4px 20px rgba(120,140,180,0.12)",
+            overflow: "visible",
+            position: "relative",
+            zIndex: 20,
           }}
         >
           <div className="flex items-center justify-between mb-3">
@@ -116,7 +123,7 @@ export default function Tasks() {
               <X size={14} />
             </button>
           </div>
-          <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end">
+          <form onSubmit={handleSubmit} className="flex flex-wrap gap-3 items-end" style={{ position: "relative", zIndex: 10 }}>
             <select
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
@@ -150,6 +157,16 @@ export default function Tasks() {
               onChange={(e) => setForm((f) => ({ ...f, due_at: e.target.value }))}
               className="rounded-[10px] border border-[rgba(91,76,245,0.18)] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none focus:border-accent2"
             />
+            <select
+              value={form.assigned_to}
+              onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
+              className="rounded-[10px] border border-[rgba(91,76,245,0.18)] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none focus:border-accent2"
+            >
+              <option value="">Ответственный</option>
+              {admins.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
             <Button
               type="submit"
               variant="primary"
@@ -181,7 +198,7 @@ export default function Tasks() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
-                  {["", "Задача", "Тип", "Пациент", "Срок", "Статус", ""].map((h, i) => (
+                  {["", "Задача", "Тип", "Пациент", "Ответственный", "Срок", "Статус", ""].map((h, i) => (
                     <th
                       key={i}
                       className="px-4 py-3 text-left text-[11px] font-bold text-text-muted uppercase tracking-wider"
@@ -241,6 +258,13 @@ export default function Tasks() {
                           </button>
                         ) : (
                           <span className="text-text-muted">{task.patient_name ?? "—"}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12.5px]">
+                        {task.assigned_to_name ? (
+                          <span className="text-text-main font-medium">{task.assigned_to_name}</span>
+                        ) : (
+                          <span className="text-text-muted">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
