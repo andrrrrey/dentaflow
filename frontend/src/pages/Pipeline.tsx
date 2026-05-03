@@ -114,46 +114,63 @@ function AiPipelineBanner({ pipeline }: { pipeline: PipelineResponse }) {
   const total = allDeals.length;
   if (total === 0) return null;
 
-  const stageCounts: Record<string, number> = {};
-  for (const d of allDeals) stageCounts[d.stage] = (stageCounts[d.stage] ?? 0) + 1;
-
   const stuckStage = pipeline.stages
     .filter((s) => !["closed_won", "closed_lost"].includes(s.stage))
     .sort((a, b) => b.count - a.count)[0];
 
   const hotLeads = allDeals.filter((d) => d.stage === "negotiation" || d.stage === "scheduled").length;
   const lostDeals = allDeals.filter((d) => d.stage === "closed_lost").length;
+  const newDeals = allDeals.filter((d) => d.stage === "new").length;
   const totalValue = pipeline.total_pipeline_value;
-
-  const parts: string[] = [];
-  if (stuckStage && stuckStage.count >= 3) {
-    parts.push(`${stuckStage.count} пациент${stuckStage.count >= 5 ? "ов" : "а"} зависли на «${stuckStage.label}» — требуется контакт`);
-  }
-  if (hotLeads > 0) parts.push(`${hotLeads} горячих лида — позвоните сегодня`);
-  if (lostDeals > 0) parts.push(`${lostDeals} закрытых отказов — запустите реактивацию`);
-  if (parts.length === 0) parts.push(`${total} сделок в воронке, всё под контролем`);
 
   const valueStr = totalValue >= 1_000_000
     ? (totalValue / 1_000_000).toFixed(1) + " млн ₽"
     : Math.round(totalValue).toLocaleString("ru-RU") + " ₽";
 
+  const insights: { emoji: string; text: string }[] = [];
+
+  if (stuckStage && stuckStage.count >= 3) {
+    insights.push({ emoji: "⏳", text: `${stuckStage.count} сделок застряли на «${stuckStage.label}» — назначьте ответственного и поставьте дедлайн` });
+  }
+  if (hotLeads > 0) {
+    insights.push({ emoji: "🔥", text: `${hotLeads} горячих лида на этапе переговоров — позвоните сегодня, пока интерес не остыл` });
+  }
+  if (lostDeals > 0) {
+    insights.push({ emoji: "💌", text: `${lostDeals} отказов за период — запустите реактивационную рассылку со спецпредложением` });
+  }
+  if (newDeals > 5) {
+    insights.push({ emoji: "📋", text: `${newDeals} необработанных заявок в «Новые» — распределите между врачами как можно скорее` });
+  }
+  if (insights.length === 0) {
+    insights.push({ emoji: "✅", text: `${total} сделок в воронке, показатели в норме — продолжайте в том же темпе` });
+  }
+
   return (
     <div
-      className="rounded-[14px] px-4 py-[10px] flex items-center gap-3"
+      className="rounded-[18px] p-[20px_24px] relative overflow-hidden"
       style={{
-        background: "linear-gradient(90deg, rgba(91,76,245,0.08) 0%, rgba(59,127,237,0.06) 100%)",
-        border: "1px solid rgba(91,76,245,0.14)",
+        background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
+        boxShadow: "0 4px 24px rgba(91,76,245,0.22)",
       }}
     >
-      <Sparkles size={14} style={{ color: "#5B4CF5", flexShrink: 0 }} />
-      <span className="text-[12px] font-semibold" style={{ color: "#5B4CF5" }}>ИИ · ВОРОНКА</span>
-      <span
-        className="text-[12px] text-text-muted flex-1"
-        style={{ borderLeft: "1px solid rgba(91,76,245,0.15)", paddingLeft: 10 }}
-      >
-        {parts.slice(0, 2).join(" · ")}
-      </span>
-      <span className="text-[12px] font-bold flex-shrink-0" style={{ color: "#5B4CF5" }}>{valueStr}</span>
+      <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-15" style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }} />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} className="text-white" />
+            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Ассистент · Воронка пациентов</span>
+          </div>
+          <span className="text-[13px] font-bold text-white/90">{valueStr}</span>
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          {insights.slice(0, 3).map((ins, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
+              <span className="text-[13.5px] text-white font-medium leading-snug" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>{ins.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

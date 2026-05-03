@@ -30,7 +30,27 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
 const CLINIC_START = 9;
 const CLINIC_END = 20;
 const HOURS = Array.from({ length: CLINIC_END - CLINIC_START + 1 }, (_, i) => CLINIC_START + i);
-const SLOT_HEIGHT = 80;
+const SLOT_HEIGHT = 110;
+
+interface AppointmentLayout { appt: Appointment; col: number; totalCols: number; }
+
+function computeLayout(appts: Appointment[]): AppointmentLayout[] {
+  const filtered = appts.filter((a) => a.scheduled_at);
+  if (filtered.length === 0) return [];
+  const items = filtered.map((a) => {
+    const start = parseISO(a.scheduled_at!);
+    const startMin = start.getHours() * 60 + start.getMinutes();
+    return { appt: a, startMin, endMin: startMin + a.duration_min };
+  }).sort((a, b) => a.startMin - b.startMin);
+  const colEnds: number[] = [];
+  const assigned: { appt: Appointment; col: number }[] = [];
+  for (const item of items) {
+    const col = colEnds.findIndex((end) => end <= item.startMin);
+    if (col === -1) { assigned.push({ appt: item.appt, col: colEnds.length }); colEnds.push(item.endMin); }
+    else { assigned.push({ appt: item.appt, col }); colEnds[col] = item.endMin; }
+  }
+  return assigned.map(({ appt, col }) => ({ appt, col, totalCols: colEnds.length }));
+}
 
 function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   selected: Date;
@@ -96,38 +116,42 @@ function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   );
 }
 
-function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () => void }) {
+function AppointmentBlock({ appt, onClick, col, totalCols }: { appt: Appointment; onClick: () => void; col: number; totalCols: number; }) {
   if (!appt.scheduled_at) return null;
   const start = parseISO(appt.scheduled_at);
   const startMin = start.getHours() * 60 + start.getMinutes();
   const clinicStartMin = CLINIC_START * 60;
   const top = ((startMin - clinicStartMin) / 60) * SLOT_HEIGHT;
-  const height = Math.max((appt.duration_min / 60) * SLOT_HEIGHT - 2, 24);
+  const height = Math.max((appt.duration_min / 60) * SLOT_HEIGHT - 3, 32);
   const colors = statusColors[appt.status ?? ""] ?? statusColors.unconfirmed;
+  const GAP = 2;
+  const colW = 100 / totalCols;
 
   return (
     <div
-      className="absolute left-[2px] right-[2px] rounded-lg cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
+      className="absolute rounded-[8px] cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
       style={{
         top: `${top}px`,
         height: `${height}px`,
+        left: `calc(${col * colW}% + ${GAP}px)`,
+        width: `calc(${colW}% - ${GAP * 2}px)`,
         background: colors.bg,
         borderLeft: `3px solid ${colors.border}`,
         zIndex: 10,
       }}
       onClick={onClick}
     >
-      <div className="px-2 py-[5px] h-full flex flex-col justify-start overflow-hidden">
-        <div className="text-[10px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
+      <div className="px-2 py-[6px] h-full flex flex-col justify-start overflow-hidden">
+        <div className="text-[10.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
           {format(start, "HH:mm")} – {format(new Date(start.getTime() + appt.duration_min * 60000), "HH:mm")}
         </div>
-        <div className="text-[12px] font-bold text-text-main truncate leading-tight mt-[2px]">
+        <div className="text-[12.5px] font-bold text-text-main leading-tight mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {appt.patient_name}
         </div>
-        {height > 46 && appt.patient_phone && (
-          <div className="text-[11px] text-text-muted truncate mt-[1px]">{appt.patient_phone}</div>
+        {height > 60 && appt.patient_phone && (
+          <div className="text-[11px] text-text-muted truncate mt-[2px]">{appt.patient_phone}</div>
         )}
-        {height > 62 && appt.service && (
+        {height > 80 && appt.service && (
           <div className="text-[11px] text-text-muted truncate mt-[2px]">{appt.service}</div>
         )}
       </div>
@@ -135,7 +159,7 @@ function AppointmentBlock({ appt, onClick }: { appt: Appointment; onClick: () =>
   );
 }
 
-function AiScheduleBanner({ appointments }: { appointments: Appointment[] }) {
+function AiScheduleBanner({ appointments, selectedDate }: { appointments: Appointment[]; selectedDate: Date }) {
   const doctorMap = new Map<string, number>();
   for (const a of appointments) {
     const doc = a.doctor_name || "Без врача";
@@ -145,34 +169,54 @@ function AiScheduleBanner({ appointments }: { appointments: Appointment[] }) {
   const total = appointments.length;
   const cancelled = appointments.filter((a) => a.status === "cancelled" || a.status === "no_show").length;
   const confirmed = appointments.filter((a) => a.status === "confirmed").length;
+  const unconfirmed = total - confirmed - cancelled;
 
-  const CLINIC_TOTAL_SLOTS = (CLINIC_END - CLINIC_START) * doctorMap.size;
-  const usedSlots = appointments.reduce((s, a) => s + Math.ceil(a.duration_min / 60), 0);
-  const freeSlots = Math.max(0, CLINIC_TOTAL_SLOTS - usedSlots);
+  const sortedDoctors = Array.from(doctorMap.entries()).sort((a, b) => b[1] - a[1]);
+  const busiest = sortedDoctors[0];
+  const freest = sortedDoctors[sortedDoctors.length - 1];
 
-  const parts: string[] = [];
-  if (freeSlots > 0) {
-    const busyDoctors = Array.from(doctorMap.entries()).filter(([, c]) => c >= 4).map(([n]) => n.split(" ")[0]);
-    const freeDoctors = Array.from(doctorMap.entries()).filter(([, c]) => c <= 2).map(([n]) => n.split(" ")[0]);
-    if (busyDoctors.length) parts.push(`Д-р ${busyDoctors[0]} загружен — переводите новых пациентов к ${freeDoctors[0] ?? "другим врачам"}`);
-    else parts.push(`${freeSlots} свободных окон — рекомендую направить первичку`);
+  const insights: { emoji: string; text: string }[] = [];
+
+  if (unconfirmed > 0) {
+    insights.push({ emoji: "📞", text: `${unconfirmed} пациент${unconfirmed === 1 ? "" : "ов"} ещё не подтверждено — обзвоните до начала приёма` });
   }
-  if (cancelled > 0) parts.push(`${cancelled} отмен${cancelled === 1 ? "а" : "ений"} — есть возможность заполнить`);
-  if (confirmed < total && total > 0) parts.push(`Подтверждено ${confirmed} из ${total} — обзвоните неподтверждённых`);
-
-  const text = parts.length ? parts.slice(0, 2).join(" · ") : `${total} записей, расписание сбалансировано`;
+  if (cancelled > 0) {
+    insights.push({ emoji: "🔄", text: `${cancelled} отмен${cancelled === 1 ? "а" : "ений"} — предложите альтернативное время или другого врача` });
+  }
+  if (busiest && freest && busiest[0] !== freest[0] && busiest[1] >= freest[1] * 2) {
+    insights.push({ emoji: "⚖️", text: `Д-р ${busiest[0].split(" ")[0]} перегружен (${busiest[1]}) — направляйте первичных к д-ру ${freest[0].split(" ")[0]} (${freest[1]})` });
+  }
+  if (insights.length < 2 && confirmed > 0 && confirmed / total < 0.5) {
+    insights.push({ emoji: "✅", text: `Подтверждено только ${confirmed} из ${total} — запустите автоуведомления для остальных` });
+  }
+  if (insights.length === 0) {
+    insights.push({ emoji: "✨", text: `${total} записей, расписание сбалансировано — хороший рабочий день` });
+  }
 
   return (
     <div
-      className="mx-4 my-3 px-4 py-[9px] rounded-[12px] flex items-center gap-3"
+      className="rounded-[18px] p-[20px_24px] relative overflow-hidden"
       style={{
-        background: "linear-gradient(90deg, rgba(91,76,245,0.08) 0%, rgba(59,127,237,0.06) 100%)",
-        border: "1px solid rgba(91,76,245,0.14)",
+        background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
+        boxShadow: "0 4px 24px rgba(91,76,245,0.22)",
       }}
     >
-      <Sparkles size={14} style={{ color: "#5B4CF5", flexShrink: 0 }} />
-      <span className="text-[12px] font-semibold" style={{ color: "#5B4CF5" }}>ИИ-РЕКОМЕНДАЦИИ</span>
-      <span className="text-[12px] text-text-muted" style={{ borderLeft: "1px solid rgba(91,76,245,0.15)", paddingLeft: 10 }}>{text}</span>
+      <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-15" style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }} />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles size={15} className="text-white" />
+          <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Ассистент · Расписание</span>
+          <span className="ml-2 text-[11px] text-white/60 capitalize">{format(selectedDate, "d MMMM", { locale: ru })}</span>
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          {insights.map((ins, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
+              <span className="text-[13.5px] text-white font-medium leading-snug" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>{ins.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -227,6 +271,11 @@ export default function Schedule() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* AI banner — top of page */}
+      {!isLoading && appointments.length > 0 && (
+        <AiScheduleBanner appointments={appointments} selectedDate={selectedDate} />
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Всего записей" value={String(stats?.total ?? 0)} icon="📅" />
@@ -317,25 +366,20 @@ export default function Schedule() {
             </button>
           </div>
 
-          {/* AI recommendation banner */}
-          {!isLoading && doctorsWithAppointments.length > 0 && (
-            <AiScheduleBanner appointments={appointments} />
-          )}
-
           {isLoading ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Загрузка данных...</div>
           ) : doctorsWithAppointments.length === 0 ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
             <div className="overflow-x-auto">
-              <div style={{ minWidth: Math.max(doctorsWithAppointments.length * 180 + 60, 600) }}>
+              <div style={{ minWidth: Math.max(doctorsWithAppointments.length * 220 + 60, 600) }}>
                 {/* Doctor headers */}
                 <div className="flex" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)" }}>
                   <div className="w-[60px] flex-shrink-0" />
                   {doctorsWithAppointments.map(([doctorName, appts]) => (
                     <div
                       key={doctorName}
-                      className="flex-1 min-w-[180px] text-center py-3 px-2"
+                      className="flex-1 min-w-[220px] text-center py-3 px-2"
                       style={{ borderLeft: "1px solid rgba(91,76,245,0.08)" }}
                     >
                       <div className="text-[13px] font-bold text-text-main truncate">{doctorName}</div>
@@ -363,7 +407,7 @@ export default function Schedule() {
                   {doctorsWithAppointments.map(([doctorName, doctorAppts]) => (
                     <div
                       key={doctorName}
-                      className="flex-1 min-w-[180px] relative"
+                      className="flex-1 min-w-[220px] relative"
                       style={{ height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
                     >
                       {/* Hour lines */}
@@ -389,11 +433,13 @@ export default function Schedule() {
                           }}
                         />
                       ))}
-                      {/* Appointments */}
-                      {doctorAppts.map((appt) => (
+                      {/* Appointments with overlap-aware layout */}
+                      {computeLayout(doctorAppts).map(({ appt, col, totalCols }) => (
                         <AppointmentBlock
                           key={appt.id}
                           appt={appt}
+                          col={col}
+                          totalCols={totalCols}
                           onClick={() => setSelectedAppointmentId(appt.id)}
                         />
                       ))}

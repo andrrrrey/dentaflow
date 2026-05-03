@@ -115,7 +115,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
-        className="w-full max-w-[560px] max-h-[85vh] overflow-y-auto rounded-[20px] p-6 flex flex-col gap-5"
+        className="w-full max-w-[720px] max-h-[90vh] overflow-y-auto rounded-[20px] p-6 flex flex-col gap-5"
         style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(24px)", boxShadow: "0 8px 32px rgba(91,76,245,0.15)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -164,7 +164,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                           <button
                             key={String(s.id)}
                             onClick={() => handleServiceChange(s.name)}
-                            className="px-4 py-[8px] text-[12.5px] text-left border-none cursor-pointer hover:bg-[rgba(91,76,245,0.06)] transition-colors truncate"
+                            className="px-4 py-[8px] text-[12.5px] text-left border-none cursor-pointer hover:bg-[rgba(91,76,245,0.06)] transition-colors whitespace-normal leading-snug"
                             style={{ color: s.name === appt.service ? "#5B4CF5" : "#1e293b", fontWeight: s.name === appt.service ? 600 : 400 }}
                           >
                             {s.name}
