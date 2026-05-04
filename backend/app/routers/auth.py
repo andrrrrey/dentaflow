@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -21,6 +22,8 @@ from app.utils.security import (
     hash_password,
     verify_password,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -73,8 +76,15 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
             detail="Invalid refresh token",
         )
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+    except Exception:
+        logger.exception("Failed to query user during token refresh (user_id=%s)", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
     if user is None or not user.is_active:
         raise HTTPException(

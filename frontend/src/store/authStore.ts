@@ -91,20 +91,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      const { data: user } = await api.get<UserResponse>("/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
+      const { data: user } = await api.get<UserResponse>("/auth/me");
+      set({
+        user,
+        isAuthenticated: true,
+        isLoading: false,
+        accessToken: localStorage.getItem("access_token"),
+        refreshToken: localStorage.getItem("refresh_token"),
       });
-      set({ user, isAuthenticated: true, isLoading: false });
     } catch {
-      // Token invalid or expired — clear everything
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
       set({
         user: null,
         accessToken: null,
         refreshToken: null,
         isAuthenticated: false,
         isLoading: false,
+        error: null,
       });
     }
   },

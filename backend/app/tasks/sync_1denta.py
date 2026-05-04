@@ -120,33 +120,41 @@ async def _sync_appointments_async() -> dict:
 
     service = await OneDentaService.from_db_session_factory()
     now = datetime.now(timezone.utc)
+    # Sync only recent window: past 30 days + next 90 days (not 5 years of history)
     appointments_data = await service.get_appointments(
-        date_from=now - timedelta(days=5 * 365),
-        date_to=now + timedelta(days=365),
+        date_from=now - timedelta(days=30),
+        date_to=now + timedelta(days=90),
     )
 
     created = 0
     updated = 0
 
+    valid = [(a, a["external_id"]) for a in appointments_data if a.get("external_id")]
+    if not valid:
+        return {"created": 0, "updated": 0, "total": 0}
+
+    ext_ids = [ext_id for _, ext_id in valid]
+    patient_ext_ids = list({a.get("patient_external_id") for a, _ in valid if a.get("patient_external_id")})
+
     async with async_session_factory() as session:
-        for a_data in appointments_data:
-            ext_id = a_data.get("external_id")
-            if not ext_id:
-                continue
+        # Batch-fetch existing appointments
+        existing_rows = (await session.execute(
+            select(Appointment).where(Appointment.external_id.in_(ext_ids))
+        )).scalars().all()
+        existing_map = {a.external_id: a for a in existing_rows}
 
-            stmt = select(Appointment).where(Appointment.external_id == ext_id).limit(1)
-            result = await session.execute(stmt)
-            appointment = result.scalar_one_or_none()
+        # Batch-fetch patients
+        patient_rows = (await session.execute(
+            select(Patient.id, Patient.external_id).where(
+                Patient.external_id.in_(patient_ext_ids)
+            )
+        )).all() if patient_ext_ids else []
+        patient_map = {row.external_id: row.id for row in patient_rows}
 
-            # Resolve patient by their 1Denta external_id
-            patient_id = None
-            patient_ext = a_data.get("patient_external_id")
-            if patient_ext:
-                p_stmt = select(Patient.id).where(Patient.external_id == patient_ext).limit(1)
-                p_result = await session.execute(p_stmt)
-                p_row = p_result.scalar_one_or_none()
-                if p_row:
-                    patient_id = p_row
+        now_utc = datetime.now(timezone.utc)
+
+        for a_data, ext_id in valid:
+            patient_id = patient_map.get(a_data.get("patient_external_id"))
 
             scheduled_at = None
             if a_data.get("scheduled_at"):
@@ -158,6 +166,7 @@ async def _sync_appointments_async() -> dict:
                 except ValueError:
                     pass
 
+            appointment = existing_map.get(ext_id)
             if appointment is None:
                 appointment = Appointment(
                     external_id=ext_id,
@@ -171,7 +180,7 @@ async def _sync_appointments_async() -> dict:
                     status=a_data.get("status"),
                     revenue=a_data.get("revenue"),
                     comment=a_data.get("comment"),
-                    synced_at=datetime.now(timezone.utc),
+                    synced_at=now_utc,
                 )
                 session.add(appointment)
                 created += 1
@@ -186,7 +195,7 @@ async def _sync_appointments_async() -> dict:
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)
                 appointment.comment = a_data.get("comment", appointment.comment)
-                appointment.synced_at = datetime.now(timezone.utc)
+                appointment.synced_at = now_utc
                 updated += 1
 
         await session.commit()
@@ -199,55 +208,61 @@ async def _sync_appointments_async() -> dict:
 
 async def _sync_waiting_list_deals_async(appointments_data: list) -> None:
     """Create waiting_list pipeline deals for newly scheduled 1denta appointments."""
-    from sqlalchemy import select, exists
+    from sqlalchemy import select
     from app.database import async_session_factory
-    from app.models.appointment import Appointment
     from app.models.deal import Deal
     from app.models.patient import Patient
 
     eligible_statuses = {"scheduled", "confirmed", "waiting"}
 
+    eligible = [
+        a for a in appointments_data
+        if a.get("status") in eligible_statuses and a.get("patient_external_id")
+    ]
+    if not eligible:
+        return
+
+    patient_ext_ids = list({a["patient_external_id"] for a in eligible})
+
     async with async_session_factory() as session:
-        for a_data in appointments_data:
-            if a_data.get("status") not in eligible_statuses:
-                continue
+        # Batch-fetch all relevant patients in one query
+        p_rows = (await session.execute(
+            select(Patient.id, Patient.external_id).where(
+                Patient.external_id.in_(patient_ext_ids)
+            )
+        )).all()
+        ext_to_patient_id = {row.external_id: row.id for row in p_rows}
 
-            ext_id = a_data.get("external_id")
-            if not ext_id:
-                continue
+        if not ext_to_patient_id:
+            return
 
-            # Resolve patient
-            patient_id = None
-            patient_ext = a_data.get("patient_external_id")
-            if patient_ext:
-                p_stmt = select(Patient.id).where(Patient.external_id == patient_ext).limit(1)
-                p_row = (await session.execute(p_stmt)).scalar_one_or_none()
-                if p_row:
-                    patient_id = p_row
+        patient_ids = list(ext_to_patient_id.values())
 
-            if not patient_id:
-                continue
+        # Batch-fetch patients that already have an open deal
+        rows_with_deals = (await session.execute(
+            select(Deal.patient_id).where(
+                Deal.patient_id.in_(patient_ids),
+                Deal.stage.notin_(["closed_won", "closed_lost"]),
+            ).distinct()
+        )).scalars().all()
+        patients_with_open_deals = set(rows_with_deals)
 
-            # Skip if patient already has any open deal
-            has_deal = (await session.execute(
-                select(exists().where(
-                    (Deal.patient_id == patient_id) &
-                    (Deal.stage.notin_(["closed_won", "closed_lost"]))
-                ))
-            )).scalar()
-            if has_deal:
+        for a_data in eligible:
+            patient_id = ext_to_patient_id.get(a_data["patient_external_id"])
+            if not patient_id or patient_id in patients_with_open_deals:
                 continue
 
             patient_name = a_data.get("patient_name") or ""
-            deal = Deal(
+            session.add(Deal(
                 title=f"Запись: {patient_name} — {a_data.get('service', 'Услуга')}",
                 patient_id=patient_id,
                 stage="waiting_list",
                 source_channel="1denta",
                 service=a_data.get("service"),
                 doctor_name=a_data.get("doctor_name"),
-            )
-            session.add(deal)
+            ))
+            # Mark so we don't create duplicate deals within the same batch
+            patients_with_open_deals.add(patient_id)
 
         await session.commit()
 

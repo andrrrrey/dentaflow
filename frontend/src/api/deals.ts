@@ -99,8 +99,8 @@ export function usePipelineQuery(params: { stage?: string; assigned_to?: string 
       const { data } = await api.get("/deals/", { params });
       return data;
     },
-    staleTime: 15 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
 
