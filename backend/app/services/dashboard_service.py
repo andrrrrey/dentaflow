@@ -162,38 +162,49 @@ async def _sources(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list
         "call": "Телефония",
     }
 
-    stmt = (
-        select(
-            Patient.source_channel,
-            func.count().label("cnt"),
-        )
+    leads_rows = (await db.execute(
+        select(Patient.source_channel, func.count().label("cnt"))
         .where(Patient.created_at >= dt_from, Patient.created_at <= dt_to)
         .group_by(Patient.source_channel)
         .order_by(func.count().desc())
-    )
-    rows = (await db.execute(stmt)).all()
+    )).all()
+
+    if not leads_rows:
+        return []
+
+    channels = [r.source_channel or "unknown" for r in leads_rows]
+
+    # Batch: total deals per channel
+    total_deals_rows = (await db.execute(
+        select(Patient.source_channel, func.count().label("cnt"))
+        .select_from(Deal)
+        .join(Patient, Deal.patient_id == Patient.id)
+        .where(Patient.source_channel.in_(channels), Deal.created_at >= dt_from)
+        .group_by(Patient.source_channel)
+    )).all()
+    total_deals_map = {r.source_channel: r.cnt for r in total_deals_rows}
+
+    # Batch: won deals per channel
+    won_deals_rows = (await db.execute(
+        select(Patient.source_channel, func.count().label("cnt"))
+        .select_from(Deal)
+        .join(Patient, Deal.patient_id == Patient.id)
+        .where(
+            Patient.source_channel.in_(channels),
+            Deal.stage == "closed_won",
+            Deal.created_at >= dt_from,
+        )
+        .group_by(Patient.source_channel)
+    )).all()
+    won_deals_map = {r.source_channel: r.cnt for r in won_deals_rows}
 
     items: list[SourceItem] = []
-    for row in rows:
+    for row in leads_rows:
         channel = row.source_channel or "unknown"
         label = channel_labels.get(channel, channel.capitalize())
-
-        total_deals = (await db.execute(
-            select(func.count()).select_from(Deal).join(Patient, Deal.patient_id == Patient.id).where(
-                Patient.source_channel == channel,
-                Deal.created_at >= dt_from,
-            )
-        )).scalar() or 0
-
-        won_deals = (await db.execute(
-            select(func.count()).select_from(Deal).join(Patient, Deal.patient_id == Patient.id).where(
-                Patient.source_channel == channel,
-                Deal.stage == "closed_won",
-                Deal.created_at >= dt_from,
-            )
-        )).scalar() or 0
-
-        conv = round(won_deals / total_deals * 100, 1) if total_deals else 0
+        total = total_deals_map.get(channel, 0)
+        won = won_deals_map.get(channel, 0)
+        conv = round(won / total * 100, 1) if total else 0
         items.append(SourceItem(channel=label, leads=row.cnt, conversion=conv, cpl=0))
 
     return items
@@ -260,35 +271,47 @@ async def _doctors_load(db: AsyncSession, dt_from: datetime, dt_to: datetime) ->
 
 
 async def _admins_rating(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[AdminRating]:
-    # Query all admin/manager users
-    users_stmt = select(User.id, User.name).where(
-        User.role.in_(["admin", "manager"]),
-        User.is_active.is_(True),
-    )
-    users = (await db.execute(users_stmt)).all()
+    users = (await db.execute(
+        select(User.id, User.name).where(
+            User.role.in_(["admin", "manager"]),
+            User.is_active.is_(True),
+        )
+    )).all()
+
+    if not users:
+        return []
+
+    user_ids = [u.id for u in users]
+
+    # Batch: communications count per user
+    comm_rows = (await db.execute(
+        select(Communication.assigned_to, func.count(Communication.id).label("cnt"))
+        .where(Communication.assigned_to.in_(user_ids))
+        .group_by(Communication.assigned_to)
+    )).all()
+    comm_map = {r.assigned_to: r.cnt for r in comm_rows}
+
+    # Batch: deal counts per user per stage (total + won in one query)
+    deal_rows = (await db.execute(
+        select(Deal.assigned_to, Deal.stage, func.count(Deal.id).label("cnt"))
+        .where(Deal.assigned_to.in_(user_ids))
+        .group_by(Deal.assigned_to, Deal.stage)
+    )).all()
+
+    total_map: dict = {}
+    won_map: dict = {}
+    for r in deal_rows:
+        total_map[r.assigned_to] = total_map.get(r.assigned_to, 0) + r.cnt
+        if r.stage == "closed_won":
+            won_map[r.assigned_to] = r.cnt
 
     items: list[AdminRating] = []
     for user in users:
-        # Count communications assigned to this user
-        calls_count = (await db.execute(
-            select(func.count(Communication.id)).where(Communication.assigned_to == user.id)
-        )).scalar() or 0
-
-        # Count deals assigned to this user
-        total_deals = (await db.execute(
-            select(func.count(Deal.id)).where(Deal.assigned_to == user.id)
-        )).scalar() or 0
-
-        won_deals = (await db.execute(
-            select(func.count(Deal.id)).where(
-                Deal.assigned_to == user.id,
-                Deal.stage == "closed_won",
-            )
-        )).scalar() or 0
-
+        calls_count = comm_map.get(user.id, 0)
+        total_deals = total_map.get(user.id, 0)
+        won_deals = won_map.get(user.id, 0)
         conversion = round(won_deals / total_deals * 100, 1) if total_deals else 0
         score = round(min((won_deals / total_deals * 5) if total_deals else 3.0, 5.0), 1)
-
         items.append(AdminRating(
             name=user.name,
             conversion=conversion,

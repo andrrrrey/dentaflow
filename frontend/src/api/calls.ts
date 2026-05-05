@@ -33,5 +33,6 @@ export function useCalls(params: { days?: number; status?: string } = {}) {
     },
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: false,
   });
 }

@@ -24,5 +24,6 @@ export function useCommunications(params?: CommunicationFilters) {
     queryFn: () => fetchCommunications(params),
     staleTime: 30_000,
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
