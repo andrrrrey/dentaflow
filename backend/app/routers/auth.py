@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, EmailStr
@@ -77,7 +78,15 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
         )
 
     try:
-        result = await db.execute(select(User).where(User.id == user_id))
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    try:
+        result = await db.execute(select(User).where(User.id == user_uuid))
         user = result.scalar_one_or_none()
     except Exception:
         logger.exception("Failed to query user during token refresh (user_id=%s)", user_id)
