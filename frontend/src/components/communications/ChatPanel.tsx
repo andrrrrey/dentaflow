@@ -41,12 +41,6 @@ const channelLabel: Record<string, string> = {
   manual: "Вручную",
 };
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  new: { label: "Новое", color: "text-[#3B7FED]" },
-  in_progress: { label: "В работе", color: "text-[#F5A623]" },
-  done: { label: "Закрыто", color: "text-[#00C9A7]" },
-  ignored: { label: "Проигнорировано", color: "text-gray-400" },
-};
 
 function formatDuration(sec: number): string {
   const min = Math.floor(sec / 60);
@@ -59,8 +53,6 @@ export default function ChatPanel({ item, onClose }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState(false);
-  const status = statusLabels[item.status];
-
   function getDisplayName(): string {
     if (item.patient_name) return item.patient_name;
     if (item.channel === "site" && item.content) {
