@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -9,6 +10,8 @@ import {
   Instagram,
   Clock,
   Trash2,
+  UserRound,
+  UserPlus,
 } from "lucide-react";
 import type { DealResponse } from "../../api/deals";
 
@@ -47,9 +50,11 @@ interface DealCardProps {
   deal: DealResponse;
   onClick: () => void;
   onDelete?: (dealId: string) => void;
+  onCreatePatient?: (deal: DealResponse) => void;
 }
 
-export default function DealCard({ deal, onClick, onDelete }: DealCardProps) {
+export default function DealCard({ deal, onClick, onDelete, onCreatePatient }: DealCardProps) {
+  const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const {
     attributes,
@@ -101,6 +106,27 @@ export default function DealCard({ deal, onClick, onDelete }: DealCardProps) {
         </span>
         <SourceIcon size={13} className="text-text-muted flex-shrink-0" />
       </div>
+
+      {/* Patient action button */}
+      {deal.patient_id ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); navigate(`/patients/${deal.patient_id}`); }}
+          className="flex items-center gap-1 mt-[8px] px-2 py-[4px] rounded-[7px] text-[10.5px] font-semibold border-none cursor-pointer transition-colors w-full"
+          style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+        >
+          <UserRound size={11} />
+          Перейти в карточку
+        </button>
+      ) : (deal.patient_name || deal.title) && onCreatePatient ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); onCreatePatient(deal); }}
+          className="flex items-center gap-1 mt-[8px] px-2 py-[4px] rounded-[7px] text-[10.5px] font-semibold border-none cursor-pointer transition-colors w-full"
+          style={{ background: "rgba(0,201,167,0.08)", color: "#007d6e" }}
+        >
+          <UserPlus size={11} />
+          Создать пациента
+        </button>
+      ) : null}
 
       {/* Bottom row: days in stage + assigned avatar */}
       <div className="flex items-center justify-between mt-[8px]">

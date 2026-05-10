@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check, Sparkles } from "lucide-react";
+import CreatePatientModal from "../components/patient/CreatePatientModal";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
@@ -183,6 +184,7 @@ export default function Pipeline() {
   const { labels: STAGE_LABELS, colors: STAGE_COLOR } = useMemo(() => buildStageMaps(apiStages), [apiStages]);
 
   const [selectedDeal, setSelectedDeal] = useState<DealResponse | null>(null);
+  const [createPatientDeal, setCreatePatientDeal] = useState<DealResponse | null>(null);
   const [filterAssigned, setFilterAssigned] = useState("");
   const [filterStage, setFilterStage] = useState("");
   const [activeStage, setActiveStage] = useState<string | null>(null);
@@ -352,7 +354,7 @@ export default function Pipeline() {
           {pipelineLoading ? (
             <div className="text-center text-text-muted py-12 text-[13px]">Загрузка данных...</div>
           ) : crmView === "kanban" ? (
-            <KanbanBoard pipeline={filteredPipeline} onMoveDeal={handleMoveDeal} onDealClick={setSelectedDeal} onDeleteDeal={(id) => deleteDealMutation.mutate(id)} />
+            <KanbanBoard pipeline={filteredPipeline} onMoveDeal={handleMoveDeal} onDealClick={setSelectedDeal} onDeleteDeal={(id) => deleteDealMutation.mutate(id)} onCreatePatient={setCreatePatientDeal} />
           ) : (
             /* Table view */
             <div className="rounded-[18px] overflow-hidden" style={{ background: "rgba(255,255,255,0.65)", backdropFilter: "blur(18px)", border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 4px 20px rgba(120,140,180,0.12)" }}>
@@ -427,6 +429,14 @@ export default function Pipeline() {
 
       {/* Patients side panel */}
       {activeStage && <PatientsSidePanel stage={activeStage} onClose={() => setActiveStage(null)} />}
+
+      {/* Create patient from deal */}
+      {createPatientDeal && (
+        <CreatePatientModal
+          onClose={() => setCreatePatientDeal(null)}
+          prefillName={createPatientDeal.patient_name ?? ""}
+        />
+      )}
     </div>
   );
 }
