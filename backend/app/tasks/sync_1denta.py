@@ -179,6 +179,9 @@ async def _sync_appointments_async() -> dict:
                     duration_min=a_data.get("duration_min", 30),
                     status=a_data.get("status"),
                     revenue=a_data.get("revenue"),
+                    discount=a_data.get("discount"),
+                    payment_amount=a_data.get("payment_amount"),
+                    services_data=a_data.get("services_data"),
                     comment=a_data.get("comment"),
                     synced_at=now_utc,
                 )
@@ -194,6 +197,11 @@ async def _sync_appointments_async() -> dict:
                 appointment.duration_min = a_data.get("duration_min", appointment.duration_min)
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)
+                appointment.discount = a_data.get("discount", appointment.discount)
+                # Only overwrite payment_amount from 1Denta if it was never set manually
+                if appointment.payment_amount is None:
+                    appointment.payment_amount = a_data.get("payment_amount")
+                appointment.services_data = a_data.get("services_data", appointment.services_data)
                 appointment.comment = a_data.get("comment", appointment.comment)
                 appointment.synced_at = now_utc
                 updated += 1

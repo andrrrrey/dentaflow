@@ -420,6 +420,8 @@ class OneDentaService:
             or (resource_map.get(str(resource_val)) if resource_map and resource_val is not None else None)
             or ""
         )
+        total_discount = sum(float(s.get("discount") or 0) for s in services)
+        total_pay_sum = sum(float(s.get("paySum") or 0) for s in services)
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,
@@ -430,6 +432,9 @@ class OneDentaService:
             "scheduled_at": v.get("datetime"),
             "status": attendance_map.get(v.get("attendance", 0), "unconfirmed"),
             "revenue": float(v.get("totalPrice") or 0),
+            "discount": total_discount if total_discount > 0 else None,
+            "payment_amount": total_pay_sum if total_pay_sum > 0 else None,
+            "services_data": services if services else None,
             "comment": v.get("comment", ""),
             "online": v.get("online", False),
             "author": v.get("author", ""),

@@ -1,11 +1,11 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, CreditCard, ChevronDown, ExternalLink, UserCheck, Hash } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, ChevronDown, ExternalLink, UserCheck, Hash, MessageSquare, CreditCard, CheckCircle } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Pill from "../ui/Pill";
-import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment } from "../../api/schedule";
+import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment, useUpdateAppointmentPayment } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
 import { useServices } from "../../api/directories";
 
@@ -57,12 +57,19 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const { data, isLoading } = useAppointmentDetail(appointmentId);
   const updateStatus = useUpdateAppointmentStatus();
   const updateAppt = useUpdateAppointment();
+  const updatePayment = useUpdateAppointmentPayment();
   const { data: doctorsData } = useDoctorsList();
   const { data: servicesData } = useServices();
 
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
   const [doctorDropdownOpen, setDoctorDropdownOpen] = useState(false);
+
+  const [commentValue, setCommentValue] = useState<string>("");
+  const [commentSaved, setCommentSaved] = useState(false);
+  const [discountInput, setDiscountInput] = useState<string>("");
+  const [paymentInput, setPaymentInput] = useState<string>("");
+  const [paid, setPaid] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const serviceDropdownRef = useRef<HTMLDivElement>(null);
@@ -71,6 +78,23 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const appt = data?.appointment;
   const patient = data?.patient;
   const raw = patient?.raw_1denta_data as Record<string, unknown> | null;
+
+  // Initialise editable fields from loaded data
+  useEffect(() => {
+    if (appt) {
+      setCommentValue(appt.comment ?? "");
+      setDiscountInput(appt.discount != null ? String(appt.discount) : "");
+      setPaymentInput(
+        appt.payment_amount != null
+          ? String(appt.payment_amount)
+          : appt.revenue > 0
+          ? String(appt.revenue)
+          : ""
+      );
+      setPaid(false);
+      setCommentSaved(false);
+    }
+  }, [appt?.id]); // reset only when appointment changes
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -102,6 +126,29 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   function handleDoctorChange(doctorName: string, doctorId?: string | null) {
     setDoctorDropdownOpen(false);
     updateAppt.mutate({ appointmentId, doctor_name: doctorName, ...(doctorId ? { doctor_id: doctorId } : {}) });
+  }
+
+  function handleCommentSave() {
+    updateAppt.mutate(
+      { appointmentId, comment: commentValue },
+      {
+        onSuccess: () => {
+          setCommentSaved(true);
+          setTimeout(() => setCommentSaved(false), 2000);
+        },
+      }
+    );
+  }
+
+  function handlePay() {
+    const discount = discountInput !== "" ? parseFloat(discountInput) : null;
+    const payment_amount = paymentInput !== "" ? parseFloat(paymentInput) : null;
+    updatePayment.mutate(
+      { appointmentId, discount, payment_amount },
+      {
+        onSuccess: () => setPaid(true),
+      }
+    );
   }
 
   const currentStatus = appt?.status ?? "";
@@ -258,13 +305,6 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                 </div>
               </div>
 
-              {appt.revenue > 0 && (
-                <div className="flex items-center gap-3">
-                  <CreditCard size={13} className="text-text-muted" />
-                  <span className="text-[13px] font-semibold">{appt.revenue.toLocaleString("ru-RU")} ₽</span>
-                </div>
-              )}
-
               {/* "Пациент пришёл" quick-action button */}
               {currentStatus !== "arrived" && currentStatus !== "completed" && currentStatus !== "cancelled" && (
                 <button
@@ -283,6 +323,103 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   Пациент в клинике
                 </div>
               )}
+            </div>
+
+            {/* Finance block */}
+            <div className="flex flex-col gap-3 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+              <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Финансы</div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {appt.external_id && !appt.external_id.startsWith("local-") && (
+                  <InfoRow icon={<Hash size={13} />} label="Номер визита" value={appt.external_id} />
+                )}
+                {appt.revenue > 0 && (
+                  <InfoRow icon={<CreditCard size={13} />} label="Сумма по прайсу" value={`${appt.revenue.toLocaleString("ru-RU")} ₽`} />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Discount input */}
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1">Скидка (₽)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={discountInput}
+                    onChange={(e) => { setDiscountInput(e.target.value); setPaid(false); }}
+                    placeholder="0"
+                    className="w-full text-[13px] font-medium px-3 py-[7px] rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                    style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+                  />
+                </div>
+                {/* Payment amount input */}
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1">Сумма оплаты (₽)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={paymentInput}
+                    onChange={(e) => { setPaymentInput(e.target.value); setPaid(false); }}
+                    placeholder="0"
+                    className="w-full text-[13px] font-medium px-3 py-[7px] rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                    style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handlePay}
+                disabled={updatePayment.isPending || paid}
+                className="flex items-center justify-center gap-2 w-full py-[10px] rounded-xl text-[13px] font-bold border-none cursor-pointer transition-all disabled:opacity-60"
+                style={
+                  paid
+                    ? { background: "rgba(0,201,167,0.12)", color: "#007d6e", border: "1.5px solid rgba(0,201,167,0.3)" }
+                    : { background: "linear-gradient(135deg, #6c5ce7, #3b7fed)", color: "#fff" }
+                }
+              >
+                {paid ? (
+                  <>
+                    <CheckCircle size={15} />
+                    Оплачено
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={15} />
+                    {updatePayment.isPending ? "Сохранение..." : "Оплатить"}
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Comment block */}
+            <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+              <div className="flex items-center gap-2">
+                <MessageSquare size={13} className="text-text-muted" />
+                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Комментарий</span>
+              </div>
+              <textarea
+                value={commentValue}
+                onChange={(e) => { setCommentValue(e.target.value); setCommentSaved(false); }}
+                rows={2}
+                placeholder="Добавьте комментарий к записи..."
+                className="w-full text-[13px] px-3 py-2 rounded-xl border resize-none focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-text-muted">Комментарий синхронизируется с 1Denta</span>
+                <button
+                  onClick={handleCommentSave}
+                  disabled={updateAppt.isPending}
+                  className="px-4 py-[6px] rounded-xl text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-50"
+                  style={
+                    commentSaved
+                      ? { background: "rgba(0,201,167,0.12)", color: "#007d6e" }
+                      : { background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }
+                  }
+                >
+                  {commentSaved ? "Сохранено ✓" : "Сохранить"}
+                </button>
+              </div>
             </div>
 
             {/* Patient info */}

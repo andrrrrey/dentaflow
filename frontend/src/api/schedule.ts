@@ -52,7 +52,11 @@ export interface AppointmentDetailResponse {
     scheduled_at: string | null;
     duration_min: number;
     status: string | null;
+    comment: string | null;
     revenue: number;
+    discount: number | null;
+    payment_amount: number | null;
+    services_data: Array<{ id: number; name: string; paySum: number; price: string; discount: number; amount: number }> | null;
   };
   patient: {
     id: string;
@@ -168,12 +172,34 @@ export function useUpdateAppointment() {
       service?: string;
       doctor_name?: string;
       doctor_id?: string;
+      comment?: string;
     }) => {
       const { data } = await api.patch(`/schedule/${appointmentId}`, updates);
       return data;
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["appointment-detail", vars.appointmentId] });
+    },
+  });
+}
+
+export function useUpdateAppointmentPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      discount,
+      payment_amount,
+    }: {
+      appointmentId: string;
+      discount?: number | null;
+      payment_amount?: number | null;
+    }) => {
+      const { data } = await api.patch(`/schedule/${appointmentId}/payment`, { discount, payment_amount });
+      return data;
+    },
+    onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["appointment-detail", vars.appointmentId] });
     },
   });

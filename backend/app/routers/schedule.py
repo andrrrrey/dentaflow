@@ -121,7 +121,11 @@ async def get_appointment_detail(
             "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
             "duration_min": appt.duration_min,
             "status": appt.status,
+            "comment": appt.comment,
             "revenue": float(appt.revenue) if appt.revenue else 0,
+            "discount": float(appt.discount) if appt.discount is not None else None,
+            "payment_amount": float(appt.payment_amount) if appt.payment_amount is not None else None,
+            "services_data": appt.services_data,
         },
         "patient": None,
     }
@@ -148,6 +152,7 @@ class UpdateAppointmentBody(BaseModel):
     service: str | None = None
     doctor_name: str | None = None
     doctor_id: str | None = None
+    comment: str | None = None
 
 
 @router.patch("/{appointment_id}")
@@ -157,7 +162,7 @@ async def update_appointment(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Update appointment service or doctor."""
+    """Update appointment service, doctor or comment."""
     stmt = select(Appointment).where(Appointment.id == appointment_id)
     result = await db.execute(stmt)
     appt = result.scalar_one_or_none()
@@ -170,13 +175,57 @@ async def update_appointment(
         appt.doctor_name = body.doctor_name
     if body.doctor_id is not None:
         appt.doctor_id = body.doctor_id
+    if body.comment is not None:
+        appt.comment = body.comment
 
     await db.commit()
+
+    # Sync comment back to 1Denta if applicable
+    if body.comment is not None and appt.external_id and not appt.external_id.startswith("local-"):
+        try:
+            svc = await OneDentaService.from_db(db)
+            await svc.update_visit(appt.external_id, comment=body.comment)
+        except Exception:
+            pass  # best-effort
+
     return {
         "id": str(appt.id),
         "service": appt.service,
         "doctor_name": appt.doctor_name,
         "doctor_id": appt.doctor_id,
+        "comment": appt.comment,
+    }
+
+
+class UpdatePaymentBody(BaseModel):
+    discount: float | None = None
+    payment_amount: float | None = None
+
+
+@router.patch("/{appointment_id}/payment")
+async def update_appointment_payment(
+    appointment_id: uuid.UUID,
+    body: UpdatePaymentBody,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Save discount and payment amount locally (1Denta API does not support writing these)."""
+    stmt = select(Appointment).where(Appointment.id == appointment_id)
+    result = await db.execute(stmt)
+    appt = result.scalar_one_or_none()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if body.discount is not None:
+        appt.discount = body.discount
+    if body.payment_amount is not None:
+        appt.payment_amount = body.payment_amount
+
+    await db.commit()
+    return {
+        "id": str(appt.id),
+        "discount": float(appt.discount) if appt.discount is not None else None,
+        "payment_amount": float(appt.payment_amount) if appt.payment_amount is not None else None,
     }
 
 

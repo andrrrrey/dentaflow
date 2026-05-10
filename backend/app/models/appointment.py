@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -38,6 +38,9 @@ class Appointment(Base):
     )  # AI: 0-100
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     revenue: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    discount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    payment_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    services_data: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
