@@ -371,10 +371,26 @@ async def site_form_webhook(
             content_type, len(raw_body),
         )
 
-        # Parse based on content type
-        if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        # Parse based on content type.
+        # Use urllib.parse.parse_qs directly on raw bytes with explicit UTF-8
+        # so we don't depend on python-multipart's default charset (which varies).
+        if "application/x-www-form-urlencoded" in content_type:
+            from urllib.parse import parse_qs
+            try:
+                parsed = parse_qs(raw_body, encoding="utf-8", keep_blank_values=True)
+                body: dict = {
+                    (k.decode("utf-8") if isinstance(k, bytes) else k): (
+                        v[0].decode("utf-8") if isinstance(v[0], bytes) else v[0]
+                    )
+                    for k, v in parsed.items() if v
+                }
+            except Exception:
+                # Last-resort: decode body as utf-8 string then parse
+                parsed = parse_qs(raw_body.decode("utf-8", errors="replace"), keep_blank_values=True)
+                body = {k: v[0] for k, v in parsed.items() if v}
+        elif "multipart/form-data" in content_type:
             form = await request.form()
-            body: dict = dict(form)
+            body = dict(form)
         else:
             try:
                 import json as _json
@@ -403,30 +419,45 @@ async def site_form_webhook(
                         return str(v).strip()
             return ""
 
+        # System Tilda fields we skip when building content
+        _TILDA_SYSTEM_KEYS = {
+            "tildaspec-js-fields", "tildaspec-step", "tildaspec-form-name",
+            "formid", "formname", "tranid", "sign",
+        }
+        # Known semantic field names
+        _NAME_KEYS    = {"name", "NAME", "Name"}
+        _PHONE_KEYS   = {"phone", "Phone", "PHONE", "tel", "Tel", "телефон"}
+        _EMAIL_KEYS   = {"email", "Email", "EMAIL"}
+        _COMMENT_KEYS = {"comment", "Comment", "message", "Message", "text", "Text", "комментарий"}
+        _SERVICE_KEYS = {"service", "Service", "Услуга", "услуга", "select"}
+
         name    = _get("Name", "name", "NAME")
         phone   = _get("Phone", "phone", "PHONE", "tel", "Tel", "телефон")
         email   = _get("Email", "email", "EMAIL")
-        message = _get("Comment", "comment", "Message", "message", "Text", "text")
-        service = _get("Service", "service", "Услуга", "услуга")
+        message = _get("Comment", "comment", "Message", "message", "Text", "text", "комментарий")
+        service = _get("Service", "service", "Услуга", "услуга", "select")
         form_name = _get("formname", "formid", "tildaspec-form-name", "FORMID")
 
         logger.info(
-            "Site webhook parsed: name=%r phone=%r email=%r form=%r",
-            name, phone, email, form_name,
+            "Site webhook parsed: name=%r phone=%r email=%r service=%r form=%r",
+            name, phone, email, service, form_name,
         )
 
-        # Build content string
+        # Build content: start with known fields, then append any remaining fields
+        # so that whatever name Tilda uses for dropdowns/custom fields is preserved
+        known_keys = _NAME_KEYS | _PHONE_KEYS | _EMAIL_KEYS | _COMMENT_KEYS | _SERVICE_KEYS | _TILDA_SYSTEM_KEYS
         content_parts = []
-        if message:  content_parts.append(message)
-        if service:  content_parts.append(f"Услуга: {service}")
-        if name:     content_parts.append(f"Имя: {name}")
-        if email:    content_parts.append(f"Email: {email}")
+        if message:   content_parts.append(message)
+        if service:   content_parts.append(f"Услуга: {service}")
+        if name:      content_parts.append(f"Имя: {name}")
+        if email:     content_parts.append(f"Email: {email}")
         if form_name: content_parts.append(f"Форма: {form_name}")
-        # Fallback: dump all non-empty fields if we couldn't parse anything useful
-        if not content_parts:
-            for k, v in body.items():
-                if v and k not in ("tildaspec-js-fields",):
-                    content_parts.append(f"{k}: {v}")
+
+        # Append extra fields (e.g. unknown select/dropdown names from Tilda form builder)
+        for k, v in body.items():
+            if v and k not in known_keys:
+                content_parts.append(f"{k}: {v}")
+
         content = "\n".join(content_parts) or "Заявка с сайта"
 
         # Try to link to existing patient by phone
@@ -438,6 +469,16 @@ async def site_form_webhook(
             if patient:
                 patient_id = patient.id
 
+        # Build template AI summary immediately (no OpenAI call needed)
+        summary_parts = []
+        if name:    summary_parts.append(f"Заявка от {name}")
+        if phone:   summary_parts.append(f"тел. {phone}")
+        if service: summary_parts.append(f"услуга: {service}")
+        ai_summary = (". ".join(summary_parts) + ". Ожидает обработки.") if summary_parts else None
+        ai_tags = ["заявка_с_сайта"]
+        if service:
+            ai_tags.append("услуга_указана")
+
         comm = Communication(
             patient_id=patient_id,
             channel="site",
@@ -446,6 +487,8 @@ async def site_form_webhook(
             content=content,
             status="new",
             priority="high",
+            ai_summary=ai_summary,
+            ai_tags=ai_tags,
         )
         db.add(comm)
         await db.commit()
@@ -457,7 +500,7 @@ async def site_form_webhook(
             "priority": comm.priority,
         })
 
-        logger.info("Site form saved: comm_id=%s phone=%s", comm.id, phone)
+        logger.info("Site form saved: comm_id=%s phone=%s name=%s", comm.id, phone, name)
 
     except Exception:
         # Never return 5xx to Tilda — it will disable the webhook

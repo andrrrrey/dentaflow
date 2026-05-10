@@ -54,6 +54,21 @@ const statusDot: Record<string, string> = {
   ignored: "bg-gray-300",
 };
 
+function extractNameFromContent(content: string | null | undefined): string | null {
+  if (!content) return null;
+  const m = content.match(/Имя:\s*([^\n]+)/);
+  return m ? m[1].trim() : null;
+}
+
+function getDisplayName(item: CommunicationItem): string {
+  if (item.patient_name) return item.patient_name;
+  if (item.channel === "site") {
+    const extracted = extractNameFromContent(item.content);
+    if (extracted) return extracted;
+  }
+  return "Новый контакт";
+}
+
 function getPreviewText(item: CommunicationItem): string {
   if (item.type === "missed_call") return "Пропущенный звонок";
   if (item.type === "call" && item.duration_sec != null) {
@@ -112,7 +127,7 @@ export default function FeedItem({ item, isSelected, onClick }: Props) {
           <div className="flex items-center justify-between gap-2 mb-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-[13px] font-bold text-text-primary truncate">
-                {item.patient_name ?? "Новый контакт"}
+                {getDisplayName(item)}
               </span>
               {item.direction === "outbound" ? (
                 <ArrowUpRight size={12} className="text-text-muted flex-shrink-0" />
@@ -144,8 +159,8 @@ export default function FeedItem({ item, isSelected, onClick }: Props) {
 
           {/* Bottom row: pills + badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Priority pill */}
-            {(item.priority === "urgent" || item.priority === "high") && (
+            {/* Priority pill — skip "high" for site forms since all forms are high by default */}
+            {(item.priority === "urgent" || (item.priority === "high" && item.channel !== "site")) && (
               <span
                 className={clsx(
                   "inline-block px-[7px] py-[1px] rounded-full text-[10px] font-semibold",
