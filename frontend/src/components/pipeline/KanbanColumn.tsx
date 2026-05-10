@@ -31,9 +31,10 @@ interface KanbanColumnProps {
   column: StageColumn;
   onDealClick: (deal: DealResponse) => void;
   onDeleteDeal?: (dealId: string) => void;
+  onCreatePatient?: (deal: DealResponse) => void;
 }
 
-export default function KanbanColumn({ column, onDealClick, onDeleteDeal }: KanbanColumnProps) {
+export default function KanbanColumn({ column, onDealClick, onDeleteDeal, onCreatePatient }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.stage });
 
   const colors = stageColors[column.stage] ?? stageColors.new;
@@ -89,6 +90,7 @@ export default function KanbanColumn({ column, onDealClick, onDeleteDeal }: Kanb
               deal={deal}
               onClick={() => onDealClick(deal)}
               onDelete={onDeleteDeal}
+              onCreatePatient={onCreatePatient}
             />
           ))}
         </SortableContext>

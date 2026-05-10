@@ -1,19 +1,30 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { X, ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { X, ChevronDown, ChevronUp, Plus, AlertCircle } from "lucide-react";
 import { useCreatePatient, type PatientCreatePayload } from "../../api/patients";
 
 interface Props {
   onClose: () => void;
+  prefillName?: string;
+  prefillPhone?: string;
 }
 
-const inputCls = "px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none w-full";
-const inputStyle = {
-  border: "1px solid rgba(91,76,245,0.15)",
-  background: "rgba(255,255,255,0.5)",
+const inp = "px-3 py-[9px] rounded-[10px] text-[13px] text-text-main outline-none w-full";
+const inpStyle = {
+  border: "1px solid rgba(91,76,245,0.18)",
+  background: "rgba(255,255,255,0.7)",
 };
-const labelCls = "text-[10.5px] font-bold text-text-muted uppercase tracking-wider";
+const lbl = "block text-[10.5px] font-bold text-text-muted uppercase tracking-wider mb-1";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className={lbl}>{label}</label>
+      {children}
+    </div>
+  );
+}
 
 function Section({
   title,
@@ -27,17 +38,29 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border rounded-[14px] overflow-hidden" style={{ borderColor: "rgba(91,76,245,0.12)" }}>
+    <div
+      className="rounded-[14px] overflow-hidden"
+      style={{ border: "1px solid rgba(91,76,245,0.10)" }}
+    >
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-left"
-        style={{ background: "rgba(91,76,245,0.04)" }}
+        className="w-full flex items-center justify-between px-5 py-[11px] text-left cursor-pointer border-none"
+        style={{ background: open ? "rgba(91,76,245,0.06)" : "rgba(247,247,252,0.9)" }}
       >
         <span className="text-[13px] font-bold text-text-main">{title}</span>
-        {open ? <ChevronUp size={15} className="text-text-muted" /> : <ChevronDown size={15} className="text-text-muted" />}
+        {open
+          ? <ChevronUp size={15} className="text-accent2" />
+          : <ChevronDown size={15} className="text-text-muted" />}
       </button>
-      {open && <div className="px-4 py-4 flex flex-col gap-3">{children}</div>}
+      {open && (
+        <div
+          className="px-5 py-4 flex flex-col gap-4"
+          style={{ background: "rgba(255,255,255,0.6)" }}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -51,19 +74,20 @@ const CHANNELS: [string, string][] = [
   ["referral", "Реферал"],
 ];
 
-export default function CreatePatientModal({ onClose }: Props) {
+export default function CreatePatientModal({ onClose, prefillName = "", prefillPhone = "" }: Props) {
   const navigate = useNavigate();
   const createMutation = useCreatePatient();
 
-  const [lastname, setLastname] = useState("");
-  const [firstname, setFirstname] = useState("");
-  const [patronymic, setPatronymic] = useState("");
-  const [birthDay, setBirthDay] = useState("");
-  const [birthYear, setBirthYear] = useState("");
+  // Split prefillName into parts if provided
+  const nameParts = prefillName.trim().split(/\s+/);
+  const [lastname, setLastname] = useState(nameParts[0] ?? "");
+  const [firstname, setFirstname] = useState(nameParts[1] ?? "");
+  const [patronymic, setPatronymic] = useState(nameParts[2] ?? "");
+  const [birthDate, setBirthDate] = useState("");
   const [gender, setGender] = useState<"" | "male" | "female">("");
   const [comment, setComment] = useState("");
 
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(prefillPhone);
   const [additionalPhone, setAdditionalPhone] = useState("");
   const [showAdditionalPhone, setShowAdditionalPhone] = useState(false);
   const [email, setEmail] = useState("");
@@ -85,7 +109,7 @@ export default function CreatePatientModal({ onClose }: Props) {
   const [sourceChannel, setSourceChannel] = useState("");
   const [pushTo1denta, setPushTo1denta] = useState(true);
 
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+  const [open, setOpen] = useState({
     main: true,
     contacts: true,
     docs: false,
@@ -94,16 +118,12 @@ export default function CreatePatientModal({ onClose }: Props) {
   });
   const [error, setError] = useState("");
 
-  function toggleSection(key: string) {
-    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  function buildName() {
-    return [lastname, firstname, patronymic].filter(Boolean).join(" ").trim();
+  function toggle(key: keyof typeof open) {
+    setOpen((p) => ({ ...p, [key]: !p[key] }));
   }
 
   async function handleSubmit() {
-    const name = buildName();
+    const name = [lastname, firstname, patronymic].filter(Boolean).join(" ").trim();
     if (!name) {
       setError("Введите хотя бы имя пациента");
       return;
@@ -115,6 +135,7 @@ export default function CreatePatientModal({ onClose }: Props) {
       lastname: lastname || undefined,
       firstname: firstname || undefined,
       patronymic: patronymic || undefined,
+      birth_date: birthDate || undefined,
       gender: gender || undefined,
       comment: comment || undefined,
       phone: phone || undefined,
@@ -136,18 +157,9 @@ export default function CreatePatientModal({ onClose }: Props) {
       push_to_1denta: pushTo1denta,
     };
 
-    // Compose birth_date from parts
-    if (birthDay && birthYear) {
-      const [dayStr, monthStr] = birthDay.split(".");
-      if (dayStr && monthStr && birthYear.length === 4) {
-        payload.birth_date = `${birthYear}-${monthStr.padStart(2, "0")}-${dayStr.padStart(2, "0")}`;
-      }
-    }
-
     try {
       const result = await createMutation.mutateAsync(payload);
       if (result.warning) {
-        // Пациент создан, но не передан в 1Denta — сообщим и откроем карту
         alert(`Пациент создан, но не передан в 1Denta:\n${result.warning}`);
       }
       onClose();
@@ -159,246 +171,344 @@ export default function CreatePatientModal({ onClose }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30"
+      className="fixed inset-0 z-[200] flex items-start justify-center bg-black/40 overflow-y-auto py-6 px-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[640px] rounded-[20px] flex flex-col mx-4"
+        className="w-full max-w-[760px] rounded-[22px] flex flex-col"
         style={{
-          background: "rgba(255,255,255,0.97)",
+          background: "rgba(248,248,254,0.99)",
           backdropFilter: "blur(24px)",
-          boxShadow: "0 8px 40px rgba(91,76,245,0.18)",
-          maxHeight: "90vh",
+          boxShadow: "0 16px 64px rgba(91,76,245,0.20), 0 2px 8px rgba(0,0,0,0.06)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "rgba(91,76,245,0.10)" }}>
-          <h2 className="text-[16px] font-bold text-text-main">Новый пациент</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-main border-none bg-transparent cursor-pointer">
+        {/* ── Header ── */}
+        <div
+          className="flex items-center justify-between px-7 py-5"
+          style={{ borderBottom: "1px solid rgba(91,76,245,0.10)" }}
+        >
+          <div>
+            <h2 className="text-[18px] font-bold text-text-main">Новый пациент</h2>
+            <p className="text-[12px] text-text-muted mt-0.5">Медицинская карта пациента</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-text-muted hover:text-text-main hover:bg-[rgba(91,76,245,0.06)] border-none bg-transparent cursor-pointer transition-colors"
+          >
             <X size={18} />
           </button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex flex-col gap-3 px-6 py-4" style={{ flex: 1 }}>
+        {/* ── Body ── */}
+        <div className="flex flex-col gap-3 px-7 py-5">
 
           {/* ── Основные данные ── */}
-          <Section title="Основные данные" open={openSections.main} onToggle={() => toggleSection("main")}>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Фамилия</label>
-                <input value={lastname} onChange={(e) => setLastname(e.target.value)} className={inputCls} style={inputStyle} placeholder="Фамилия" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Имя *</label>
-                <input value={firstname} onChange={(e) => setFirstname(e.target.value)} className={inputCls} style={inputStyle} placeholder="Имя" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Отчество</label>
-                <input value={patronymic} onChange={(e) => setPatronymic(e.target.value)} className={inputCls} style={inputStyle} placeholder="Отчество" />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Дата рождения</label>
-              <div className="flex gap-2">
+          <Section title="Основные данные" open={open.main} onToggle={() => toggle("main")}>
+            {/* ФИО row */}
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Фамилия">
                 <input
-                  value={birthDay}
-                  onChange={(e) => setBirthDay(e.target.value)}
-                  className={inputCls}
-                  style={{ ...inputStyle, maxWidth: 110 }}
-                  placeholder="дд.мм"
+                  value={lastname}
+                  onChange={(e) => setLastname(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="Фамилия"
                 />
+              </Field>
+              <Field label="Имя *">
                 <input
-                  value={birthYear}
-                  onChange={(e) => setBirthYear(e.target.value)}
-                  className={inputCls}
-                  style={{ ...inputStyle, maxWidth: 80 }}
-                  placeholder="гггг"
-                  maxLength={4}
+                  value={firstname}
+                  onChange={(e) => setFirstname(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="Имя"
                 />
-              </div>
+              </Field>
+              <Field label="Отчество">
+                <input
+                  value={patronymic}
+                  onChange={(e) => setPatronymic(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="Отчество"
+                />
+              </Field>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className={labelCls}>Пол</label>
-              <div className="flex gap-2">
-                {(["", "male", "female"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setGender(v)}
-                    className="px-3 py-[7px] rounded-xl text-[12px] font-semibold border cursor-pointer transition-colors"
-                    style={{
-                      background: gender === v ? "rgba(91,76,245,0.12)" : "rgba(255,255,255,0.5)",
-                      borderColor: gender === v ? "rgba(91,76,245,0.4)" : "rgba(91,76,245,0.15)",
-                      color: gender === v ? "#5B4CF5" : "#6b7280",
-                    }}
-                  >
-                    {v === "" ? "Не указано" : v === "male" ? "Мужской" : "Женский"}
-                  </button>
-                ))}
-              </div>
+            {/* Date + gender row */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Дата рождения">
+                <input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                />
+              </Field>
+              <Field label="Пол">
+                <div className="flex gap-2 h-[38px] items-center">
+                  {(["", "male", "female"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setGender(v)}
+                      className="flex-1 py-[8px] rounded-[10px] text-[12px] font-semibold border cursor-pointer transition-all"
+                      style={{
+                        background: gender === v ? "rgba(91,76,245,0.12)" : "rgba(255,255,255,0.6)",
+                        borderColor: gender === v ? "rgba(91,76,245,0.45)" : "rgba(91,76,245,0.15)",
+                        color: gender === v ? "#5B4CF5" : "#6b7280",
+                      }}
+                    >
+                      {v === "" ? "Не указано" : v === "male" ? "Мужской" : "Женский"}
+                    </button>
+                  ))}
+                </div>
+              </Field>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Примечание к пациенту</label>
+            <Field label="Примечание к пациенту">
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
-                className="px-3 py-2 rounded-xl text-[13px] text-text-main outline-none resize-none w-full"
-                style={inputStyle}
+                className="px-3 py-2 rounded-[10px] text-[13px] text-text-main outline-none resize-none w-full"
+                style={inpStyle}
                 placeholder="Примечание..."
               />
-            </div>
+            </Field>
           </Section>
 
           {/* ── Контакты ── */}
-          <Section title="Контакты" open={openSections.contacts} onToggle={() => toggleSection("contacts")}>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Телефон</label>
-              <div className="flex gap-2 items-center">
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} style={inputStyle} placeholder="+7 (999) 123-45-67" />
-                {!showAdditionalPhone && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAdditionalPhone(true)}
-                    className="flex items-center gap-1 text-[12px] text-[#5B4CF5] whitespace-nowrap border-none bg-transparent cursor-pointer font-semibold"
-                  >
-                    <Plus size={13} /> Телефон
-                  </button>
+          <Section title="Контакты" open={open.contacts} onToggle={() => toggle("contacts")}>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Телефон</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className={inp}
+                    style={inpStyle}
+                    placeholder="+7 (999) 123-45-67"
+                  />
+                  {!showAdditionalPhone && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAdditionalPhone(true)}
+                      className="flex-shrink-0 flex items-center gap-1 text-[12px] text-accent2 font-semibold border-none bg-transparent cursor-pointer whitespace-nowrap"
+                    >
+                      <Plus size={13} /> ещё
+                    </button>
+                  )}
+                </div>
+                {showAdditionalPhone && (
+                  <input
+                    value={additionalPhone}
+                    onChange={(e) => setAdditionalPhone(e.target.value)}
+                    className={`${inp} mt-2`}
+                    style={inpStyle}
+                    placeholder="Дополнительный телефон"
+                  />
                 )}
               </div>
-            </div>
-            {showAdditionalPhone && (
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Дополнительный телефон</label>
-                <input value={additionalPhone} onChange={(e) => setAdditionalPhone(e.target.value)} className={inputCls} style={inputStyle} placeholder="+7 (999) 000-00-00" />
-              </div>
-            )}
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>E-mail</label>
-              <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} style={inputStyle} placeholder="email@example.com" type="email" />
+              <Field label="E-mail">
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="email@example.com"
+                  type="email"
+                />
+              </Field>
             </div>
           </Section>
 
           {/* ── Документы ── */}
-          <Section title="Документы" open={openSections.docs} onToggle={() => toggleSection("docs")}>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Полис ОМС</label>
-              <input value={oms} onChange={(e) => setOms(e.target.value)} className={inputCls} style={inputStyle} placeholder="Номер полиса ОМС" />
+          <Section title="Документы" open={open.docs} onToggle={() => toggle("docs")}>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="СНИЛС">
+                <input
+                  value={snils}
+                  onChange={(e) => setSnils(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="000-000-000 00"
+                />
+              </Field>
+              <Field label="ИНН Пациента">
+                <input
+                  value={inn}
+                  onChange={(e) => setInn(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="ИНН"
+                  maxLength={12}
+                />
+              </Field>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Дата выдачи полиса ОМС</label>
-                <input value={omsIssueDate} onChange={(e) => setOmsIssueDate(e.target.value)} className={inputCls} style={inputStyle} placeholder="дд.мм.гггг" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Код организации</label>
-                <input value={omsOrgCode} onChange={(e) => setOmsOrgCode(e.target.value)} className={inputCls} style={inputStyle} placeholder="Код" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>СНИЛС</label>
-              <input value={snils} onChange={(e) => setSnils(e.target.value)} className={inputCls} style={inputStyle} placeholder="000-000-000 00" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>ИНН Пациента</label>
-              <input value={inn} onChange={(e) => setInn(e.target.value)} className={inputCls} style={inputStyle} placeholder="ИНН" maxLength={12} />
+            <Field label="Полис ОМС">
+              <input
+                value={oms}
+                onChange={(e) => setOms(e.target.value)}
+                className={inp}
+                style={inpStyle}
+                placeholder="Номер полиса ОМС"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Дата выдачи полиса ОМС">
+                <input
+                  type="date"
+                  value={omsIssueDate}
+                  onChange={(e) => setOmsIssueDate(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                />
+              </Field>
+              <Field label="Код организации">
+                <input
+                  value={omsOrgCode}
+                  onChange={(e) => setOmsOrgCode(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="Код"
+                />
+              </Field>
             </div>
           </Section>
 
           {/* ── Удостоверение личности ── */}
-          <Section title="Удостоверение личности" open={openSections.passport} onToggle={() => toggleSection("passport")}>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Гражданство</label>
-              <input value={citizenship} onChange={(e) => setCitizenship(e.target.value)} className={inputCls} style={inputStyle} placeholder="Гражданство" />
+          <Section title="Удостоверение личности" open={open.passport} onToggle={() => toggle("passport")}>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Гражданство">
+                <input
+                  value={citizenship}
+                  onChange={(e) => setCitizenship(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="Гражданство"
+                />
+              </Field>
+              <Field label="Серия">
+                <input
+                  value={passportSerial}
+                  onChange={(e) => setPassportSerial(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="0000"
+                  maxLength={4}
+                />
+              </Field>
+              <Field label="Номер">
+                <input
+                  value={passportNumber}
+                  onChange={(e) => setPassportNumber(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="000000"
+                  maxLength={6}
+                />
+              </Field>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Серия</label>
-                <input value={passportSerial} onChange={(e) => setPassportSerial(e.target.value)} className={inputCls} style={inputStyle} placeholder="0000" maxLength={4} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className={labelCls}>Номер</label>
-                <input value={passportNumber} onChange={(e) => setPassportNumber(e.target.value)} className={inputCls} style={inputStyle} placeholder="000000" maxLength={6} />
-              </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Дата выдачи">
+                <input
+                  type="date"
+                  value={passportIssueDate}
+                  onChange={(e) => setPassportIssueDate(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                />
+              </Field>
+              <Field label="Код подразделения">
+                <input
+                  value={passportDeptCode}
+                  onChange={(e) => setPassportDeptCode(e.target.value)}
+                  className={inp}
+                  style={inpStyle}
+                  placeholder="000-000"
+                  maxLength={7}
+                />
+              </Field>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Дата выдачи</label>
-              <input value={passportIssueDate} onChange={(e) => setPassportIssueDate(e.target.value)} className={inputCls} style={inputStyle} placeholder="дд.мм.гггг" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Кем выдан</label>
+            <Field label="Кем выдан">
               <textarea
                 value={passportIssuedBy}
                 onChange={(e) => setPassportIssuedBy(e.target.value)}
                 rows={2}
-                className="px-3 py-2 rounded-xl text-[13px] text-text-main outline-none resize-none w-full"
-                style={inputStyle}
+                className="px-3 py-2 rounded-[10px] text-[13px] text-text-main outline-none resize-none w-full"
+                style={inpStyle}
                 placeholder="Наименование органа, выдавшего документ"
               />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Код подразделения</label>
-              <input value={passportDeptCode} onChange={(e) => setPassportDeptCode(e.target.value)} className={inputCls} style={inputStyle} placeholder="000-000" maxLength={7} />
-            </div>
+            </Field>
           </Section>
 
           {/* ── Адрес ── */}
-          <Section title="Адрес" open={openSections.address} onToggle={() => toggleSection("address")}>
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Адрес</label>
-              <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} style={inputStyle} placeholder="Город, улица, дом, квартира" />
-            </div>
+          <Section title="Адрес" open={open.address} onToggle={() => toggle("address")}>
+            <Field label="Адрес">
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className={inp}
+                style={inpStyle}
+                placeholder="Город, улица, дом, квартира"
+              />
+            </Field>
           </Section>
 
-          {/* Источник и передача */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className={labelCls}>Источник</label>
+          {/* ── Источник + 1Denta ── */}
+          <div
+            className="rounded-[14px] px-5 py-4 flex items-center gap-6"
+            style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.10)" }}
+          >
+            <div className="flex-1">
+              <label className={lbl}>Источник</label>
               <select
                 value={sourceChannel}
                 onChange={(e) => setSourceChannel(e.target.value)}
-                className={inputCls}
-                style={inputStyle}
+                className={inp}
+                style={inpStyle}
               >
                 {CHANNELS.map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1 justify-end pb-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={pushTo1denta}
-                  onChange={(e) => setPushTo1denta(e.target.checked)}
-                  className="w-4 h-4 accent-[#5B4CF5]"
-                />
-                <span className="text-[12px] text-text-main font-semibold">Передать в 1Denta</span>
-              </label>
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer mt-4">
+              <input
+                type="checkbox"
+                checked={pushTo1denta}
+                onChange={(e) => setPushTo1denta(e.target.checked)}
+                className="w-[15px] h-[15px] accent-[#5B4CF5]"
+              />
+              <span className="text-[13px] text-text-main font-semibold">Передать в 1Denta</span>
+            </label>
           </div>
 
+          {/* Error */}
           {error && (
-            <div className="px-3 py-2 rounded-xl text-[12px] text-red-600 font-medium" style={{ background: "rgba(220,38,38,0.08)" }}>
+            <div
+              className="flex items-center gap-2 px-4 py-3 rounded-[12px] text-[12.5px] text-red-600 font-medium"
+              style={{ background: "rgba(220,38,38,0.07)" }}
+            >
+              <AlertCircle size={14} />
               {error}
             </div>
           )}
         </div>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-t"
-          style={{ borderColor: "rgba(91,76,245,0.10)" }}
+          className="flex items-center justify-end gap-3 px-7 py-4"
+          style={{ borderTop: "1px solid rgba(91,76,245,0.10)" }}
         >
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-[9px] rounded-xl text-[13px] font-semibold border cursor-pointer transition-colors"
+            className="px-5 py-[10px] rounded-[12px] text-[13px] font-semibold cursor-pointer transition-colors border"
             style={{ borderColor: "rgba(91,76,245,0.2)", color: "#5B4CF5", background: "transparent" }}
           >
             Отмена
@@ -407,10 +517,10 @@ export default function CreatePatientModal({ onClose }: Props) {
             type="button"
             onClick={handleSubmit}
             disabled={createMutation.isPending}
-            className="px-5 py-[9px] rounded-xl text-[13px] font-semibold cursor-pointer transition-colors disabled:opacity-60"
-            style={{ background: "#5B4CF5", color: "#fff", border: "none" }}
+            className="px-6 py-[10px] rounded-[12px] text-[13px] font-bold cursor-pointer transition-all disabled:opacity-60 border-none"
+            style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)", color: "#fff", boxShadow: "0 4px 14px rgba(91,76,245,0.30)" }}
           >
-            {createMutation.isPending ? "Сохранение..." : "Сохранить"}
+            {createMutation.isPending ? "Сохранение..." : "Сохранить пациента"}
           </button>
         </div>
       </div>

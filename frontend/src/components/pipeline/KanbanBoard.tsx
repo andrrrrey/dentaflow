@@ -20,6 +20,7 @@ interface KanbanBoardProps {
   onMoveDeal: (dealId: string, toStage: string) => void;
   onDealClick: (deal: DealResponse) => void;
   onDeleteDeal?: (dealId: string) => void;
+  onCreatePatient?: (deal: DealResponse) => void;
 }
 
 export default function KanbanBoard({
@@ -27,6 +28,7 @@ export default function KanbanBoard({
   onMoveDeal,
   onDealClick,
   onDeleteDeal,
+  onCreatePatient,
 }: KanbanBoardProps) {
   const [activeDeal, setActiveDeal] = useState<DealResponse | null>(null);
 
@@ -104,6 +106,7 @@ export default function KanbanBoard({
             column={col}
             onDealClick={onDealClick}
             onDeleteDeal={onDeleteDeal}
+            onCreatePatient={onCreatePatient}
           />
         ))}
       </div>

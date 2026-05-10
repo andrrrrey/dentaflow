@@ -377,23 +377,25 @@ export default function Communications() {
     priority: filters.priority,
   });
 
+  // Separate query without status filter — always fetched for accurate tab counts
+  const { data: allData } = useCommunications({
+    channel: filters.channel,
+    priority: filters.priority,
+  });
+
   const items = data?.items ?? [];
   const selected = selectedId ? items.find((i) => i.id === selectedId) ?? null : null;
 
   const statusCounts = useMemo(() => {
-    const allItems = data?.items ?? [];
-    const counts: Record<string, number> = { total: data?.total ?? 0, new: 0, in_progress: 0, done: 0 };
-    if (!filters.status) {
-      for (const item of allItems) {
-        counts[item.status] = (counts[item.status] ?? 0) + 1;
+    const allItems = allData?.items ?? [];
+    const counts: Record<string, number> = { total: allItems.length, new: 0, in_progress: 0, done: 0 };
+    for (const item of allItems) {
+      if (item.status in counts) {
+        counts[item.status]++;
       }
-      counts.total = allItems.length;
-    } else {
-      counts.total = data?.total ?? 0;
-      counts.new = data?.unread_count ?? 0;
     }
     return counts;
-  }, [data, filters.status]);
+  }, [allData]);
 
   return (
     <div className="flex flex-col gap-4 h-full">
