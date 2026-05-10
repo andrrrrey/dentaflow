@@ -213,6 +213,93 @@ class AIService:
         )
 
     # ------------------------------------------------------------------
+    # Bot consultation (Telegram / VK Max)
+    # ------------------------------------------------------------------
+
+    async def chat_with_patient(
+        self,
+        message: str,
+        *,
+        kb_context: str = "",
+        system_prompt: str = "",
+        available_slots: list[dict] | None = None,
+    ) -> str:
+        """Generate a patient-facing reply for Telegram / VK Max bots.
+
+        Parameters
+        ----------
+        message:        The patient's text message.
+        kb_context:     Concatenated knowledge base documents (clinic info, price list, FAQs).
+        system_prompt:  Custom prompt from settings; falls back to a sensible default.
+        available_slots: List of free appointment slots to mention when patient asks to book.
+        """
+        if not self._api_key:
+            return self._mock_bot_reply(message, available_slots)
+
+        default_system = (
+            "Ты — вежливый AI-ассистент стоматологической клиники. "
+            "Отвечай кратко и по делу на русском языке. "
+            "Помогай пациентам с вопросами об услугах, ценах и записи на приём. "
+            "Если не знаешь точного ответа — предложи позвонить в клинику."
+        )
+        system = system_prompt.strip() if system_prompt.strip() else default_system
+
+        if kb_context:
+            system += (
+                "\n\nИнформация о клинике (используй для ответов на вопросы пациентов):\n"
+                + kb_context[:8000]
+            )
+
+        slot_hint = ""
+        if available_slots:
+            slot_lines = []
+            for s in available_slots[:5]:
+                slot_lines.append(f"• {s.get('datetime', '')} — {s.get('doctor', 'врач')}")
+            slot_hint = "\n\nДоступные слоты для записи:\n" + "\n".join(slot_lines)
+
+        user_text = message
+        if slot_hint:
+            user_text += slot_hint
+
+        result = await self._chat(system=system, user=user_text, parse_json=False)
+        if isinstance(result, dict):
+            return result.get("text", "Извините, произошла ошибка. Позвоните нам напрямую.")
+        return result or "Извините, произошла ошибка. Позвоните нам напрямую."
+
+    @staticmethod
+    def _mock_bot_reply(message: str, available_slots: list[dict] | None) -> str:
+        lower = message.lower()
+        if any(w in lower for w in ["цен", "стоим", "сколько стоит", "прайс"]):
+            return (
+                "Добрый день! Стоимость услуг зависит от выбранной процедуры. "
+                "Первичная консультация — бесплатно. Для точного расчёта позвоните нам "
+                "или нажмите кнопку «Записаться» ниже."
+            )
+        if any(w in lower for w in ["запис", "приём", "прием", "свободн", "слот"]):
+            if available_slots:
+                lines = []
+                for s in available_slots[:3]:
+                    lines.append(f"• {s.get('datetime', '')} — {s.get('doctor', 'врач')}")
+                return (
+                    "Ближайшие свободные окна:\n"
+                    + "\n".join(lines)
+                    + "\n\nНажмите «Записаться», чтобы выбрать удобное время."
+                )
+            return (
+                "Для записи на приём нажмите кнопку «📅 Записаться» ниже, "
+                "или позвоните нам — мы подберём удобное время."
+            )
+        if any(w in lower for w in ["привет", "здравств", "добр", "start", "/start"]):
+            return (
+                "Здравствуйте! Я AI-ассистент клиники. Могу рассказать об услугах, "
+                "ценах и помочь записаться на приём. Чем могу помочь?"
+            )
+        return (
+            "Спасибо за обращение! Я передам ваш вопрос администратору. "
+            "Для быстрой записи нажмите кнопку «📅 Записаться» ниже."
+        )
+
+    # ------------------------------------------------------------------
     # Communication prioritisation
     # ------------------------------------------------------------------
 

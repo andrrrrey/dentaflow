@@ -1,11 +1,26 @@
-"""Max / VK service.
+"""Max messenger bot service.
 
-Handles VK Callback API events (community messages) and sends replies
-via the VK API.  In development mode outbound calls are mocked.
+Max (max.ru) — мессенджер от VK Group.
+Использует Bot API: https://botapi.max.ru
+
+Документация: https://dev.max.ru/
+
+Входящие события приходят POST-запросом на webhook URL в формате:
+  {
+    "update_type": "message_created" | "message_callback" | "bot_started" | ...,
+    "timestamp": <ms>,
+    "message": {...}   // для message_created
+    "callback": {...}  // для message_callback
+    "user": {...}      // для bot_started
+    "chat_id": ...     // для bot_started
+  }
+
+В dev-режиме отправка сообщений мокируется.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -22,90 +37,206 @@ def _utcnow() -> datetime:
 
 
 class MaxVkService:
-    """Service-layer wrapper around the VK Bot / Callback API."""
+    """Service-layer wrapper around the Max messenger Bot API."""
 
-    VK_API_URL = "https://api.vk.com/method"
-    VK_API_VERSION = "5.199"
+    API_URL = "https://botapi.max.ru"
 
-    def __init__(self) -> None:
-        self.api_key = settings.MAX_API_KEY
-        self.confirmation_token = settings.MAX_CONFIRMATION_TOKEN
+    def __init__(self, bot_token: str | None = None) -> None:
+        # bot_token is the access_token issued when creating a bot via @MaxBotAPI in Max messenger
+        self.bot_token = bot_token or settings.MAX_API_KEY
 
     # ------------------------------------------------------------------
     # Incoming callbacks
     # ------------------------------------------------------------------
 
-    async def handle_callback(self, data: dict) -> dict | str:
-        """Process a VK Callback API event.
+    async def handle_callback(self, data: dict) -> dict:
+        """Process a Max webhook update and return a Communication-like dict.
 
-        * ``type=confirmation`` -- returns the confirmation token string.
-        * ``type=message_new``  -- returns a Communication-like dict.
-        * Other types are acknowledged with ``{"status": "ignored"}``.
+        Recognised update_type values:
+          - ``bot_started``      — user opened the bot (first start)
+          - ``message_created``  — incoming text message
+          - ``message_callback`` — inline button pressed
+          - others              — ignored
         """
-        event_type = data.get("type", "")
+        update_type = data.get("update_type", "")
 
-        if event_type == "confirmation":
-            logger.info("VK confirmation request received")
-            return self.confirmation_token or "ok"
+        if update_type == "bot_started":
+            return self._parse_bot_started(data)
 
-        if event_type == "message_new":
-            return self._parse_message_new(data)
+        if update_type == "message_created":
+            return self._parse_message_created(data)
 
-        logger.debug("VK callback type=%s ignored", event_type)
-        return {"status": "ignored", "type": event_type}
+        if update_type == "message_callback":
+            return self._parse_message_callback(data)
+
+        logger.debug("Max update_type=%s ignored", update_type)
+        return {"status": "ignored", "update_type": update_type}
 
     # ------------------------------------------------------------------
     # Outbound messages
     # ------------------------------------------------------------------
 
-    async def send_reply(self, user_id: int, text: str) -> dict:
-        """Send a text message to VK user *user_id*."""
+    async def send_reply(self, chat_id: int, text: str, buttons: list[list[dict]] | None = None) -> dict:
+        """Send a text message to a Max chat.
+
+        Parameters
+        ----------
+        chat_id:  Max chat_id (same as user_id for dialog chats).
+        text:     Message text (supports Markdown).
+        buttons:  Optional 2-D list of inline buttons.
+                  Each button: {"type": "callback", "text": "...", "payload": "..."}
+        """
         if settings.APP_ENV == "development":
-            logger.info("DEV VK send_reply user_id=%s text_len=%d (mock)", user_id, len(text))
-            return {"response": 1}
+            logger.info(
+                "DEV Max send_reply chat_id=%s text_len=%d buttons=%s (mock)",
+                chat_id, len(text), bool(buttons),
+            )
+            return {"message": {"mid": "mock-mid", "seq": 1}}
+
+        payload: dict = {
+            "recipient": {"chat_id": chat_id},
+            "text": text,
+        }
+        if buttons:
+            payload["attachments"] = [
+                {
+                    "type": "inline_keyboard",
+                    "payload": {"buttons": buttons},
+                }
+            ]
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
-                f"{self.VK_API_URL}/messages.send",
-                data={
-                    "user_id": user_id,
-                    "message": text,
-                    "random_id": uuid.uuid4().int >> 64,
-                    "access_token": self.api_key,
-                    "v": self.VK_API_VERSION,
-                },
+                f"{self.API_URL}/messages",
+                params={"access_token": self.bot_token},
+                json=payload,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def answer_callback(self, callback_id: str, notification: str = "") -> None:
+        """Acknowledge an inline button press."""
+        if settings.APP_ENV == "development":
+            return
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"{self.API_URL}/answers",
+                params={"access_token": self.bot_token},
+                json={"callback_id": callback_id, "notification": notification},
+            )
+
+    async def register_webhook(self, url: str) -> dict:
+        """Register (or update) the bot webhook URL."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{self.API_URL}/subscriptions",
+                params={"access_token": self.bot_token},
+                json={"url": url},
             )
             response.raise_for_status()
             return response.json()
 
     # ------------------------------------------------------------------
+    # Keyboard helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def book_keyboard() -> list[list[dict]]:
+        """Return inline keyboard buttons for Max messenger."""
+        return [
+            [{"type": "callback", "text": "📅 Записаться на приём", "payload": "book_appointment"}],
+            [{"type": "callback", "text": "📞 Контакты клиники", "payload": "contact"}],
+        ]
+
+    @staticmethod
+    def welcome_text(clinic_name: str = "клинике") -> str:
+        return (
+            f"👋 Добро пожаловать в {clinic_name}!\n\n"
+            "Я AI-ассистент и помогу вам:\n"
+            "• Узнать об услугах и ценах\n"
+            "• Записаться на приём\n"
+            "• Ответить на ваши вопросы\n\n"
+            "Просто напишите ваш вопрос или нажмите кнопку ниже 👇"
+        )
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _parse_message_new(self, data: dict) -> dict:
-        """Extract communication fields from a ``message_new`` event."""
-        obj = data.get("object", {})
-        message = obj.get("message", obj)
+    def _parse_message_created(self, data: dict) -> dict:
+        message = data.get("message", {})
+        sender = message.get("sender", {})
+        recipient = message.get("recipient", {})
+        body = message.get("body", {})
 
-        vk_user_id = message.get("from_id") or message.get("peer_id")
-        text = message.get("text", "")
-        message_id = message.get("id") or message.get("conversation_message_id")
+        user_id = sender.get("user_id")
+        chat_id = recipient.get("chat_id") or user_id
+        name = sender.get("name", "")
+        username = sender.get("username", "")
+        text = body.get("text", "")
+        mid = body.get("mid") or str(uuid.uuid4())
 
-        result: dict = {
+        return {
             "channel": "max",
             "direction": "inbound",
             "type": "message",
             "content": text,
             "status": "new",
             "priority": "normal",
-            "external_id": str(message_id) if message_id else None,
-            "vk_user_id": vk_user_id,
+            "external_id": mid,
+            "max_user_id": user_id,
+            "max_chat_id": chat_id,
+            "sender_name": name or username or str(user_id),
+            "update_type": "message_created",
+            "is_booking_button": False,
         }
 
-        logger.info(
-            "VK message processed: user_id=%s text_len=%d",
-            vk_user_id,
-            len(text),
-        )
+    def _parse_message_callback(self, data: dict) -> dict:
+        callback = data.get("callback", {})
+        user = callback.get("user", {})
+        message = data.get("message", {})
+        recipient = message.get("recipient", {})
 
-        return result
+        user_id = user.get("user_id")
+        chat_id = recipient.get("chat_id") or user_id
+        payload = callback.get("payload", "")
+        callback_id = callback.get("callback_id", "")
+        name = user.get("name", "")
+
+        return {
+            "channel": "max",
+            "direction": "inbound",
+            "type": "message",
+            "content": f"[кнопка] {payload}",
+            "status": "new",
+            "priority": "high",
+            "external_id": callback_id,
+            "max_user_id": user_id,
+            "max_chat_id": chat_id,
+            "sender_name": name or str(user_id),
+            "update_type": "message_callback",
+            "callback_id": callback_id,
+            "is_booking_button": payload == "book_appointment",
+            "is_callback": True,
+        }
+
+    def _parse_bot_started(self, data: dict) -> dict:
+        user = data.get("user", {})
+        chat_id = data.get("chat_id") or user.get("user_id")
+        user_id = user.get("user_id")
+        name = user.get("name", "")
+
+        return {
+            "channel": "max",
+            "direction": "inbound",
+            "type": "message",
+            "content": "/start",
+            "status": "new",
+            "priority": "normal",
+            "external_id": None,
+            "max_user_id": user_id,
+            "max_chat_id": chat_id,
+            "sender_name": name or str(user_id),
+            "update_type": "bot_started",
+            "is_booking_button": False,
+        }
