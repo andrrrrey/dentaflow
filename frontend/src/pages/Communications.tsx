@@ -30,12 +30,6 @@ const channelLabel: Record<string, string> = {
   site: "Сайт",
 };
 
-const priorityStyles: Record<string, { bg: string; text: string; label: string }> = {
-  urgent: { bg: "rgba(244,75,110,0.12)", text: "#c52048", label: "Срочный" },
-  high: { bg: "rgba(245,166,35,0.12)", text: "#b87200", label: "Высокий" },
-  normal: { bg: "rgba(91,76,245,0.08)", text: "#5B4CF5", label: "Обычный" },
-  low: { bg: "rgba(0,0,0,0.05)", text: "#8a8fa5", label: "Низкий" },
-};
 
 const statusDot: Record<string, string> = {
   new: "#3B7FED",
@@ -172,7 +166,6 @@ function RequestRow({
   onClick: () => void;
   onDelete: (id: string) => void;
 }) {
-  const pr = priorityStyles[item.priority] ?? priorityStyles.normal;
   const timeAgo = formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ru });
 
   return (
@@ -214,19 +207,13 @@ function RequestRow({
         </button>
       </div>
 
-      {/* channel + priority + time */}
+      {/* channel + time */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[10.5px] text-text-muted">
           {channelLabel[item.channel] ?? item.channel}
           {item.direction === "outbound"
             ? <ArrowUpRight size={10} className="inline ml-0.5 text-text-muted" />
             : <ArrowDownLeft size={10} className="inline ml-0.5 text-text-muted" />}
-        </span>
-        <span
-          className="px-[6px] py-[1px] rounded-full text-[9.5px] font-semibold"
-          style={{ background: pr.bg, color: pr.text }}
-        >
-          {pr.label}
         </span>
         <span className="text-[10px] text-text-muted ml-auto">{timeAgo}</span>
       </div>
@@ -254,7 +241,7 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
         stage: "new",
         source_channel: item.channel,
       });
-      await api.put(`/communications/${item.id}`, { status: "in_progress" });
+      await api.patch(`/communications/${item.id}`, { status: "in_progress" });
       return data;
     },
     onSuccess: () => {
@@ -263,8 +250,6 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
       queryClient.invalidateQueries({ queryKey: ["communications"] });
     },
   });
-
-  const pr = priorityStyles[item.priority] ?? priorityStyles.normal;
 
   return (
     <div className="flex flex-col gap-4 h-full overflow-y-auto">
@@ -278,22 +263,14 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
           boxShadow: "0 4px 18px rgba(120,140,180,0.10)",
         }}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-shrink-0">
-              {item.type === "missed_call"
-                ? <PhoneMissed size={16} className="text-[#c52048]" />
-                : (channelIcon[item.channel] ?? <MessageCircle size={16} className="text-text-muted" />)}
-            </span>
-            <span className="text-[15px] font-bold text-text-main truncate">
-              {getDisplayName(item)}
-            </span>
-          </div>
-          <span
-            className="px-[9px] py-[2px] rounded-full text-[10.5px] font-semibold flex-shrink-0"
-            style={{ background: pr.bg, color: pr.text }}
-          >
-            {pr.label}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex-shrink-0">
+            {item.type === "missed_call"
+              ? <PhoneMissed size={16} className="text-[#c52048]" />
+              : (channelIcon[item.channel] ?? <MessageCircle size={16} className="text-text-muted" />)}
+          </span>
+          <span className="text-[15px] font-bold text-text-main truncate">
+            {getDisplayName(item)}
           </span>
         </div>
 
