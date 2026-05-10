@@ -8,6 +8,7 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.patient import (
     PatientCreate,
+    PatientCreateResponse,
     PatientDetailResponse,
     PatientListResponse,
     PatientResponse,
@@ -82,21 +83,42 @@ async def read_patient(
     return detail
 
 
-@router.post("/", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=PatientCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_patient(
     body: PatientCreate,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
-) -> PatientResponse:
-    return await create_patient(
+) -> PatientCreateResponse:
+    result, _ = await create_patient(
         db=db,
         name=body.name,
+        firstname=body.firstname,
+        lastname=body.lastname,
+        patronymic=body.patronymic,
         phone=body.phone,
+        additional_phone=body.additional_phone,
         email=body.email,
         birth_date=str(body.birth_date) if body.birth_date else None,
+        gender=body.gender,
+        comment=body.comment,
         source_channel=body.source_channel,
         tags=body.tags,
+        snils=body.snils,
+        inn=body.inn,
+        oms=body.oms,
+        oms_issue_date=str(body.oms_issue_date) if body.oms_issue_date else None,
+        oms_org_code=body.oms_org_code,
+        citizenship=body.citizenship,
+        passport_serial=body.passport_serial,
+        passport_number=body.passport_number,
+        passport_issue_date=str(body.passport_issue_date) if body.passport_issue_date else None,
+        passport_issued_by=body.passport_issued_by,
+        passport_department_code=body.passport_department_code,
+        address=body.address,
+        push_to_1denta=body.push_to_1denta,
     )
+    await db.commit()
+    return result
 
 
 @router.post("/{patient_id}/sync-1denta")

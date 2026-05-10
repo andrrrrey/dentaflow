@@ -113,12 +113,40 @@ class PatientListResponse(BaseModel):
 
 
 class PatientCreate(BaseModel):
+    # Основные данные
     name: str
-    phone: str | None = None
-    email: str | None = None
+    firstname: str | None = None
+    lastname: str | None = None
+    patronymic: str | None = None
     birth_date: date | None = None
+    gender: str | None = None           # "male" | "female"
+    comment: str | None = None
+    # Контакты
+    phone: str | None = None
+    additional_phone: str | None = None
+    email: str | None = None
+    # Документы — ОМС / СНИЛС
+    snils: str | None = None
+    inn: str | None = None
+    oms: str | None = None
+    oms_issue_date: date | None = None
+    oms_org_code: str | None = None
+    # Удостоверение личности
+    citizenship: str | None = None
+    passport_serial: str | None = None
+    passport_number: str | None = None
+    passport_issue_date: date | None = None
+    passport_issued_by: str | None = None
+    passport_department_code: str | None = None
+    # Адрес и прочее
+    address: str | None = None
     source_channel: str | None = None
     tags: list[str] | None = None
+    push_to_1denta: bool = True
+
+
+class PatientCreateResponse(PatientResponse):
+    warning: str | None = None
 
 
 class PatientUpdate(BaseModel):

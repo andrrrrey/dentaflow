@@ -393,19 +393,72 @@ async def get_patient_detail(
 async def create_patient(
     db: AsyncSession,
     name: str,
+    firstname: str | None = None,
+    lastname: str | None = None,
+    patronymic: str | None = None,
     phone: str | None = None,
+    additional_phone: str | None = None,
     email: str | None = None,
     birth_date: str | None = None,
+    gender: str | None = None,
+    comment: str | None = None,
     source_channel: str | None = None,
     tags: list[str] | None = None,
-) -> PatientResponse:
+    snils: str | None = None,
+    inn: str | None = None,
+    oms: str | None = None,
+    oms_issue_date: str | None = None,
+    oms_org_code: str | None = None,
+    citizenship: str | None = None,
+    passport_serial: str | None = None,
+    passport_number: str | None = None,
+    passport_issue_date: str | None = None,
+    passport_issued_by: str | None = None,
+    passport_department_code: str | None = None,
+    address: str | None = None,
+    push_to_1denta: bool = True,
+) -> tuple["PatientCreateResponse", str | None]:
+    from app.schemas.patient import PatientCreateResponse
+
+    doc_fields: dict = {}
+    if snils:
+        doc_fields["snils"] = snils
+    if inn:
+        doc_fields["inn"] = inn
+    if oms:
+        doc_fields["oms"] = oms
+    if oms_issue_date:
+        doc_fields["oms_issue_date"] = oms_issue_date
+    if oms_org_code:
+        doc_fields["oms_org_code"] = oms_org_code
+    if citizenship:
+        doc_fields["citizenship"] = citizenship
+    if address:
+        doc_fields["address"] = address
+    if passport_serial:
+        doc_fields["passport_serial"] = passport_serial
+    if passport_number:
+        doc_fields["passport_number"] = passport_number
+    if passport_issue_date:
+        doc_fields["passport_issue_date"] = passport_issue_date
+    if passport_issued_by:
+        doc_fields["passport_issued_by"] = passport_issued_by
+    if passport_department_code:
+        doc_fields["passport_department_code"] = passport_department_code
+
+    _sex_map = {"male": 1, "female": 2}
+    sex = _sex_map.get(gender or "", 0)
+
     patient = Patient(
         name=name,
         phone=phone,
         email=email,
         source_channel=source_channel,
+        gender=gender,
+        comment=comment,
         is_new_patient=True,
         tags=tags,
+        raw_1denta_data=doc_fields if doc_fields else None,
     )
     if birth_date:
         try:
@@ -416,7 +469,49 @@ async def create_patient(
     db.add(patient)
     await db.flush()
 
-    return PatientResponse(
+    warning: str | None = None
+    if push_to_1denta:
+        try:
+            from app.services.one_denta import OneDentaService
+            service = await OneDentaService.from_db(db)
+            result = await service.create_client(
+                name=name,
+                firstname=firstname,
+                lastname=lastname,
+                patronymic=patronymic,
+                phone=phone,
+                additional_phone=additional_phone,
+                email=email,
+                birth_date=birth_date,
+                sex=sex,
+                comment=comment or "",
+                tags=tags,
+                snils=snils,
+                inn=inn,
+                oms=oms,
+                oms_issue_date=oms_issue_date,
+                oms_org_code=oms_org_code,
+                citizenship=citizenship,
+                address=address,
+                passport_serial=passport_serial,
+                passport_number=passport_number,
+                passport_issue_date=passport_issue_date,
+                passport_issued_by=passport_issued_by,
+                passport_department_code=passport_department_code,
+            )
+            if result.get("id"):
+                patient.external_id = str(result["id"])
+                if doc_fields or result:
+                    merged = {**(doc_fields or {}), **{k: v for k, v in result.items() if k != "id"}}
+                    patient.raw_1denta_data = merged or None
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to create client in 1Denta: %s", exc)
+            warning = str(exc)
+
+    await db.flush()
+
+    return PatientCreateResponse(
         id=patient.id,
         external_id=patient.external_id,
         name=patient.name,
@@ -430,7 +525,8 @@ async def create_patient(
         ltv_score=patient.ltv_score,
         tags=patient.tags,
         created_at=patient.created_at,
-    )
+        warning=warning,
+    ), warning
 
 
 async def update_patient(
