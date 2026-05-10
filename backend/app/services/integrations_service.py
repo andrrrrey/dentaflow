@@ -21,9 +21,21 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
     "novofon": ["novofon_api_key", "novofon_webhook_secret"],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
     "openai": ["openai_api_key", "openai_model"],
-    "telegram": ["telegram_bot_token", "telegram_webhook_secret", "telegram_owner_chat_id"],
-    "max_vk": ["max_api_key", "max_confirmation_token"],
-    "site": ["site_webhook_url"],
+    "telegram": [
+        "telegram_bot_token",
+        "telegram_webhook_secret",
+        "telegram_owner_chat_id",
+        "telegram_bot_ai_enabled",
+        "telegram_bot_system_prompt",
+        "telegram_clinic_name",
+    ],
+    "max_vk": [
+        "max_api_key",
+        "max_confirmation_token",
+        "max_bot_ai_enabled",
+        "max_bot_system_prompt",
+    ],
+    "site": ["site_webhook_url", "tilda_secret"],
     "mail": ["mail_host", "mail_port", "mail_user", "mail_password"],
 }
 
@@ -35,6 +47,7 @@ MASKED_KEYS = {
     "openai_api_key",
     "telegram_bot_token", "telegram_webhook_secret",
     "max_api_key", "max_confirmation_token",
+    "tilda_secret",
     "mail_password",
 }
 

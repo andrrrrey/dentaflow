@@ -1,10 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera } from "lucide-react";
+import {
+  Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
+  Upload, Trash2, FileText, Info, Bot, Globe,
+} from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
-import { useIntegrations, useSaveIntegrations, useCheckIntegration } from "../api/integrations";
+import {
+  useIntegrations,
+  useSaveIntegrations,
+  useCheckIntegration,
+  useKnowledgeBaseFiles,
+  useUploadKbFile,
+  useDeleteKbFile,
+} from "../api/integrations";
 
 /* ---------- helpers ---------- */
 
@@ -15,6 +25,7 @@ function InputField({
   type = "text",
   placeholder,
   readOnly,
+  multiline,
 }: {
   label: string;
   value: string;
@@ -22,25 +33,30 @@ function InputField({
   type?: string;
   placeholder?: string;
   readOnly?: boolean;
+  multiline?: boolean;
 }) {
+  const common = {
+    value,
+    onChange: onChange ? (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(e.target.value) : undefined,
+    placeholder,
+    readOnly,
+    className: "px-3 py-[9px] rounded-xl text-[13px] text-text-main bg-transparent outline-none transition-colors w-full resize-none",
+    style: {
+      border: "1px solid rgba(91,76,245,0.15)",
+      background: readOnly ? "rgba(120,140,180,0.06)" : "rgba(255,255,255,0.5)",
+      color: readOnly ? "#8a98b8" : undefined,
+    } as React.CSSProperties,
+  };
   return (
     <div className="flex flex-col gap-1">
       <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
         {label}
       </label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        className="px-3 py-[9px] rounded-xl text-[13px] text-text-main bg-transparent outline-none transition-colors"
-        style={{
-          border: "1px solid rgba(91,76,245,0.15)",
-          background: readOnly ? "rgba(120,140,180,0.06)" : "rgba(255,255,255,0.5)",
-          color: readOnly ? "#8a98b8" : undefined,
-        }}
-      />
+      {multiline ? (
+        <textarea {...common} rows={3} />
+      ) : (
+        <input type={type} {...common} />
+      )}
     </div>
   );
 }
@@ -59,11 +75,7 @@ function Toggle({
       <span className="text-[13px] text-text-main font-medium">{label}</span>
       <div
         className="relative w-[42px] h-[24px] rounded-full transition-colors"
-        style={{
-          background: checked
-            ? "linear-gradient(135deg, #5B4CF5, #3B7FED)"
-            : "rgba(0,0,0,0.12)",
-        }}
+        style={{ background: checked ? "linear-gradient(135deg, #5B4CF5, #3B7FED)" : "rgba(0,0,0,0.12)" }}
         onClick={() => onChange(!checked)}
       >
         <div
@@ -88,6 +100,18 @@ function StatusBanner({ success, error }: { success?: string; error?: string }) 
     >
       {success ? <Check size={14} /> : <AlertCircle size={14} />}
       {success ?? error}
+    </div>
+  );
+}
+
+function InfoBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="flex gap-2 p-3 rounded-xl text-[12px] leading-relaxed"
+      style={{ background: "rgba(91,76,245,0.07)", color: "#5B4CF5" }}
+    >
+      <Info size={14} className="flex-shrink-0 mt-[1px]" />
+      <div>{children}</div>
     </div>
   );
 }
@@ -156,24 +180,13 @@ function ProfileTab() {
   async function handleChangePassword() {
     setPwdSuccess("");
     setPwdError("");
-    if (newPwd !== confirmPwd) {
-      setPwdError("Пароли не совпадают");
-      return;
-    }
-    if (newPwd.length < 6) {
-      setPwdError("Пароль должен быть не менее 6 символов");
-      return;
-    }
+    if (newPwd !== confirmPwd) { setPwdError("Пароли не совпадают"); return; }
+    if (newPwd.length < 6) { setPwdError("Пароль должен быть не менее 6 символов"); return; }
     setPwdSaving(true);
     try {
-      await api.post("/auth/change-password", {
-        old_password: oldPwd,
-        new_password: newPwd,
-      });
+      await api.post("/auth/change-password", { old_password: oldPwd, new_password: newPwd });
       setPwdSuccess("Пароль успешно изменён");
-      setOldPwd("");
-      setNewPwd("");
-      setConfirmPwd("");
+      setOldPwd(""); setNewPwd(""); setConfirmPwd("");
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setPwdError(msg ?? "Ошибка смены пароля");
@@ -184,16 +197,9 @@ function ProfileTab() {
 
   return (
     <div className="flex flex-col gap-[18px]">
-      {/* Profile info */}
       <Card>
         <div className="flex items-center gap-3 mb-5">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="hidden"
-            onChange={handleAvatarUpload}
-          />
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleAvatarUpload} />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={avatarUploading}
@@ -201,25 +207,14 @@ function ProfileTab() {
             title="Нажмите чтобы загрузить фото"
           >
             {user?.avatar_url ? (
-              <img
-                src={user.avatar_url}
-                alt={user.name}
-                className="w-full h-full object-cover rounded-full"
-              />
+              <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover rounded-full" />
             ) : (
-              <div
-                className="w-full h-full flex items-center justify-center text-white text-[18px] font-bold"
-                style={{ background: "linear-gradient(135deg,#5B4CF5,#3B7FED)" }}
-              >
+              <div className="w-full h-full flex items-center justify-center text-white text-[18px] font-bold" style={{ background: "linear-gradient(135deg,#5B4CF5,#3B7FED)" }}>
                 {(user?.name ?? "?")[0].toUpperCase()}
               </div>
             )}
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
-              {avatarUploading ? (
-                <Loader2 size={16} className="text-white animate-spin" />
-              ) : (
-                <Camera size={16} className="text-white" />
-              )}
+              {avatarUploading ? <Loader2 size={16} className="text-white animate-spin" /> : <Camera size={16} className="text-white" />}
             </div>
           </button>
           <div>
@@ -227,13 +222,11 @@ function ProfileTab() {
             <div className="text-[12px] text-text-muted">{user?.role}</div>
           </div>
         </div>
-
         <div className="flex flex-col gap-3">
           <InputField label="Имя" value={name} onChange={setName} />
           <InputField label="Email" value={email} onChange={setEmail} type="email" />
           <InputField label="Роль" value={user?.role ?? ""} readOnly />
         </div>
-
         <div className="mt-4 flex flex-col gap-3">
           <StatusBanner success={success} error={error} />
           <div className="flex justify-end">
@@ -245,7 +238,6 @@ function ProfileTab() {
         </div>
       </Card>
 
-      {/* Password change */}
       <Card>
         <div className="flex items-center gap-2 mb-4">
           <KeyRound size={16} className="text-accent2" />
@@ -270,6 +262,105 @@ function ProfileTab() {
   );
 }
 
+/* ---------- Knowledge Base card ---------- */
+
+function KnowledgeBaseCard() {
+  const { data, isLoading, refetch } = useKnowledgeBaseFiles();
+  const uploadMutation = useUploadKbFile();
+  const deleteMutation = useDeleteKbFile();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError("");
+    try {
+      await uploadMutation.mutateAsync(file);
+      refetch();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setUploadError(msg ?? "Ошибка загрузки файла");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDelete(id: string) {
+    await deleteMutation.mutateAsync(id);
+    refetch();
+  }
+
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} Б`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Bot size={16} className="text-accent2" />
+        <h3 className="text-[14px] font-bold text-text-main">База знаний бота</h3>
+      </div>
+
+      <InfoBox>
+        Загрузите файлы (TXT, MD, PDF, DOCX) с информацией о клинике, прайс-листом, FAQ.
+        AI-бот будет использовать эти материалы при ответах пациентам в Telegram и VK Max.
+      </InfoBox>
+
+      <div className="mt-3 flex flex-col gap-2">
+        {isLoading && <div className="text-[12px] text-text-muted">Загрузка...</div>}
+        {!isLoading && data?.files.length === 0 && (
+          <div className="text-[12px] text-text-muted">Файлы не добавлены</div>
+        )}
+        {data?.files.map((f) => (
+          <div
+            key={f.id}
+            className="flex items-center justify-between px-3 py-2 rounded-xl"
+            style={{ background: "rgba(91,76,245,0.05)", border: "1px solid rgba(91,76,245,0.1)" }}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <FileText size={13} className="text-accent2 flex-shrink-0" />
+              <span className="text-[12px] text-text-main truncate">{f.filename}</span>
+              <span className="text-[11px] text-text-muted flex-shrink-0">{formatSize(f.size_bytes)}</span>
+            </div>
+            <button
+              onClick={() => handleDelete(f.id)}
+              disabled={deleteMutation.isPending}
+              className="p-1 rounded-lg border-none bg-transparent cursor-pointer text-text-muted hover:text-red-500 transition-colors"
+              title="Удалить"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {uploadError && <div className="text-[12px] text-red-500 mt-2">{uploadError}</div>}
+
+      <div className="mt-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.md,.pdf,.docx"
+          className="hidden"
+          onChange={handleUpload}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-[7px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all"
+          style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+        >
+          {uploadMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          {uploadMutation.isPending ? "Загрузка..." : "Загрузить файл"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Integration card ---------- */
 
 interface IntegrationField {
@@ -277,13 +368,17 @@ interface IntegrationField {
   label: string;
   type?: string;
   placeholder?: string;
+  multiline?: boolean;
+  isToggle?: boolean;
 }
 
 interface IntegrationCardConfig {
   service: string;
   title: string;
   description: string;
+  icon?: React.ReactNode;
   fields: IntegrationField[];
+  infoBox?: React.ReactNode;
 }
 
 const INTEGRATIONS: IntegrationCardConfig[] = [
@@ -301,7 +396,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     title: "1Denta (CRM)",
     description: "Синхронизация пациентов и записей",
     fields: [
-      { key: "one_denta_api_url", label: "API URL (адрес вашей 1Denta, например https://app3.sqns.ru)", placeholder: "https://app3.sqns.ru" },
+      { key: "one_denta_api_url", label: "API URL", placeholder: "https://app3.sqns.ru" },
       { key: "one_denta_email", label: "Email", type: "email", placeholder: "email@clinic.ru" },
       { key: "one_denta_password", label: "Пароль", type: "password", placeholder: "Пароль" },
     ],
@@ -309,7 +404,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
   {
     service: "openai",
     title: "OpenAI",
-    description: "ИИ-аналитика, подсказки, анализ скриптов",
+    description: "ИИ-аналитика, подсказки, анализ скриптов, AI-бот",
     fields: [
       { key: "openai_api_key", label: "API Key", type: "password", placeholder: "sk-..." },
       { key: "openai_model", label: "Модель", placeholder: "gpt-4o" },
@@ -318,28 +413,79 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
   {
     service: "telegram",
     title: "Telegram",
-    description: "Бот для уведомлений и приёма сообщений",
+    icon: <Bot size={15} />,
+    description: "AI-бот для записи пациентов и консультаций",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Инструкция подключения:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>Создайте бота у <b>@BotFather</b> командой <code>/newbot</code></li>
+          <li>Скопируйте Bot Token и вставьте ниже</li>
+          <li>Укажите Webhook Secret (любая случайная строка)</li>
+          <li>Зарегистрируйте вебхук: <code>curl -X POST https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook -d "url=https://ВАШ_ДОМЕН/api/v1/webhooks/telegram?secret=&lt;SECRET&gt;"</code></li>
+          <li>Включите «AI-ответы» — бот начнёт автоматически отвечать на сообщения</li>
+        </ol>
+      </div>
+    ),
     fields: [
       { key: "telegram_bot_token", label: "Bot Token", type: "password", placeholder: "123456:ABC..." },
-      { key: "telegram_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет" },
-      { key: "telegram_owner_chat_id", label: "Chat ID владельца", placeholder: "123456789" },
+      { key: "telegram_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет для setWebhook" },
+      { key: "telegram_owner_chat_id", label: "Chat ID владельца (для ежедневных отчётов)", placeholder: "123456789" },
+      { key: "telegram_clinic_name", label: "Название клиники (в приветствии бота)", placeholder: "Стоматология Улыбка" },
+      { key: "telegram_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
+      { key: "telegram_bot_system_prompt", label: "Системный промпт бота (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
     ],
   },
   {
     service: "max_vk",
     title: "MAX / VK",
-    description: "Сообщения из VK-сообщества",
+    icon: <Bot size={15} />,
+    description: "AI-бот для записи пациентов через VK-сообщество",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Инструкция подключения VK Max:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>Откройте VK — ваше сообщество → Управление → API</li>
+          <li>Создайте ключ доступа сообщества с правом <b>messages</b></li>
+          <li>Перейдите в раздел <b>Callback API</b> → укажите URL: <code>https://ВАШ_ДОМЕН/api/v1/webhooks/max</code></li>
+          <li>Скопируйте Confirmation Token из VK и вставьте ниже</li>
+          <li>В разделе «Типы событий» включите <b>Входящие сообщения</b></li>
+          <li>Включите «AI-ответы» — бот начнёт автоматически отвечать</li>
+        </ol>
+      </div>
+    ),
     fields: [
-      { key: "max_api_key", label: "Access Token", type: "password", placeholder: "vk1.a.XXX..." },
-      { key: "max_confirmation_token", label: "Confirmation Token", type: "password", placeholder: "Токен подтверждения" },
+      { key: "max_api_key", label: "Access Token сообщества", type: "password", placeholder: "vk1.a.XXX..." },
+      { key: "max_confirmation_token", label: "Confirmation Token", type: "password", placeholder: "Токен подтверждения из VK" },
+      { key: "max_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
+      { key: "max_bot_system_prompt", label: "Системный промпт бота (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
     ],
   },
   {
     service: "site",
-    title: "Форма на сайте",
-    description: "Webhook для приёма заявок с сайта",
+    title: "Форма на сайте / Тильда",
+    icon: <Globe size={15} />,
+    description: "Webhook для приёма заявок с сайта и Тильды",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Как подключить форму Тильды:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>Откройте форму на Тильде → Настройки формы → <b>После отправки</b></li>
+          <li>Выберите <b>Webhook</b> и укажите URL:<br/>
+            <code className="text-[11px] break-all">https://ВАШ_ДОМЕН/api/v1/webhooks/site</code>
+          </li>
+          <li>Тильда автоматически отправит поля: <b>Name, Phone, Email, Comment</b></li>
+          <li>Заявки появятся в разделе «Коммуникации» со статусом <b>Новый</b></li>
+        </ol>
+        <div className="mt-1 text-text-muted">
+          <b>Поддерживаемые форматы:</b> JSON и form-data (Тильда использует form-data по умолчанию).
+          Поля распознаются автоматически (Name/name, Phone/phone, Email/email, Comment/message).
+        </div>
+      </div>
+    ),
     fields: [
-      { key: "site_webhook_url", label: "Webhook URL", placeholder: "https://dentaflow.ru/api/v1/webhooks/site" },
+      { key: "site_webhook_url", label: "Ваш Webhook URL (для справки)", placeholder: "https://dentaflow.ru/api/v1/webhooks/site" },
+      { key: "tilda_secret", label: "Tilda Secret (необязательно, для подписи HMAC)", type: "password", placeholder: "Секретный ключ" },
     ],
   },
   {
@@ -373,38 +519,53 @@ function IntegrationCard({
   return (
     <Card>
       <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="text-[14px] font-bold text-text-main">{config.title}</h3>
-          <p className="text-[11.5px] text-text-muted mt-[2px]">{config.description}</p>
+        <div className="flex items-center gap-2">
+          {config.icon && <span className="text-accent2">{config.icon}</span>}
+          <div>
+            <h3 className="text-[14px] font-bold text-text-main">{config.title}</h3>
+            <p className="text-[11.5px] text-text-muted mt-[2px]">{config.description}</p>
+          </div>
         </div>
         {checkResult && (
           <div className="flex items-center gap-1.5">
-            {checkResult.ok ? (
-              <Wifi size={14} className="text-[#00c9a7]" />
-            ) : (
-              <WifiOff size={14} className="text-[#f44b6e]" />
-            )}
-            <span
-              className="text-[11px] font-semibold"
-              style={{ color: checkResult.ok ? "#00c9a7" : "#f44b6e" }}
-            >
+            {checkResult.ok ? <Wifi size={14} className="text-[#00c9a7]" /> : <WifiOff size={14} className="text-[#f44b6e]" />}
+            <span className="text-[11px] font-semibold" style={{ color: checkResult.ok ? "#00c9a7" : "#f44b6e" }}>
               {checkResult.message}
             </span>
           </div>
         )}
       </div>
 
+      {config.infoBox && (
+        <div
+          className="mb-3 p-3 rounded-xl text-[12px]"
+          style={{ background: "rgba(91,76,245,0.06)", border: "1px solid rgba(91,76,245,0.12)" }}
+        >
+          {config.infoBox}
+        </div>
+      )}
+
       <div className="flex flex-col gap-2.5">
-        {config.fields.map((f) => (
-          <InputField
-            key={f.key}
-            label={f.label}
-            value={values[f.key] ?? ""}
-            onChange={(v) => onChange(f.key, v)}
-            type={f.type}
-            placeholder={f.placeholder}
-          />
-        ))}
+        {config.fields.map((f) =>
+          f.isToggle ? (
+            <Toggle
+              key={f.key}
+              label={f.label}
+              checked={values[f.key] === "true"}
+              onChange={(v) => onChange(f.key, v ? "true" : "false")}
+            />
+          ) : (
+            <InputField
+              key={f.key}
+              label={f.label}
+              value={values[f.key] ?? ""}
+              onChange={(v) => onChange(f.key, v)}
+              type={f.type}
+              placeholder={f.placeholder}
+              multiline={f.multiline}
+            />
+          )
+        )}
       </div>
 
       <div className="flex justify-end mt-3">
@@ -412,10 +573,7 @@ function IntegrationCard({
           onClick={onCheck}
           disabled={checking}
           className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all"
-          style={{
-            background: "rgba(91,76,245,0.08)",
-            color: "#5B4CF5",
-          }}
+          style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
         >
           {checking ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
           {checking ? "Проверка..." : "Проверить"}
@@ -475,6 +633,8 @@ function IntegrationsTab() {
 
   return (
     <div className="flex flex-col gap-[14px]">
+      <KnowledgeBaseCard />
+
       {INTEGRATIONS.map((cfg) => (
         <IntegrationCard
           key={cfg.service}
@@ -531,7 +691,6 @@ export default function Settings() {
 
   return (
     <div className="flex flex-col gap-[18px] max-w-[800px]">
-      {/* Tab bar */}
       <div className="flex gap-[3px] p-1 rounded-xl bg-[rgba(91,76,245,0.07)] w-fit">
         {TABS.map(({ key, label }) => (
           <button

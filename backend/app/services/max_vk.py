@@ -2,6 +2,10 @@
 
 Handles VK Callback API events (community messages) and sends replies
 via the VK API.  In development mode outbound calls are mocked.
+
+Bot flow:
+  Any message → AI consultation reply (using knowledge base + OpenAI)
+  Message containing booking intent → show available slots as text buttons
 """
 
 from __future__ import annotations
@@ -58,25 +62,72 @@ class MaxVkService:
     # Outbound messages
     # ------------------------------------------------------------------
 
-    async def send_reply(self, user_id: int, text: str) -> dict:
-        """Send a text message to VK user *user_id*."""
+    async def send_reply(self, user_id: int, text: str, keyboard: dict | None = None) -> dict:
+        """Send a text message to VK user *user_id*.
+
+        Parameters
+        ----------
+        keyboard: Optional VK keyboard dict (use ``_book_keyboard()`` helper).
+        """
         if settings.APP_ENV == "development":
-            logger.info("DEV VK send_reply user_id=%s text_len=%d (mock)", user_id, len(text))
+            logger.info(
+                "DEV VK send_reply user_id=%s text_len=%d keyboard=%s (mock)",
+                user_id, len(text), bool(keyboard),
+            )
             return {"response": 1}
+
+        import json as _json
+
+        payload: dict = {
+            "user_id": user_id,
+            "message": text,
+            "random_id": uuid.uuid4().int >> 64,
+            "access_token": self.api_key,
+            "v": self.VK_API_VERSION,
+        }
+        if keyboard:
+            payload["keyboard"] = _json.dumps(keyboard, ensure_ascii=False)
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.VK_API_URL}/messages.send",
-                data={
-                    "user_id": user_id,
-                    "message": text,
-                    "random_id": uuid.uuid4().int >> 64,
-                    "access_token": self.api_key,
-                    "v": self.VK_API_VERSION,
-                },
+                data=payload,
             )
             response.raise_for_status()
             return response.json()
+
+    # ------------------------------------------------------------------
+    # Keyboard helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def book_keyboard() -> dict:
+        """Return a VK keyboard with a 'Book appointment' button."""
+        return {
+            "one_time": False,
+            "buttons": [
+                [
+                    {
+                        "action": {
+                            "type": "text",
+                            "label": "📅 Записаться на приём",
+                            "payload": '{"button": "book_appointment"}',
+                        },
+                        "color": "primary",
+                    }
+                ],
+                [
+                    {
+                        "action": {
+                            "type": "text",
+                            "label": "📞 Контакты",
+                            "payload": '{"button": "contact"}',
+                        },
+                        "color": "secondary",
+                    }
+                ],
+            ],
+        }
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -91,6 +142,17 @@ class MaxVkService:
         text = message.get("text", "")
         message_id = message.get("id") or message.get("conversation_message_id")
 
+        # Detect if the payload is a keyboard button press
+        payload_raw = message.get("payload", "")
+        is_booking_button = False
+        if payload_raw:
+            try:
+                import json as _json
+                pl = _json.loads(payload_raw)
+                is_booking_button = pl.get("button") == "book_appointment"
+            except Exception:
+                pass
+
         result: dict = {
             "channel": "max",
             "direction": "inbound",
@@ -100,6 +162,7 @@ class MaxVkService:
             "priority": "normal",
             "external_id": str(message_id) if message_id else None,
             "vk_user_id": vk_user_id,
+            "is_booking_button": is_booking_button,
         }
 
         logger.info(
@@ -107,5 +170,4 @@ class MaxVkService:
             vk_user_id,
             len(text),
         )
-
         return result

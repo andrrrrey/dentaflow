@@ -17,6 +17,7 @@ from app.routers import (
     directories,
     doctors,
     integrations,
+    knowledge_base,
     marketing,
     notifications,
     patients,
@@ -28,6 +29,7 @@ from app.routers import (
     search,
     staff,
     tasks,
+    webhooks,
     ws,
 )
 
@@ -84,6 +86,8 @@ app.include_router(directories.router)
 app.include_router(reports.router)
 app.include_router(pipeline_stages.router)
 app.include_router(marketing.router)
+app.include_router(webhooks.router)
+app.include_router(knowledge_base.router)
 
 # --- Static files (avatars, uploads) ---
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
