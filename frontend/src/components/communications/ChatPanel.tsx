@@ -61,6 +61,15 @@ export default function ChatPanel({ item, onClose }: Props) {
   const [suggestionsError, setSuggestionsError] = useState(false);
   const status = statusLabels[item.status];
 
+  function getDisplayName(): string {
+    if (item.patient_name) return item.patient_name;
+    if (item.channel === "site" && item.content) {
+      const m = item.content.match(/Имя:\s*([^\n]+)/);
+      if (m) return m[1].trim();
+    }
+    return "Новый контакт";
+  }
+
   async function handleGetSuggestions() {
     setSuggestionsLoading(true);
     setSuggestionsError(false);
@@ -95,11 +104,8 @@ export default function ChatPanel({ item, onClose }: Props) {
           <div className="flex items-center gap-2">
             {channelIcon[item.channel]}
             <h3 className="text-[15px] font-extrabold text-text-primary">
-              {item.patient_name ?? "Новый контакт"}
+              {getDisplayName()}
             </h3>
-            <span className={clsx("text-[11px] font-semibold", status.color)}>
-              {status.label}
-            </span>
           </div>
           <button
             onClick={onClose}

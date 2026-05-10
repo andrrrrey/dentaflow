@@ -201,7 +201,8 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
         <p className="text-[13px] text-text-main leading-[1.6]">{getPreview(item)}</p>
       </div>
 
-      {/* AI analysis */}
+      {/* AI analysis — only show when there is actual data */}
+      {(item.ai_summary || (item.ai_tags && item.ai_tags.length > 0) || item.ai_next_action) && (
       <div
         className="rounded-[16px] p-[16px_18px] flex flex-col gap-3"
         style={{
@@ -214,10 +215,8 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
           ИИ-анализ
         </div>
 
-        {item.ai_summary ? (
+        {item.ai_summary && (
           <p className="text-[13px] text-text-main leading-[1.5]">{item.ai_summary}</p>
-        ) : (
-          <p className="text-[12px] text-text-muted">Анализ недоступен</p>
         )}
 
         {item.ai_next_action && (
@@ -243,6 +242,7 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Add to pipeline CRM */}
       <button
