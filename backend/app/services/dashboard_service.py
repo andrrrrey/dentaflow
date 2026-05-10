@@ -19,19 +19,22 @@ from app.schemas.dashboard import (
 )
 
 
-def _prev_period_range(period: str) -> tuple[datetime, datetime]:
+def _prev_period_range(period: str, year: int | None = None, month: int | None = None) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
     if period == "day":
         prev = now - timedelta(days=1)
         start = prev.replace(hour=0, minute=0, second=0, microsecond=0)
         end = prev.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "month":
-        curr_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        end = curr_month_start - timedelta(microseconds=1)
-        if now.month == 1:
-            start = now.replace(year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+        target_year = year or now.year
+        target_month = month or now.month
+        if target_month == 1:
+            prev_year, prev_month = target_year - 1, 12
         else:
-            start = now.replace(month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            prev_year, prev_month = target_year, target_month - 1
+        start = now.replace(year=prev_year, month=prev_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        curr_start = now.replace(year=target_year, month=target_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = curr_start - timedelta(microseconds=1)
     else:  # week
         curr_week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         end = curr_week_start - timedelta(microseconds=1)
@@ -39,18 +42,19 @@ def _prev_period_range(period: str) -> tuple[datetime, datetime]:
     return start, end
 
 
-def _period_range(period: str) -> tuple[datetime, datetime]:
+def _period_range(period: str, year: int | None = None, month: int | None = None) -> tuple[datetime, datetime]:
     now = datetime.now(timezone.utc)
     if period == "day":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
     elif period == "month":
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        # Last moment of current month
-        if now.month == 12:
-            next_month = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        target_year = year or now.year
+        target_month = month or now.month
+        start = now.replace(year=target_year, month=target_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+        if target_month == 12:
+            next_month = start.replace(year=target_year + 1, month=1)
         else:
-            next_month = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            next_month = start.replace(month=target_month + 1)
         end = next_month - timedelta(microseconds=1)
     else:  # week
         start = now - timedelta(days=now.weekday())
@@ -125,7 +129,6 @@ async def _kpi(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> KpiData:
 
 
 async def _funnel(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[FunnelItem]:
-    # Show current deal counts by stage (no date filter — pipeline is a snapshot, not time-series)
     stages_order = [
         ("waiting_list", "Лист ожидания"),
         ("new", "Новые"),
@@ -138,7 +141,11 @@ async def _funnel(db: AsyncSession, dt_from: datetime, dt_to: datetime) -> list[
 
     stmt = (
         select(Deal.stage, func.count().label("cnt"))
-        .where(Deal.stage.in_([s for s, _ in stages_order]))
+        .where(
+            Deal.stage.in_([s for s, _ in stages_order]),
+            Deal.created_at >= dt_from,
+            Deal.created_at <= dt_to,
+        )
         .group_by(Deal.stage)
     )
     rows = {row.stage: row.cnt for row in (await db.execute(stmt)).all()}
@@ -331,9 +338,9 @@ def _fallback_ai_insights() -> AIInsights:
     )
 
 
-async def get_overview(period: str, db: AsyncSession) -> DashboardOverview:
-    dt_from, dt_to = _period_range(period)
-    prev_from, prev_to = _prev_period_range(period)
+async def get_overview(period: str, db: AsyncSession, year: int | None = None, month: int | None = None) -> DashboardOverview:
+    dt_from, dt_to = _period_range(period, year=year, month=month)
+    prev_from, prev_to = _prev_period_range(period, year=year, month=month)
 
     kpi = await _kpi(db, dt_from, dt_to)
     prev_kpi = await _kpi(db, prev_from, prev_to)

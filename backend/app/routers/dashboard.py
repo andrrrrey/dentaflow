@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +15,10 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 @router.get("/overview", response_model=DashboardOverview)
 async def dashboard_overview(
     period: str = Query("week", regex="^(day|week|month)$"),
+    year: Optional[int] = Query(None, ge=2000, le=2100),
+    month: Optional[int] = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> DashboardOverview:
     """Return aggregated dashboard overview data for the given period."""
-    return await get_overview(period=period, db=db)
+    return await get_overview(period=period, db=db, year=year, month=month)
