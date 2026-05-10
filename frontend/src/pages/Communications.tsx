@@ -43,6 +43,21 @@ const statusDot: Record<string, string> = {
   done: "#00C9A7",
 };
 
+function extractNameFromContent(content: string | null | undefined): string | null {
+  if (!content) return null;
+  const m = content.match(/Имя:\s*([^\n]+)/);
+  return m ? m[1].trim() : null;
+}
+
+function getDisplayName(item: CommunicationItem): string {
+  if (item.patient_name) return item.patient_name;
+  if (item.channel === "site") {
+    const extracted = extractNameFromContent(item.content);
+    if (extracted) return extracted;
+  }
+  return "Новый контакт";
+}
+
 function getPreview(item: CommunicationItem): string {
   if (item.type === "missed_call") return "Пропущенный звонок";
   if (item.type === "call" && item.duration_sec != null) {
@@ -53,6 +68,95 @@ function getPreview(item: CommunicationItem): string {
       : `Звонок (${m}:${String(s).padStart(2, "0")})`;
   }
   return item.content ?? "Нет содержания";
+}
+
+/* ── AI banner ── */
+
+function AiCommunicationsBanner({ items }: { items: CommunicationItem[] }) {
+  if (items.length === 0) return null;
+
+  const newItems = items.filter((i) => i.status === "new");
+  const urgentItems = items.filter((i) => i.priority === "urgent");
+  const unansweredItems = items.filter((i) => {
+    if (i.status !== "new" || i.direction !== "inbound") return false;
+    const mins = (Date.now() - new Date(i.created_at).getTime()) / 60_000;
+    return mins > 10;
+  });
+  const siteItems = items.filter((i) => i.channel === "site" && i.status === "new");
+
+  const insights: { emoji: string; text: string }[] = [];
+
+  if (unansweredItems.length > 0) {
+    insights.push({
+      emoji: "⏰",
+      text: `${unansweredItems.length} обращений без ответа более 10 минут — ответьте как можно скорее, пока клиент не ушёл`,
+    });
+  }
+  if (urgentItems.length > 0) {
+    insights.push({
+      emoji: "🚨",
+      text: `${urgentItems.length} срочных обращений — требуют немедленного внимания менеджера`,
+    });
+  }
+  if (siteItems.length > 0) {
+    insights.push({
+      emoji: "🌐",
+      text: `${siteItems.length} новых заявок с сайта — проверьте услугу и перезвоните пациентам`,
+    });
+  }
+  if (newItems.length > 5) {
+    insights.push({
+      emoji: "📋",
+      text: `${newItems.length} необработанных обращений — распределите между менеджерами и возьмите в работу`,
+    });
+  }
+  if (insights.length === 0) {
+    insights.push({
+      emoji: "✅",
+      text: `${items.length} обращений в очереди, всё под контролем — продолжайте в том же темпе`,
+    });
+  }
+
+  return (
+    <div
+      className="rounded-[18px] p-[20px_24px] relative overflow-hidden mb-4"
+      style={{
+        background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
+        boxShadow: "0 4px 24px rgba(91,76,245,0.22)",
+      }}
+    >
+      <div
+        className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-15"
+        style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }}
+      />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} className="text-white" />
+            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">
+              ИИ-Ассистент · Коммуникации
+            </span>
+          </div>
+          <span className="text-[13px] font-bold text-white/90">
+            {items.length} обращений
+          </span>
+        </div>
+        <div className="flex flex-col gap-[8px]">
+          {insights.slice(0, 3).map((ins, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
+              <span
+                className="text-[13.5px] text-white font-medium leading-snug"
+                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}
+              >
+                {ins.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ── Left: compact list row ── */
@@ -95,7 +199,7 @@ function RequestRow({
             : (channelIcon[item.channel] ?? <MessageCircle size={13} className="text-text-muted" />)}
         </span>
         <span className="text-[12.5px] font-bold text-text-main truncate flex-1">
-          {item.patient_name ?? "Новый контакт"}
+          {getDisplayName(item)}
         </span>
         <span
           className="w-[7px] h-[7px] rounded-full flex-shrink-0"
@@ -144,17 +248,19 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
   const addLeadMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post("/deals/", {
-        title: `Лид: ${item.patient_name ?? "Новый контакт"} (${channelLabel[item.channel] ?? item.channel})`,
+        title: `Лид: ${getDisplayName(item)} (${channelLabel[item.channel] ?? item.channel})`,
         patient_id: item.patient_id ?? undefined,
         patient_name: item.patient_name ?? undefined,
         stage: "new",
         source_channel: item.channel,
       });
+      await api.put(`/communications/${item.id}`, { status: "in_progress" });
       return data;
     },
     onSuccess: () => {
       setAdded(true);
       queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["communications"] });
     },
   });
 
@@ -180,7 +286,7 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
                 : (channelIcon[item.channel] ?? <MessageCircle size={16} className="text-text-muted" />)}
             </span>
             <span className="text-[15px] font-bold text-text-main truncate">
-              {item.patient_name ?? "Новый контакт"}
+              {getDisplayName(item)}
             </span>
           </div>
           <span
@@ -314,6 +420,8 @@ export default function Communications() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
+      {!isLoading && <AiCommunicationsBanner items={items} />}
+
       <FeedFilters statusCounts={statusCounts} />
 
       {isLoading && (

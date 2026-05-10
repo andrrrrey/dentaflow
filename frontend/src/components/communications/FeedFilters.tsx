@@ -85,7 +85,7 @@ export default function FeedFilters({ statusCounts }: Props) {
         })}
       </div>
 
-      {/* Channel filter + priority pills */}
+      {/* Channel filter */}
       <div className="flex items-center gap-3 flex-wrap">
         <select
           value={filters.channel ?? ""}
@@ -101,45 +101,6 @@ export default function FeedFilters({ statusCounts }: Props) {
             </option>
           ))}
         </select>
-
-        <div className="flex items-center gap-1">
-          {(
-            [
-              { key: undefined, label: "Все", variant: "default" },
-              { key: "urgent", label: "Срочный", variant: "red" },
-              { key: "high", label: "Высокий", variant: "yellow" },
-              { key: "normal", label: "Обычный", variant: "blue" },
-            ] as const
-          ).map((p) => {
-            const active = filters.priority === p.key;
-            const colorMap: Record<string, string> = {
-              red: active
-                ? "bg-[rgba(244,75,110,0.18)] text-[#c52048]"
-                : "bg-transparent text-[#c52048] hover:bg-[rgba(244,75,110,0.08)]",
-              yellow: active
-                ? "bg-[rgba(245,166,35,0.18)] text-[#b87200]"
-                : "bg-transparent text-[#b87200] hover:bg-[rgba(245,166,35,0.08)]",
-              blue: active
-                ? "bg-[rgba(59,127,237,0.18)] text-[#1a55b0]"
-                : "bg-transparent text-[#1a55b0] hover:bg-[rgba(59,127,237,0.08)]",
-              default: active
-                ? "bg-[rgba(91,76,245,0.15)] text-accent2"
-                : "bg-transparent text-text-muted hover:bg-[rgba(91,76,245,0.06)]",
-            };
-            return (
-              <button
-                key={p.label}
-                onClick={() => setFilter("priority", p.key)}
-                className={clsx(
-                  "px-[9px] py-[3px] rounded-full text-[11px] font-semibold transition-all duration-150 cursor-pointer border-none",
-                  colorMap[p.variant],
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
