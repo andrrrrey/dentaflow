@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import Pill from "../components/ui/Pill";
 import { usePatients, type PatientFilters } from "../api/patients";
 import { useSyncSchedule } from "../api/schedule";
+import CreatePatientModal from "../components/patient/CreatePatientModal";
 
 const PAGE_SIZE = 20;
 
@@ -40,6 +41,7 @@ export default function Patients() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const navigate = useNavigate();
   const syncMutation = useSyncSchedule();
 
@@ -91,7 +93,17 @@ export default function Patients() {
           <RefreshCw size={13} className={syncMutation.isPending ? "animate-spin" : ""} />
           {syncMutation.isPending ? "Запрос..." : syncMutation.isSuccess ? "✓" : "Синхр."}
         </button>
+
+        {/* New patient */}
+        <button onClick={() => setShowCreate(true)}
+          className="flex items-center gap-[6px] px-4 py-[10px] rounded-[14px] border-none cursor-pointer transition-colors flex-shrink-0 text-[12px] font-semibold"
+          style={{ background: "#5B4CF5", color: "#fff" }}>
+          <Plus size={14} />
+          Новый пациент
+        </button>
       </div>
+
+      {showCreate && <CreatePatientModal onClose={() => setShowCreate(false)} />}
 
       {/* Filter panel */}
       {showFilters && (

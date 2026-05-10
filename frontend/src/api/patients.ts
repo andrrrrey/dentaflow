@@ -177,6 +177,52 @@ export function useDeletePatient() {
   });
 }
 
+export interface PatientCreatePayload {
+  // Основные данные
+  name: string;
+  firstname?: string;
+  lastname?: string;
+  patronymic?: string;
+  birth_date?: string;
+  gender?: "male" | "female";
+  comment?: string;
+  // Контакты
+  phone?: string;
+  additional_phone?: string;
+  email?: string;
+  // Документы
+  snils?: string;
+  inn?: string;
+  oms?: string;
+  oms_issue_date?: string;
+  oms_org_code?: string;
+  // Удостоверение личности
+  citizenship?: string;
+  passport_serial?: string;
+  passport_number?: string;
+  passport_issue_date?: string;
+  passport_issued_by?: string;
+  passport_department_code?: string;
+  // Прочее
+  address?: string;
+  source_channel?: string;
+  tags?: string[];
+  push_to_1denta?: boolean;
+}
+
+export function useCreatePatient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: PatientCreatePayload) => {
+      const { data } = await api.post("/patients/", payload);
+      return data as PatientResponse & { warning?: string };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patients"] });
+    },
+  });
+}
+
 export function usePatientSearch(search: string) {
   return useQuery<PatientListResponse>({
     queryKey: ["patients-search", search],

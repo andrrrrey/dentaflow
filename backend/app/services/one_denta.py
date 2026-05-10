@@ -106,6 +106,78 @@ class OneDentaService:
             logger.exception("Failed to fetch patient %s", external_id)
             return None
 
+    async def create_client(
+        self,
+        *,
+        name: str,
+        firstname: str | None = None,
+        lastname: str | None = None,
+        patronymic: str | None = None,
+        phone: str | None = None,
+        additional_phone: str | None = None,
+        email: str | None = None,
+        birth_date: str | None = None,
+        sex: int = 0,
+        comment: str = "",
+        tags: list[str] | None = None,
+        snils: str | None = None,
+        inn: str | None = None,
+        oms: str | None = None,
+        oms_issue_date: str | None = None,
+        oms_org_code: str | None = None,
+        citizenship: str | None = None,
+        address: str | None = None,
+        passport_serial: str | None = None,
+        passport_number: str | None = None,
+        passport_issue_date: str | None = None,
+        passport_issued_by: str | None = None,
+        passport_department_code: str | None = None,
+    ) -> dict:
+        """Create a new client in 1Denta. Returns the created client dict."""
+        client_body: dict[str, Any] = {
+            "name": name,
+            "phone": phone or "",
+            "sex": sex,
+            "comment": comment,
+            "tags": tags or [],
+        }
+        if firstname:
+            client_body["firstname"] = firstname
+        if lastname:
+            client_body["lastname"] = lastname
+        if patronymic:
+            client_body["patronymic"] = patronymic
+        if additional_phone:
+            client_body["additionalPhone"] = additional_phone
+        if email:
+            client_body["email"] = email
+        if birth_date:
+            client_body["birthDate"] = birth_date
+        if snils:
+            client_body["snils"] = snils
+        if inn:
+            client_body["inn"] = inn
+        if oms:
+            client_body["oms"] = oms
+        if oms_issue_date:
+            client_body["omsIssueDate"] = oms_issue_date
+        if oms_org_code:
+            client_body["omsOrgCode"] = oms_org_code
+        if citizenship:
+            client_body["citizenship"] = citizenship
+        if address:
+            client_body["address"] = address
+        if any([passport_serial, passport_number, passport_issued_by]):
+            client_body["passportDataDetailed"] = {
+                "serialDocument": passport_serial or "",
+                "numberDocument": passport_number or "",
+                "dateOfIssue": passport_issue_date or "",
+                "issuingAuthority": passport_issued_by or "",
+                "departmentCode": passport_department_code or "",
+            }
+        data = await self._request("POST", "/api/v2/client", json_body={"client": client_body})
+        return data.get("client", data)
+
     # ------------------------------------------------------------------
     # Appointments / Visits
     # ------------------------------------------------------------------
