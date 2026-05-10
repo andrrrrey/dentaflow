@@ -33,6 +33,7 @@ router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 # Service singletons (stateless, cheap to create)
 _novofon = NovofonService()
 _telegram = TelegramBotService()
+# Max service is created per-request so it picks up the latest db token
 _max_vk = MaxVkService()
 
 
@@ -241,28 +242,29 @@ async def telegram_webhook(
 
 
 # ------------------------------------------------------------------
-# Max / VK
+# Max messenger
 # ------------------------------------------------------------------
 
 @router.post("/max")
-async def max_vk_webhook(
+async def max_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle VK Callback API events with AI consultation reply."""
+    """Handle Max messenger Bot API events with AI consultation reply.
+
+    Max sends POST requests for every update (message_created,
+    message_callback, bot_started, etc.).  The handler must return
+    HTTP 200 OK — any other status causes retries.
+    """
     body = await request.json()
 
     result = await _max_vk.handle_callback(body)
 
-    # Confirmation requests return a plain string
-    if isinstance(result, str):
-        return Response(content=result, media_type="text/plain")
-
-    # Ignored event types
+    # Ignored event types — just ack
     if isinstance(result, dict) and result.get("status") == "ignored":
-        return Response(content="ok", media_type="text/plain")
+        return {"ok": True}
 
-    # Message event — persist Communication
+    # Persist Communication
     comm = Communication(
         channel=result["channel"],
         direction=result["direction"],
@@ -282,29 +284,50 @@ async def max_vk_webhook(
         "priority": comm.priority,
     })
 
-    logger.info("VK webhook processed: comm_id=%s", comm.id)
+    logger.info("Max webhook processed: comm_id=%s update_type=%s", comm.id, result.get("update_type"))
 
-    # --- AI auto-reply ---
-    vk_user_id = result.get("vk_user_id")
-    if not vk_user_id:
-        return Response(content="ok", media_type="text/plain")
+    chat_id = result.get("max_chat_id")
+    if not chat_id:
+        return {"ok": True}
+
+    # Re-create service with token from DB (may differ from env)
+    max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
+    max_svc = MaxVkService(bot_token=max_token)
 
     ai_enabled = await get_raw_value(db, "max_bot_ai_enabled")
     if ai_enabled != "true":
-        return Response(content="ok", media_type="text/plain")
+        return {"ok": True}
 
-    text = result.get("content", "")
+    update_type = result.get("update_type", "")
     is_booking = result.get("is_booking_button", False)
+    is_callback = result.get("is_callback", False)
+    text = result.get("content", "")
 
+    # Acknowledge button press
+    if is_callback:
+        callback_id = result.get("callback_id", "")
+        await max_svc.answer_callback(callback_id)
+
+    # bot_started → welcome message
+    if update_type == "bot_started":
+        clinic_name = await get_raw_value(db, "max_clinic_name") or await get_raw_value(db, "telegram_clinic_name") or "нашей клинике"
+        await max_svc.send_reply(
+            chat_id,
+            max_svc.welcome_text(clinic_name),
+            buttons=max_svc.book_keyboard(),
+        )
+        return {"ok": True}
+
+    # Build AI reply
     slots: list[dict] = []
-    if is_booking or any(w in text.lower() for w in ["запис", "приём", "прием", "свободн", "слот"]):
+    if is_booking or any(w in text.lower() for w in ["запис", "приём", "прием", "свободн", "слот", "время"]):
         slots = await _get_slots(db)
 
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
     system_prompt = await get_raw_value(db, "max_bot_system_prompt")
     kb_ctx = await get_kb_context(db)
 
-    query = "Пациент хочет записаться." if is_booking else text
+    query = "Пациент хочет записаться на приём. Покажи доступные слоты." if is_booking else text
     ai_svc = AIService(api_key=ai_key or None)
     reply = await ai_svc.chat_with_patient(
         query,
@@ -312,9 +335,9 @@ async def max_vk_webhook(
         system_prompt=system_prompt,
         available_slots=slots,
     )
-    await _max_vk.send_reply(vk_user_id, reply, keyboard=_max_vk.book_keyboard())
+    await max_svc.send_reply(chat_id, reply, buttons=max_svc.book_keyboard())
 
-    return Response(content="ok", media_type="text/plain")
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------

@@ -30,10 +30,10 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "telegram_clinic_name",
     ],
     "max_vk": [
-        "max_api_key",
-        "max_confirmation_token",
+        "max_bot_token",
         "max_bot_ai_enabled",
         "max_bot_system_prompt",
+        "max_clinic_name",
     ],
     "site": ["site_webhook_url", "tilda_secret"],
     "mail": ["mail_host", "mail_port", "mail_user", "mail_password"],
@@ -46,7 +46,7 @@ MASKED_KEYS = {
     "one_denta_password",
     "openai_api_key",
     "telegram_bot_token", "telegram_webhook_secret",
-    "max_api_key", "max_confirmation_token",
+    "max_bot_token",
     "tilda_secret",
     "mail_password",
 }
@@ -213,20 +213,22 @@ async def _check_telegram(db: AsyncSession) -> dict:
 
 
 async def _check_max_vk(db: AsyncSession) -> dict:
-    api_key = await get_raw_value(db, "max_api_key")
-    if not api_key:
-        return {"ok": False, "message": "API-ключ не указан"}
+    token = await get_raw_value(db, "max_bot_token")
+    if not token:
+        return {"ok": False, "message": "Токен бота не указан"}
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
-            "https://api.vk.com/method/groups.getById",
-            params={"access_token": api_key, "v": "5.199"},
+            "https://botapi.max.ru/me",
+            params={"access_token": token},
         )
-        data = resp.json()
-        if "response" in data:
-            return {"ok": True, "message": "Подключено"}
-        err = data.get("error", {}).get("error_msg", "Ошибка")
-        return {"ok": False, "message": err}
+        if resp.status_code == 200:
+            data = resp.json()
+            name = data.get("name") or data.get("username") or "бот"
+            return {"ok": True, "message": f"Подключено ({name})"}
+        if resp.status_code == 401:
+            return {"ok": False, "message": "Неверный токен бота (401)"}
+        return {"ok": False, "message": f"Ошибка {resp.status_code}"}
 
 
 async def _check_site(db: AsyncSession) -> dict:

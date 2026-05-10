@@ -438,25 +438,29 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
   },
   {
     service: "max_vk",
-    title: "MAX / VK",
+    title: "Мессенджер Max",
     icon: <Bot size={15} />,
-    description: "AI-бот для записи пациентов через VK-сообщество",
+    description: "AI-бот для записи пациентов в мессенджере Max (max.ru)",
     infoBox: (
       <div className="flex flex-col gap-[6px] text-[12px]">
-        <b>Инструкция подключения VK Max:</b>
+        <b>Инструкция подключения бота в мессенджере Max:</b>
         <ol className="list-decimal list-inside space-y-1 text-text-muted">
-          <li>Откройте VK — ваше сообщество → Управление → API</li>
-          <li>Создайте ключ доступа сообщества с правом <b>messages</b></li>
-          <li>Перейдите в раздел <b>Callback API</b> → укажите URL: <code>https://ВАШ_ДОМЕН/api/v1/webhooks/max</code></li>
-          <li>Скопируйте Confirmation Token из VK и вставьте ниже</li>
-          <li>В разделе «Типы событий» включите <b>Входящие сообщения</b></li>
-          <li>Включите «AI-ответы» — бот начнёт автоматически отвечать</li>
+          <li>Откройте мессенджер Max → найдите <b>@MaxBotAPI</b> → создайте бота командой <code>/newbot</code></li>
+          <li>Получите <b>токен бота</b> и вставьте его ниже</li>
+          <li>Зарегистрируйте webhook командой:<br/>
+            <code className="text-[11px] break-all">curl -X POST "https://botapi.max.ru/subscriptions?access_token=&lt;ТОКЕН&gt;" -H "Content-Type: application/json" -d '{`{"url":"https://ВАШ_ДОМЕН/api/v1/webhooks/max"}`}'</code>
+          </li>
+          <li>Включите «AI-ответы» — бот начнёт консультировать пациентов</li>
+          <li>Загрузите файлы в <b>«Базу знаний бота»</b> выше — прайс, FAQ, описание услуг</li>
         </ol>
+        <div className="mt-1 text-text-muted">
+          Бот автоматически отвечает на вопросы, показывает кнопки «Записаться» и проверяет свободные слоты в расписании.
+        </div>
       </div>
     ),
     fields: [
-      { key: "max_api_key", label: "Access Token сообщества", type: "password", placeholder: "vk1.a.XXX..." },
-      { key: "max_confirmation_token", label: "Confirmation Token", type: "password", placeholder: "Токен подтверждения из VK" },
+      { key: "max_bot_token", label: "Токен бота (из @MaxBotAPI)", type: "password", placeholder: "Токен вида eyJ..." },
+      { key: "max_clinic_name", label: "Название клиники (в приветствии бота)", placeholder: "Стоматология Улыбка" },
       { key: "max_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
       { key: "max_bot_system_prompt", label: "Системный промпт бота (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
     ],
