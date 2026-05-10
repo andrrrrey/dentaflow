@@ -10,8 +10,7 @@ import AdminsRating from "../components/dashboard/AdminsRating";
 import { useDashboardOverview } from "../api/dashboard";
 import { useAiInsights, useRefreshDashboardInsights } from "../api/ai";
 import { useDoctorsLoad } from "../api/doctors";
-import { useFunnel } from "../api/pipeline_ext";
-import type { AIInsights, DoctorLoad, FunnelItem } from "../types";
+import type { AIInsights, DoctorLoad } from "../types";
 
 /* ── Adapters ────────────────────────────────────────────── */
 
@@ -42,15 +41,12 @@ function adaptDoctorsLoad(doctors: ReturnType<typeof useDoctorsLoad>["data"]): D
   }));
 }
 
-function adaptPatientFunnel(raw: ReturnType<typeof useFunnel>["data"]): FunnelItem[] {
-  return (raw?.stages ?? []).map((s) => ({
-    stage: s.label,
-    count: s.count,
-    pct: s.pct,
-  }));
-}
+const MONTH_NAMES = [
+  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+];
 
-function getPeriodLabel(period: "day" | "week" | "month"): string {
+function getPeriodLabel(period: "day" | "week" | "month", year?: number, month?: number): string {
   const now = new Date();
   if (period === "day") return format(now, "d MMMM yyyy", { locale: ru });
   if (period === "week") {
@@ -58,8 +54,9 @@ function getPeriodLabel(period: "day" | "week" | "month"): string {
     const end = endOfWeek(now, { weekStartsOn: 1 });
     return `${format(start, "d MMM", { locale: ru })} — ${format(end, "d MMM yyyy", { locale: ru })}`;
   }
-  const start = startOfMonth(now);
-  const end = endOfMonth(now);
+  const targetDate = new Date(year || now.getFullYear(), (month || now.getMonth() + 1) - 1, 1);
+  const start = startOfMonth(targetDate);
+  const end = endOfMonth(targetDate);
   return `${format(start, "d MMM", { locale: ru })} — ${format(end, "d MMM yyyy", { locale: ru })}`;
 }
 
@@ -69,37 +66,78 @@ const PERIOD_LABELS: Record<Period, string> = { day: "День", week: "Неде
 /* ── Component ───────────────────────────────────────────── */
 
 export default function Dashboard() {
+  const now = new Date();
   const [period, setPeriod] = useState<Period>("week");
-  const { data: overview, isLoading: overviewLoading } = useDashboardOverview(period);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+
+  const year = period === "month" ? selectedYear : undefined;
+  const month = period === "month" ? selectedMonth : undefined;
+
+  const { data: overview, isLoading: overviewLoading } = useDashboardOverview(period, year, month);
   const { data: rawInsights } = useAiInsights();
   const { data: rawDoctors } = useDoctorsLoad();
-  const { data: patientFunnel } = useFunnel();
   const refreshInsights = useRefreshDashboardInsights();
 
   const aiInsights = adaptAiInsights(refreshInsights.data ?? rawInsights);
   const doctorsLoad = adaptDoctorsLoad(rawDoctors);
-  const funnel = adaptPatientFunnel(patientFunnel);
+  const funnel = overview?.funnel ?? [];
+
+  const currentYear = now.getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   return (
     <div className="flex flex-col gap-[18px]">
       {/* Period selector */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 bg-[rgba(0,0,0,0.04)] rounded-lg p-1">
-          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-4 py-1.5 rounded-md text-[13px] font-semibold transition-all ${
-                period === p
-                  ? "bg-white shadow-sm text-text-main"
-                  : "text-text-muted hover:text-text-main"
-              }`}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1 bg-[rgba(0,0,0,0.04)] rounded-lg p-1">
+            {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-4 py-1.5 rounded-md text-[13px] font-semibold transition-all ${
+                  period === p
+                    ? "bg-white shadow-sm text-text-main"
+                    : "text-text-muted hover:text-text-main"
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+
+          {period === "month" && (
+            <div className="flex items-center gap-1">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="text-[13px] font-semibold bg-white border border-[rgba(0,0,0,0.1)] rounded-lg px-3 py-1.5 text-text-main shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30"
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <option key={idx + 1} value={idx + 1}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="text-[13px] font-semibold bg-white border border-[rgba(0,0,0,0.1)] rounded-lg px-3 py-1.5 text-text-main shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
-        <span className="text-[12px] text-text-muted font-medium">{getPeriodLabel(period)}</span>
+
+        <span className="text-[12px] text-text-muted font-medium">
+          {getPeriodLabel(period, selectedYear, selectedMonth)}
+        </span>
       </div>
 
       {/* AI Insight Banner */}
@@ -122,7 +160,7 @@ export default function Dashboard() {
 
       {/* Patient Funnel + Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
-        <FunnelChart funnel={funnel.length ? funnel : (overview?.funnel ?? [])} />
+        <FunnelChart funnel={funnel} />
         <SourcesTable sources={overview?.sources ?? []} />
       </div>
 
