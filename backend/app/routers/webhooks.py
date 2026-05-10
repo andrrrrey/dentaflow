@@ -344,6 +344,12 @@ async def max_webhook(
 # Website / Tilda form
 # ------------------------------------------------------------------
 
+@router.get("/site")
+async def site_form_test():
+    """GET-эндпоинт для проверки доступности URL из браузера."""
+    return {"status": "ok", "endpoint": "site webhook is reachable"}
+
+
 @router.post("/site")
 async def site_form_webhook(
     request: Request,
@@ -351,99 +357,110 @@ async def site_form_webhook(
 ):
     """Handle website / Tilda contact-form submissions.
 
-    Supports both JSON (standard) and ``application/x-www-form-urlencoded``
-    (Tilda default). Field aliases: ``Name`` → name, ``Phone`` → phone,
-    ``Email`` → email, ``Comment`` → message.
-
-    Optional HMAC validation: if ``tilda_secret`` is configured, the
-    ``X-Tilda-Sign`` header (or ``sign`` body field) must match
-    ``sha256(secret + body_raw)``.
+    Tilda отправляет POST с Content-Type: application/x-www-form-urlencoded.
+    Поддерживаем также JSON.  Всегда возвращаем 200, чтобы Тильда не
+    считала вебхук недоступным.
     """
-    content_type = request.headers.get("content-type", "")
-
-    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
-        form = await request.form()
-        body: dict = dict(form)
-    else:
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
-
-    # Tilda secret validation (optional)
-    tilda_secret = await get_raw_value(db, "tilda_secret")
-    if tilda_secret:
-        import hashlib, hmac as _hmac
-        sign_header = request.headers.get("X-Tilda-Sign", "") or str(body.get("sign", ""))
+    try:
+        # Read raw bytes first so body is available for both form and HMAC check
         raw_body = await request.body()
-        expected = _hmac.new(
-            tilda_secret.encode(),
-            raw_body,
-            hashlib.sha256,
-        ).hexdigest()
-        if sign_header and sign_header != expected:
-            raise HTTPException(status_code=403, detail="Invalid Tilda signature")
+        content_type = request.headers.get("content-type", "")
 
-    # Normalize Tilda field names (they send capitalized keys)
-    def _get(*keys: str) -> str:
-        for k in keys:
-            v = body.get(k) or body.get(k.lower()) or body.get(k.capitalize()) or ""
-            if v:
-                return str(v).strip()
-        return ""
+        logger.info(
+            "Site webhook received: content_type=%r body_len=%d",
+            content_type, len(raw_body),
+        )
 
-    name = _get("Name", "name")
-    phone = _get("Phone", "phone", "tel")
-    email = _get("Email", "email")
-    message = _get("Comment", "message", "text", "Message")
-    service = _get("Service", "service", "Услуга")
+        # Parse based on content type
+        if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+            form = await request.form()
+            body: dict = dict(form)
+        else:
+            try:
+                import json as _json
+                body = _json.loads(raw_body) if raw_body else {}
+            except Exception:
+                body = {}
 
-    # Tilda also sends formname / formid — log for debugging
-    form_name = _get("formname", "formid", "tildaspec-form-name")
-    if form_name:
-        logger.info("Tilda form submission: form=%s phone=%s", form_name, phone)
+        logger.info("Site webhook body keys: %s", list(body.keys()))
 
-    content_parts = []
-    if message:
-        content_parts.append(message)
-    if service:
-        content_parts.append(f"Услуга: {service}")
-    if name:
-        content_parts.append(f"Имя: {name}")
-    if email:
-        content_parts.append(f"Email: {email}")
-    if form_name:
-        content_parts.append(f"Форма: {form_name}")
-    content = "\n".join(content_parts) or "Заявка с сайта"
+        # Optional Tilda secret validation
+        tilda_secret = await get_raw_value(db, "tilda_secret")
+        if tilda_secret:
+            import hashlib, hmac as _hmac
+            sign_header = request.headers.get("X-Tilda-Sign", "") or str(body.get("sign", ""))
+            expected = _hmac.new(tilda_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+            if sign_header and sign_header != expected:
+                logger.warning("Invalid Tilda signature — ignoring")
+                return {"status": "ok"}  # return 200 anyway so Tilda doesn't disable webhook
 
-    # Try to find existing patient by phone
-    patient_id = None
-    if phone:
-        stmt = select(Patient).where(Patient.phone == phone).limit(1)
-        row = await db.execute(stmt)
-        patient = row.scalar_one_or_none()
-        if patient:
-            patient_id = patient.id
+        # Normalize field names — Tilda uses various capitalizations
+        def _get(*keys: str) -> str:
+            for k in keys:
+                for variant in (k, k.lower(), k.upper(), k.capitalize()):
+                    v = body.get(variant)
+                    if v:
+                        return str(v).strip()
+            return ""
 
-    comm = Communication(
-        patient_id=patient_id,
-        channel="site",
-        direction="inbound",
-        type="form",
-        content=content,
-        status="new",
-        priority="high",
-    )
-    db.add(comm)
-    await db.commit()
+        name    = _get("Name", "name", "NAME")
+        phone   = _get("Phone", "phone", "PHONE", "tel", "Tel", "телефон")
+        email   = _get("Email", "email", "EMAIL")
+        message = _get("Comment", "comment", "Message", "message", "Text", "text")
+        service = _get("Service", "service", "Услуга", "услуга")
+        form_name = _get("formname", "formid", "tildaspec-form-name", "FORMID")
 
-    await realtime.publish("new_communication", {
-        "id": str(comm.id),
-        "channel": comm.channel,
-        "type": comm.type,
-        "priority": comm.priority,
-    })
+        logger.info(
+            "Site webhook parsed: name=%r phone=%r email=%r form=%r",
+            name, phone, email, form_name,
+        )
 
-    logger.info("Site form webhook processed: comm_id=%s phone=%s", comm.id, phone)
-    # Tilda expects {"status": "ok"} JSON response
-    return {"status": "ok", "communication_id": str(comm.id)}
+        # Build content string
+        content_parts = []
+        if message:  content_parts.append(message)
+        if service:  content_parts.append(f"Услуга: {service}")
+        if name:     content_parts.append(f"Имя: {name}")
+        if email:    content_parts.append(f"Email: {email}")
+        if form_name: content_parts.append(f"Форма: {form_name}")
+        # Fallback: dump all non-empty fields if we couldn't parse anything useful
+        if not content_parts:
+            for k, v in body.items():
+                if v and k not in ("tildaspec-js-fields",):
+                    content_parts.append(f"{k}: {v}")
+        content = "\n".join(content_parts) or "Заявка с сайта"
+
+        # Try to link to existing patient by phone
+        patient_id = None
+        if phone:
+            stmt = select(Patient).where(Patient.phone == phone).limit(1)
+            row = await db.execute(stmt)
+            patient = row.scalar_one_or_none()
+            if patient:
+                patient_id = patient.id
+
+        comm = Communication(
+            patient_id=patient_id,
+            channel="site",
+            direction="inbound",
+            type="form",
+            content=content,
+            status="new",
+            priority="high",
+        )
+        db.add(comm)
+        await db.commit()
+
+        await realtime.publish("new_communication", {
+            "id": str(comm.id),
+            "channel": comm.channel,
+            "type": comm.type,
+            "priority": comm.priority,
+        })
+
+        logger.info("Site form saved: comm_id=%s phone=%s", comm.id, phone)
+
+    except Exception:
+        # Never return 5xx to Tilda — it will disable the webhook
+        logger.exception("Error in site_form_webhook — returning 200 anyway")
+
+    return {"status": "ok"}
