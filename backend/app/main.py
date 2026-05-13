@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -34,11 +35,14 @@ from app.routers import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Startup: add future initialization here (redis pools, bot webhooks, etc.)
+    logger.info("DentaFlow backend starting up")
     yield
-    # Shutdown: add future cleanup here
+    logger.info("DentaFlow backend shutting down")
 
 
 app = FastAPI(
