@@ -211,7 +211,7 @@ async def _sync_appointments_async(
                 appointment.branch = a_data.get("branch", appointment.branch)
                 appointment.scheduled_at = scheduled_at or appointment.scheduled_at
                 new_dur = a_data.get("duration_min")
-                if new_dur and new_dur != 30:
+                if new_dur:
                     appointment.duration_min = new_dur
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)

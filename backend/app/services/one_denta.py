@@ -551,8 +551,14 @@ class OneDentaService:
         time_end = v.get("timeEnd") or v.get("endAt") or v.get("endDatetime")
         if time_start and time_end:
             try:
-                from datetime import datetime as _dt
-                delta = _dt.fromisoformat(time_end) - _dt.fromisoformat(time_start)
+                from datetime import datetime as _dt, time as _time
+                start_dt = _dt.fromisoformat(time_start)
+                try:
+                    end_dt = _dt.fromisoformat(time_end)
+                except ValueError:
+                    # 1Denta may return timeEnd as a time-only string e.g. "11:00:00"
+                    end_dt = _dt.combine(start_dt.date(), _time.fromisoformat(time_end))
+                delta = end_dt - start_dt
                 computed = int(delta.total_seconds() // 60)
                 if computed > 0:
                     duration_min = computed
