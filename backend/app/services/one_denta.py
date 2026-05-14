@@ -200,6 +200,7 @@ class OneDentaService:
 
         # Build resource_id → name lookup.
         # /api/v2/resource is NOT paginated — returns {"resources": [...]} directly.
+        # NOTE: this endpoint only includes staff enabled for online booking.
         resource_map: dict[str, str] = {}
         try:
             raw = await self._request("GET", "/api/v2/resource")
@@ -212,6 +213,32 @@ class OneDentaService:
             logger.info("1Denta: loaded %d resources for doctor-name mapping", len(resource_map))
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
+
+        # For visits whose resourceId is not in resource_map (e.g. staff not enabled for
+        # online booking, like surgeons), fetch the resource individually.
+        missing_ids: set[str] = set()
+        for v in visits:
+            resource_val = v.get("resourceId")
+            if resource_val is None:
+                continue
+            rid_str = str(resource_val)
+            if rid_str in resource_map:
+                continue
+            resource_obj = v.get("resource") or {}
+            embedded_name = resource_obj.get("title") or resource_obj.get("name") or v.get("resourceName")
+            if not embedded_name:
+                missing_ids.add(rid_str)
+
+        for rid in missing_ids:
+            try:
+                raw = await self._request("GET", f"/api/v2/resource/{rid}")
+                r = raw.get("resource", raw)
+                rname = r.get("title") or r.get("name") or ""
+                if rname:
+                    resource_map[rid] = rname
+                    logger.info("1Denta: fetched non-booking resource %s → %s", rid, rname)
+            except Exception:
+                logger.warning("1Denta: could not fetch resource %s by ID", rid)
 
         return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
 
