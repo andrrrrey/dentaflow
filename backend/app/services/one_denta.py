@@ -214,65 +214,11 @@ class OneDentaService:
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
-        # /api/v2/resource only covers staff enabled for online-booking.
-        # Try alternative endpoints to cover ALL clinic staff (e.g. surgeons without online-booking).
-        # SQNS CRM may expose employees via /api/v2/employee or /api/v2/employees.
-        for emp_path in ("/api/v2/employee", "/api/v2/employees"):
-            try:
-                emp_raw = await self._request("GET", emp_path)
-                # Response could be {"employees": [...]}, {"employee": [...]}, {"data": [...]}, or a list
-                employees = (
-                    emp_raw.get("employees")
-                    or emp_raw.get("employee")
-                    or emp_raw.get("data")
-                    or (emp_raw if isinstance(emp_raw, list) else [])
-                )
-                if not employees:
-                    logger.warning("1Denta: %s returned empty list, raw keys: %s", emp_path, list(emp_raw.keys()) if isinstance(emp_raw, dict) else type(emp_raw))
-                    continue
-                before = len(resource_map)
-                for emp in employees:
-                    eid = str(emp.get("id") or emp.get("resourceId") or "")
-                    ename = emp.get("title") or emp.get("name") or emp.get("fullname") or ""
-                    if eid and ename and eid not in resource_map:
-                        resource_map[eid] = ename
-                added = len(resource_map) - before
-                logger.info("1Denta: %s → %d total, added %d new staff to map", emp_path, len(employees), added)
-                break  # stop trying further paths once one works
-            except Exception as e:
-                logger.warning("1Denta: %s failed: %s", emp_path, e)
-
-        # For visits whose resourceId is still not in resource_map, fetch individually.
-        # This handles edge cases where even the employee list misses someone.
-        missing_ids: set[str] = set()
-        for v in visits:
-            resource_val = v.get("resourceId")
-            if resource_val is None:
-                continue
-            rid_str = str(resource_val)
-            if rid_str in resource_map:
-                continue
-            resource_obj = v.get("resource") or {}
-            embedded_name = resource_obj.get("title") or resource_obj.get("name") or v.get("resourceName")
-            if not embedded_name:
-                missing_ids.add(rid_str)
-
-        for rid in missing_ids:
-            # Try /api/v2/resource/{id} and /api/v2/employee/{id}
-            for path in (f"/api/v2/resource/{rid}", f"/api/v2/employee/{rid}"):
-                try:
-                    raw = await self._request("GET", path)
-                    # Response key may be "resource" or "employee" or the dict itself
-                    r = raw.get("resource") or raw.get("employee") or raw
-                    rname = r.get("title") or r.get("name") or r.get("fullname") or ""
-                    if rname:
-                        resource_map[rid] = rname
-                        logger.info("1Denta: fetched staff %s → %s (via %s)", rid, rname, path)
-                        break
-                    else:
-                        logger.warning("1Denta: %s returned empty name, raw keys: %s", path, list(raw.keys()) if isinstance(raw, dict) else type(raw))
-                except Exception as e:
-                    logger.warning("1Denta: %s failed: %s", path, e)
+        # NOTE: SQNS Exchange API v2 only exposes staff with online-booking enabled.
+        # Staff without online-booking (e.g. surgeons) return 404 from /api/v2/resource/{id}.
+        # There is no Exchange API endpoint to list all clinic staff.
+        # Unknown resource IDs fall back to "Врач #N" placeholders; admin can rename them
+        # manually in DentaFlow Settings → Справочники → Врачи / Ресурсы.
 
         # Last resort: for still-unknown IDs use a numeric placeholder so the UI
         # shows something instead of "Без врача".
