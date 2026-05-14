@@ -426,7 +426,7 @@ class OneDentaService:
         results: list[dict] = []
         page = 1
         while True:
-            params: dict[str, Any] = {"page": page, "peerPage": per_page}
+            params: dict[str, Any] = {"page": page, "perPage": per_page}
             if extra_params:
                 params.update(extra_params)
             data = await self._request("GET", path, params=params)
