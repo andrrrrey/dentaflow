@@ -188,7 +188,7 @@ async def _sync_appointments_async(
                     service=a_data.get("service"),
                     branch=a_data.get("branch"),
                     scheduled_at=scheduled_at,
-                    duration_min=a_data.get("duration_min", 30),
+                    duration_min=a_data.get("duration_min") or 30,
                     status=a_data.get("status"),
                     revenue=a_data.get("revenue"),
                     discount=a_data.get("discount"),
