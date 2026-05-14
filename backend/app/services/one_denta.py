@@ -214,28 +214,36 @@ class OneDentaService:
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
-        # Try /api/v2/employees to get ALL staff including those not in online-booking.
-        # This covers archived/inactive doctors who are still assigned to old appointments.
-        try:
-            emp_raw = await self._request("GET", "/api/v2/employees")
-            employees = (
-                emp_raw.get("employees")
-                or emp_raw.get("data")
-                or (emp_raw if isinstance(emp_raw, list) else [])
-            )
-            before = len(resource_map)
-            for emp in employees:
-                eid = str(emp.get("id") or emp.get("resourceId") or "")
-                ename = emp.get("title") or emp.get("name") or emp.get("fullname") or ""
-                if eid and ename and eid not in resource_map:
-                    resource_map[eid] = ename
-            added = len(resource_map) - before
-            if added:
-                logger.info("1Denta: added %d more staff from /api/v2/employees", added)
-        except Exception as e:
-            logger.debug("1Denta: /api/v2/employees not available: %s", e)
+        # /api/v2/resource only covers staff enabled for online-booking.
+        # Try alternative endpoints to cover ALL clinic staff (e.g. surgeons without online-booking).
+        # SQNS CRM may expose employees via /api/v2/employee or /api/v2/employees.
+        for emp_path in ("/api/v2/employee", "/api/v2/employees"):
+            try:
+                emp_raw = await self._request("GET", emp_path)
+                # Response could be {"employees": [...]}, {"employee": [...]}, {"data": [...]}, or a list
+                employees = (
+                    emp_raw.get("employees")
+                    or emp_raw.get("employee")
+                    or emp_raw.get("data")
+                    or (emp_raw if isinstance(emp_raw, list) else [])
+                )
+                if not employees:
+                    logger.warning("1Denta: %s returned empty list, raw keys: %s", emp_path, list(emp_raw.keys()) if isinstance(emp_raw, dict) else type(emp_raw))
+                    continue
+                before = len(resource_map)
+                for emp in employees:
+                    eid = str(emp.get("id") or emp.get("resourceId") or "")
+                    ename = emp.get("title") or emp.get("name") or emp.get("fullname") or ""
+                    if eid and ename and eid not in resource_map:
+                        resource_map[eid] = ename
+                added = len(resource_map) - before
+                logger.info("1Denta: %s → %d total, added %d new staff to map", emp_path, len(employees), added)
+                break  # stop trying further paths once one works
+            except Exception as e:
+                logger.warning("1Denta: %s failed: %s", emp_path, e)
 
         # For visits whose resourceId is still not in resource_map, fetch individually.
+        # This handles edge cases where even the employee list misses someone.
         missing_ids: set[str] = set()
         for v in visits:
             resource_val = v.get("resourceId")
@@ -250,15 +258,21 @@ class OneDentaService:
                 missing_ids.add(rid_str)
 
         for rid in missing_ids:
-            try:
-                raw = await self._request("GET", f"/api/v2/resource/{rid}")
-                r = raw.get("resource", raw)
-                rname = r.get("title") or r.get("name") or ""
-                if rname:
-                    resource_map[rid] = rname
-                    logger.info("1Denta: fetched non-booking resource %s → %s", rid, rname)
-            except Exception as e:
-                logger.debug("1Denta: /api/v2/resource/%s failed: %s", rid, e)
+            # Try /api/v2/resource/{id} and /api/v2/employee/{id}
+            for path in (f"/api/v2/resource/{rid}", f"/api/v2/employee/{rid}"):
+                try:
+                    raw = await self._request("GET", path)
+                    # Response key may be "resource" or "employee" or the dict itself
+                    r = raw.get("resource") or raw.get("employee") or raw
+                    rname = r.get("title") or r.get("name") or r.get("fullname") or ""
+                    if rname:
+                        resource_map[rid] = rname
+                        logger.info("1Denta: fetched staff %s → %s (via %s)", rid, rname, path)
+                        break
+                    else:
+                        logger.warning("1Denta: %s returned empty name, raw keys: %s", path, list(raw.keys()) if isinstance(raw, dict) else type(raw))
+                except Exception as e:
+                    logger.warning("1Denta: %s failed: %s", path, e)
 
         # Last resort: for still-unknown IDs use a numeric placeholder so the UI
         # shows something instead of "Без врача".
