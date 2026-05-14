@@ -237,8 +237,35 @@ class OneDentaService:
                 if rname:
                     resource_map[rid] = rname
                     logger.info("1Denta: fetched non-booking resource %s → %s", rid, rname)
-            except Exception:
-                logger.warning("1Denta: could not fetch resource %s by ID", rid)
+                else:
+                    logger.warning("1Denta: resource %s returned empty name, raw=%s", rid, raw)
+            except Exception as e:
+                logger.warning("1Denta: could not fetch resource %s by ID: %s", rid, e)
+
+        # For visits whose resourceId is still unknown, try to get name from embedded
+        # appointment sub-object or other visit-level fields.
+        for v in visits:
+            resource_val = v.get("resourceId")
+            if resource_val is None:
+                continue
+            rid_str = str(resource_val)
+            if rid_str in resource_map:
+                continue
+            appt_obj = v.get("appointment") or {}
+            fallback_name = (
+                appt_obj.get("resourceName")
+                or (appt_obj.get("resource") or {}).get("title")
+                or (appt_obj.get("resource") or {}).get("name")
+                or v.get("resourceName")
+            )
+            if fallback_name:
+                resource_map[rid_str] = fallback_name
+                logger.info("1Denta: resolved resource %s → %s (from visit)", rid_str, fallback_name)
+            else:
+                logger.warning(
+                    "1Denta: resource %s still unknown — visit keys: %s; appt keys: %s",
+                    rid_str, list(v.keys()), list(appt_obj.keys()),
+                )
 
         return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
 
