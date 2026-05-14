@@ -549,6 +549,11 @@ class OneDentaService:
         duration_min = 30
         time_start = v.get("datetime")
         time_end = v.get("timeEnd") or v.get("endAt") or v.get("endDatetime")
+        logger.info(
+            "1Denta visit %s: datetime=%r timeEnd=%r endAt=%r endDatetime=%r keys=%s",
+            v.get("id"), v.get("datetime"), v.get("timeEnd"), v.get("endAt"), v.get("endDatetime"),
+            list(v.keys()),
+        )
         if time_start and time_end:
             try:
                 from datetime import datetime as _dt, time as _time
@@ -563,7 +568,7 @@ class OneDentaService:
                 if computed > 0:
                     duration_min = computed
             except Exception:
-                pass
+                logger.exception("1Denta visit %s: failed to parse timeEnd=%r", v.get("id"), time_end)
         if duration_min == 30:
             # Prefer catalog lookup; fall back to value embedded in service item (usually absent)
             if service_duration_map:
