@@ -29,17 +29,20 @@ celery_app.conf.enable_utc = True
 
 # Beat schedule
 celery_app.conf.beat_schedule = {
-    "sync-1denta-patients": {
-        "task": "app.tasks.sync_1denta.sync_patients",
-        "schedule": 300.0,  # every 5 minutes
-    },
+    # Frequent: appointments for the near-term window (today ±2 weeks)
     "sync-1denta-appointments": {
         "task": "app.tasks.sync_1denta.sync_appointments",
         "schedule": 300.0,  # every 5 minutes
     },
+    # Hourly: doctors / services directory
     "sync-1denta-directories": {
         "task": "app.tasks.sync_1denta.sync_directories",
         "schedule": 3600.0,  # every hour
+    },
+    # Nightly: full patient base + 90-day appointment history
+    "sync-1denta-full-daily": {
+        "task": "app.tasks.sync_1denta.sync_full_daily",
+        "schedule": crontab(hour=3, minute=0),  # 03:00 Moscow (UTC, Celery uses Moscow tz)
     },
     "check-stale-leads": {
         "task": "app.tasks.alerts.check_stale_leads",
@@ -62,3 +65,6 @@ celery_app.conf.include = [
     "app.tasks.ai_insights",
     "app.tasks.daily_report",
 ]
+
+# Remove legacy patients-only periodic sync (now part of sync_full_daily)
+# "sync-1denta-patients" intentionally omitted — patients sync runs nightly.

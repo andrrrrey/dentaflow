@@ -89,7 +89,6 @@ export function useAppointmentDetail(id: string | null) {
 export interface SyncResult {
   status: string;
   doctors: number;
-  patients: { created: number; updated: number };
   appointments: { created: number; updated: number; total: number };
 }
 
