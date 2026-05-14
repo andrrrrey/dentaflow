@@ -199,12 +199,13 @@ class OneDentaService:
         visits = await self._fetch_all_pages("/api/v2/visit", extra_params=base_params)
 
         # Build resource_id → name lookup.
-        # /api/v2/resource is NOT paginated — returns {"resources": [...]} directly.
-        # NOTE: this endpoint only includes staff enabled for online booking.
+        # NOTE: SQNS Exchange API v2 only exposes staff with online-booking enabled via
+        # /api/v2/resource. There is no endpoint for all clinic staff.
+        # Unknown IDs fall back to "Врач #N" placeholders; admin can rename them manually
+        # in DentaFlow → Справочники → Врачи / Ресурсы.
         resource_map: dict[str, str] = {}
         try:
-            raw = await self._request("GET", "/api/v2/resource")
-            resources = raw.get("resources", [])
+            resources = await self.get_resources()
             for r in resources:
                 rid = str(r.get("id", ""))
                 rname = r.get("title") or r.get("name") or ""
@@ -214,14 +215,22 @@ class OneDentaService:
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
-        # NOTE: SQNS Exchange API v2 only exposes staff with online-booking enabled.
-        # Staff without online-booking (e.g. surgeons) return 404 from /api/v2/resource/{id}.
-        # There is no Exchange API endpoint to list all clinic staff.
-        # Unknown resource IDs fall back to "Врач #N" placeholders; admin can rename them
-        # manually in DentaFlow Settings → Справочники → Врачи / Ресурсы.
+        # Build service_id → durationSeconds lookup.
+        # Visit data from /api/v2/visit does NOT embed durationSeconds on service items;
+        # we must look it up from the service catalog.
+        service_duration_map: dict[str, int] = {}
+        try:
+            raw_services = await self._fetch_all_pages("/api/v2/service")
+            for s in raw_services:
+                sid = str(s.get("id", ""))
+                dur = s.get("durationSeconds")
+                if sid and dur:
+                    service_duration_map[sid] = int(dur)
+            logger.info("1Denta: loaded %d service durations", len(service_duration_map))
+        except Exception:
+            logger.exception("1Denta: failed to load service durations — visit durations may be wrong")
 
-        # Last resort: for still-unknown IDs use a numeric placeholder so the UI
-        # shows something instead of "Без врача".
+        # For unknown resource IDs use a numeric placeholder.
         for v in visits:
             resource_val = v.get("resourceId")
             if resource_val is None:
@@ -231,7 +240,7 @@ class OneDentaService:
                 resource_map[rid_str] = f"Врач #{rid_str}"
                 logger.info("1Denta: resource %s unresolvable — using placeholder", rid_str)
 
-        return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
+        return [self._map_visit(v, resource_map, service_duration_map) for v in visits if not v.get("deleted")]
 
     async def create_visit(
         self,
@@ -335,7 +344,7 @@ class OneDentaService:
         """Return staff members available for online booking."""
         if self._no_credentials():
             return []
-        data = await self._request("GET", "/api/v2/resource", params={"page": 1, "perPage": 200})
+        data = await self._request("GET", "/api/v2/resource", params={"page": 1, "peerPage": 200})
         resources = data.get("resources", []) or data.get("data", [])
         logger.info(
             "1Denta: /api/v2/resource page 1 → %d resources, response keys=%s",
@@ -349,7 +358,7 @@ class OneDentaService:
             last_page = meta.get("lastPage", 1)
             for page in range(2, last_page + 1):
                 page_data = await self._request(
-                    "GET", "/api/v2/resource", params={"page": page, "perPage": 200}
+                    "GET", "/api/v2/resource", params={"page": page, "peerPage": 200}
                 )
                 page_items = page_data.get("resources", []) or page_data.get("data", [])
                 logger.info("1Denta: /api/v2/resource page %d → %d resources", page, len(page_items))
@@ -461,7 +470,8 @@ class OneDentaService:
         results: list[dict] = []
         page = 1
         while True:
-            params: dict[str, Any] = {"page": page, "perPage": per_page}
+            # SQNS docs use "peerPage" (not "perPage") as the page-size parameter.
+            params: dict[str, Any] = {"page": page, "peerPage": per_page}
             if extra_params:
                 params.update(extra_params)
             data = await self._request("GET", path, params=params)
@@ -514,7 +524,11 @@ class OneDentaService:
         }
 
     @staticmethod
-    def _map_visit(v: dict, resource_map: dict[str, str] | None = None) -> dict:
+    def _map_visit(
+        v: dict,
+        resource_map: dict[str, str] | None = None,
+        service_duration_map: dict[str, int] | None = None,
+    ) -> dict:
         attendance_map = {-1: "cancelled", 0: "unconfirmed", 1: "arrived", 2: "confirmed"}
         services = v.get("services", [])
         service_name = services[0]["name"] if services else ""
@@ -530,8 +544,8 @@ class OneDentaService:
         )
         total_discount = sum(float(s.get("discount") or 0) for s in services)
         total_pay_sum = sum(float(s.get("paySum") or 0) for s in services)
-        # Duration: prefer timeEnd-datetime diff (most accurate), then sum service
-        # durationSeconds, then visit-level duration field, fallback 30 min.
+        # Duration: prefer timeEnd-datetime diff (most accurate), then lookup from
+        # service catalog (visit services don't embed durationSeconds), then fallback 30 min.
         duration_min = 30
         time_start = v.get("datetime")
         time_end = v.get("timeEnd") or v.get("endAt") or v.get("endDatetime")
@@ -545,7 +559,14 @@ class OneDentaService:
             except Exception:
                 pass
         if duration_min == 30:
-            duration_sec = sum(int(s.get("durationSeconds") or 0) for s in services)
+            # Prefer catalog lookup; fall back to value embedded in service item (usually absent)
+            if service_duration_map:
+                duration_sec = sum(
+                    service_duration_map.get(str(s.get("id", "")), int(s.get("durationSeconds") or 0))
+                    for s in services
+                )
+            else:
+                duration_sec = sum(int(s.get("durationSeconds") or 0) for s in services)
             if duration_sec:
                 duration_min = duration_sec // 60
             else:
