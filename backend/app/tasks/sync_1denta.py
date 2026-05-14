@@ -160,9 +160,12 @@ async def _sync_appointments_async() -> dict:
             if a_data.get("scheduled_at"):
                 try:
                     dt = datetime.fromisoformat(a_data["scheduled_at"])
-                    # Store naive datetimes as-is; 1denta returns Moscow local time
-                    # and we display it without timezone conversion on the frontend
-                    scheduled_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
+                    if dt.tzinfo is None:
+                        # 1denta returns naive Moscow time (UTC+3) — attach the timezone
+                        MSK = timezone(timedelta(hours=3))
+                        scheduled_at = dt.replace(tzinfo=MSK)
+                    else:
+                        scheduled_at = dt
                 except ValueError:
                     pass
 
