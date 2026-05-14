@@ -214,8 +214,28 @@ class OneDentaService:
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
-        # For visits whose resourceId is not in resource_map (e.g. staff not enabled for
-        # online booking, like surgeons), fetch the resource individually.
+        # Try /api/v2/employees to get ALL staff including those not in online-booking.
+        # This covers archived/inactive doctors who are still assigned to old appointments.
+        try:
+            emp_raw = await self._request("GET", "/api/v2/employees")
+            employees = (
+                emp_raw.get("employees")
+                or emp_raw.get("data")
+                or (emp_raw if isinstance(emp_raw, list) else [])
+            )
+            before = len(resource_map)
+            for emp in employees:
+                eid = str(emp.get("id") or emp.get("resourceId") or "")
+                ename = emp.get("title") or emp.get("name") or emp.get("fullname") or ""
+                if eid and ename and eid not in resource_map:
+                    resource_map[eid] = ename
+            added = len(resource_map) - before
+            if added:
+                logger.info("1Denta: added %d more staff from /api/v2/employees", added)
+        except Exception as e:
+            logger.debug("1Denta: /api/v2/employees not available: %s", e)
+
+        # For visits whose resourceId is still not in resource_map, fetch individually.
         missing_ids: set[str] = set()
         for v in visits:
             resource_val = v.get("resourceId")
@@ -237,35 +257,19 @@ class OneDentaService:
                 if rname:
                     resource_map[rid] = rname
                     logger.info("1Denta: fetched non-booking resource %s → %s", rid, rname)
-                else:
-                    logger.warning("1Denta: resource %s returned empty name, raw=%s", rid, raw)
             except Exception as e:
-                logger.warning("1Denta: could not fetch resource %s by ID: %s", rid, e)
+                logger.debug("1Denta: /api/v2/resource/%s failed: %s", rid, e)
 
-        # For visits whose resourceId is still unknown, try to get name from embedded
-        # appointment sub-object or other visit-level fields.
+        # Last resort: for still-unknown IDs use a numeric placeholder so the UI
+        # shows something instead of "Без врача".
         for v in visits:
             resource_val = v.get("resourceId")
             if resource_val is None:
                 continue
             rid_str = str(resource_val)
-            if rid_str in resource_map:
-                continue
-            appt_obj = v.get("appointment") or {}
-            fallback_name = (
-                appt_obj.get("resourceName")
-                or (appt_obj.get("resource") or {}).get("title")
-                or (appt_obj.get("resource") or {}).get("name")
-                or v.get("resourceName")
-            )
-            if fallback_name:
-                resource_map[rid_str] = fallback_name
-                logger.info("1Denta: resolved resource %s → %s (from visit)", rid_str, fallback_name)
-            else:
-                logger.warning(
-                    "1Denta: resource %s still unknown — visit keys: %s; appt keys: %s",
-                    rid_str, list(v.keys()), list(appt_obj.keys()),
-                )
+            if rid_str not in resource_map:
+                resource_map[rid_str] = f"Врач #{rid_str}"
+                logger.info("1Denta: resource %s unresolvable — using placeholder", rid_str)
 
         return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
 
