@@ -86,19 +86,24 @@ export function useAppointmentDetail(id: string | null) {
   });
 }
 
+export interface SyncResult {
+  status: string;
+  doctors: number;
+  patients: { created: number; updated: number };
+  appointments: { created: number; updated: number; total: number };
+}
+
 export function useSyncSchedule() {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<SyncResult>({
     mutationFn: async () => {
       const { data } = await api.post("/schedule/sync");
       return data;
     },
     onSuccess: () => {
-      // Celery task runs in background — refetch after a short delay
-      setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ["schedule"] });
-        qc.invalidateQueries({ queryKey: ["patients"] });
-      }, 8000);
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["patients"] });
+      qc.invalidateQueries({ queryKey: ["doctors"] });
     },
   });
 }

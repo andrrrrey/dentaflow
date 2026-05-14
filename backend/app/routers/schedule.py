@@ -272,13 +272,30 @@ async def update_appointment_status(
 async def trigger_sync(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Dispatch 1Denta sync tasks to Celery (non-blocking)."""
-    from app.tasks.sync_1denta import sync_patients, sync_appointments, sync_directories
+    """Run 1Denta sync synchronously and return counts of synced records."""
+    from app.tasks.sync_1denta import (
+        _sync_directories_async,
+        _sync_patients_async,
+        _sync_appointments_async,
+    )
 
-    sync_directories.delay()
-    sync_patients.delay()
-    sync_appointments.delay()
-    return {"status": "started"}
+    dir_result = await _sync_directories_async()
+    pat_result = await _sync_patients_async()
+    appt_result = await _sync_appointments_async()
+
+    return {
+        "status": "completed",
+        "doctors": dir_result.get("resource", 0),
+        "patients": {
+            "created": pat_result.get("created", 0),
+            "updated": pat_result.get("updated", 0),
+        },
+        "appointments": {
+            "created": appt_result.get("created", 0),
+            "updated": appt_result.get("updated", 0),
+            "total": appt_result.get("total", 0),
+        },
+    }
 
 
 class CreateAppointmentBody(BaseModel):

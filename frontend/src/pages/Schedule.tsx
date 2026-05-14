@@ -363,8 +363,21 @@ export default function Schedule() {
             </Button>
             <Button variant="secondary" size="sm" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} className="w-full">
               <RefreshCw size={14} className={`mr-[5px] ${syncMutation.isPending ? "animate-spin" : ""}`} />
-              {syncMutation.isPending ? "Запрос..." : syncMutation.isSuccess ? "Запущено ✓" : "Синхронизировать"}
+              {syncMutation.isPending ? "Синхронизация..." : "Синхронизировать"}
             </Button>
+            {syncMutation.isSuccess && syncMutation.data && (
+              <div className="text-[11px] text-text-muted leading-relaxed px-1">
+                <span className="text-green-500 font-medium">✓ Готово</span>
+                {" · "}врачей: {syncMutation.data.doctors}
+                {" · "}записей: {syncMutation.data.appointments.total}
+                {syncMutation.data.appointments.created > 0 && (
+                  <span className="text-green-500"> (+{syncMutation.data.appointments.created} новых)</span>
+                )}
+              </div>
+            )}
+            {syncMutation.isError && (
+              <div className="text-[11px] text-red-400 px-1">✗ Ошибка синхронизации</div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 pt-2" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>

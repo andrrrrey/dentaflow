@@ -208,7 +208,7 @@ class OneDentaService:
                 resources = raw.get("resources", [])
             for r in resources:
                 rid = str(r.get("id", ""))
-                rname = r.get("name", "")
+                rname = r.get("title") or r.get("name") or ""
                 if rid and rname:
                     resource_map[rid] = rname
             logger.info("1Denta: loaded %d resources for doctor-name mapping", len(resource_map))
@@ -487,14 +487,20 @@ class OneDentaService:
         client_val = v.get("client")
         resource_val = v.get("resourceId")
         resource_obj = v.get("resource") or {}
+        # 1denta uses "title" for resource/doctor name, "name" as fallback
         doctor_name_val = (
-            resource_obj.get("name")
+            resource_obj.get("title") or resource_obj.get("name")
             or v.get("resourceName")
             or (resource_map.get(str(resource_val)) if resource_map and resource_val is not None else None)
             or ""
         )
         total_discount = sum(float(s.get("discount") or 0) for s in services)
         total_pay_sum = sum(float(s.get("paySum") or 0) for s in services)
+        # Duration: sum service durations, fall back to visit-level field, then 30 min
+        duration_sec = sum(int(s.get("durationSeconds") or 0) for s in services)
+        duration_min = duration_sec // 60 if duration_sec else (
+            int(v.get("duration") or v.get("durationMin") or 0) or 30
+        )
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,
@@ -503,6 +509,7 @@ class OneDentaService:
             "service": service_name,
             "services": services,
             "scheduled_at": v.get("datetime"),
+            "duration_min": duration_min,
             "status": attendance_map.get(v.get("attendance", 0), "unconfirmed"),
             "revenue": float(v.get("totalPrice") or 0),
             "discount": total_discount if total_discount > 0 else None,
