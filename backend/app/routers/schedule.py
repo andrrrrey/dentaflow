@@ -272,24 +272,17 @@ async def update_appointment_status(
 async def trigger_sync(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Run 1Denta sync synchronously and return counts of synced records."""
-    from app.tasks.sync_1denta import (
-        _sync_directories_async,
-        _sync_patients_async,
-        _sync_appointments_async,
-    )
+    """Fast manual sync: directories (doctors) + appointments for ±3 weeks.
+    Full patient sync runs nightly via Celery (sync_full_daily at 03:00)."""
+    from app.tasks.sync_1denta import _sync_directories_async, _sync_appointments_async
 
+    # Always refresh doctor list first so appointment sync has correct names
     dir_result = await _sync_directories_async()
-    pat_result = await _sync_patients_async()
-    appt_result = await _sync_appointments_async()
+    appt_result = await _sync_appointments_async(days_back=7, days_forward=21)
 
     return {
         "status": "completed",
         "doctors": dir_result.get("resource", 0),
-        "patients": {
-            "created": pat_result.get("created", 0),
-            "updated": pat_result.get("updated", 0),
-        },
         "appointments": {
             "created": appt_result.get("created", 0),
             "updated": appt_result.get("updated", 0),

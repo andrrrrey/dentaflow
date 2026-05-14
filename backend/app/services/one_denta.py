@@ -198,14 +198,12 @@ class OneDentaService:
 
         visits = await self._fetch_all_pages("/api/v2/visit", extra_params=base_params)
 
-        # Build resource_id → name lookup to enrich visits that lack inline resource obj
+        # Build resource_id → name lookup.
+        # /api/v2/resource is NOT paginated — returns {"resources": [...]} directly.
         resource_map: dict[str, str] = {}
         try:
-            resources = await self._fetch_all_pages("/api/v2/resource")
-            if not resources:
-                # Fallback: some versions return resources at top-level, not in data[]
-                raw = await self._request("GET", "/api/v2/resource")
-                resources = raw.get("resources", [])
+            raw = await self._request("GET", "/api/v2/resource")
+            resources = raw.get("resources", [])
             for r in resources:
                 rid = str(r.get("id", ""))
                 rname = r.get("title") or r.get("name") or ""
@@ -496,11 +494,26 @@ class OneDentaService:
         )
         total_discount = sum(float(s.get("discount") or 0) for s in services)
         total_pay_sum = sum(float(s.get("paySum") or 0) for s in services)
-        # Duration: sum service durations, fall back to visit-level field, then 30 min
-        duration_sec = sum(int(s.get("durationSeconds") or 0) for s in services)
-        duration_min = duration_sec // 60 if duration_sec else (
-            int(v.get("duration") or v.get("durationMin") or 0) or 30
-        )
+        # Duration: prefer timeEnd-datetime diff (most accurate), then sum service
+        # durationSeconds, then visit-level duration field, fallback 30 min.
+        duration_min = 30
+        time_start = v.get("datetime")
+        time_end = v.get("timeEnd") or v.get("endAt") or v.get("endDatetime")
+        if time_start and time_end:
+            try:
+                from datetime import datetime as _dt
+                delta = _dt.fromisoformat(time_end) - _dt.fromisoformat(time_start)
+                computed = int(delta.total_seconds() // 60)
+                if computed > 0:
+                    duration_min = computed
+            except Exception:
+                pass
+        if duration_min == 30:
+            duration_sec = sum(int(s.get("durationSeconds") or 0) for s in services)
+            if duration_sec:
+                duration_min = duration_sec // 60
+            else:
+                duration_min = int(v.get("duration") or v.get("durationMin") or 0) or 30
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,

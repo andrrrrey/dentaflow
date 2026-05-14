@@ -120,7 +120,10 @@ async def _sync_patients_async() -> dict:
     return {"created": created, "updated": updated, "total": len(patients_data)}
 
 
-async def _sync_appointments_async() -> dict:
+async def _sync_appointments_async(
+    days_back: int = 7,
+    days_forward: int = 21,
+) -> dict:
     from sqlalchemy import select
     from app.database import async_session_factory
     from app.models.appointment import Appointment
@@ -129,10 +132,9 @@ async def _sync_appointments_async() -> dict:
 
     service = await OneDentaService.from_db_session_factory()
     now = datetime.now(timezone.utc)
-    # Sync only recent window: past 30 days + next 90 days (not 5 years of history)
     appointments_data = await service.get_appointments(
-        date_from=now - timedelta(days=30),
-        date_to=now + timedelta(days=90),
+        date_from=now - timedelta(days=days_back),
+        date_to=now + timedelta(days=days_forward),
     )
 
     created = 0
@@ -199,12 +201,18 @@ async def _sync_appointments_async() -> dict:
                 created += 1
             else:
                 appointment.patient_id = patient_id or appointment.patient_id
-                appointment.doctor_name = a_data.get("doctor_name") or appointment.doctor_name
-                appointment.doctor_id = a_data.get("doctor_id") or appointment.doctor_id
+                # Only update fields when the incoming value is non-empty so that
+                # a temporary resource_map miss can't erase a previously correct name.
+                if a_data.get("doctor_name"):
+                    appointment.doctor_name = a_data["doctor_name"]
+                if a_data.get("doctor_id"):
+                    appointment.doctor_id = a_data["doctor_id"]
                 appointment.service = a_data.get("service") or appointment.service
                 appointment.branch = a_data.get("branch", appointment.branch)
                 appointment.scheduled_at = scheduled_at or appointment.scheduled_at
-                appointment.duration_min = a_data.get("duration_min", appointment.duration_min)
+                new_dur = a_data.get("duration_min")
+                if new_dur and new_dur != 30:
+                    appointment.duration_min = new_dur
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)
                 appointment.discount = a_data.get("discount", appointment.discount)
@@ -218,10 +226,43 @@ async def _sync_appointments_async() -> dict:
 
         await session.commit()
 
+    # Backfill doctor_name for appointments that still have empty name.
+    # Runs after commit so new appointments are visible.
+    await _backfill_doctor_names_async()
+
     # Auto-create waiting_list deals for scheduled/confirmed appointments without a deal
     await _sync_waiting_list_deals_async(appointments_data)
 
     return {"created": created, "updated": updated, "total": len(appointments_data)}
+
+
+async def _backfill_doctor_names_async() -> None:
+    """Fill doctor_name on appointments that have doctor_id but empty name,
+    using directory_cache as the source of truth."""
+    from sqlalchemy import select, update
+    from app.database import async_session_factory
+    from app.models.directory_cache import DirectoryCache
+    from app.models.appointment import Appointment
+
+    async with async_session_factory() as session:
+        resource_rows = (await session.execute(
+            select(DirectoryCache.external_id, DirectoryCache.name)
+            .where(DirectoryCache.category == "resource", DirectoryCache.name != "")
+        )).all()
+
+        if not resource_rows:
+            return
+
+        for ext_id, name in resource_rows:
+            await session.execute(
+                update(Appointment)
+                .where(
+                    Appointment.doctor_id == ext_id,
+                    (Appointment.doctor_name == None) | (Appointment.doctor_name == ""),
+                )
+                .values(doctor_name=name)
+            )
+        await session.commit()
 
 
 async def _sync_waiting_list_deals_async(appointments_data: list) -> None:
@@ -304,9 +345,9 @@ def sync_patients(self):
 
 @celery_app.task(name="app.tasks.sync_1denta.sync_appointments", bind=True, max_retries=3)
 def sync_appointments(self):
-    """Sync appointments from 1Denta CRM."""
+    """Frequent background sync: appointments for the next 14 days."""
     try:
-        result = _run_async(_sync_appointments_async())
+        result = _run_async(_sync_appointments_async(days_back=3, days_forward=14))
         logger.info(
             "sync_appointments complete: created=%d updated=%d total=%d",
             result["created"],
@@ -317,6 +358,23 @@ def sync_appointments(self):
     except Exception as exc:
         logger.exception("sync_appointments failed")
         raise self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(name="app.tasks.sync_1denta.sync_full_daily", bind=True, max_retries=2)
+def sync_full_daily(self):
+    """Nightly full sync: all patients + wide appointment window (90 days forward)."""
+    try:
+        dir_result = _run_async(_sync_directories_async())
+        pat_result = _run_async(_sync_patients_async())
+        appt_result = _run_async(_sync_appointments_async(days_back=30, days_forward=90))
+        logger.info(
+            "sync_full_daily complete: dirs=%s patients=%s appointments=%s",
+            dir_result, pat_result, appt_result,
+        )
+        return {"directories": dir_result, "patients": pat_result, "appointments": appt_result}
+    except Exception as exc:
+        logger.exception("sync_full_daily failed")
+        raise self.retry(exc=exc, countdown=300)
 
 
 async def _sync_directories_async() -> dict:
