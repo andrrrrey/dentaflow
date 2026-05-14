@@ -273,8 +273,9 @@ async def trigger_sync(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Dispatch 1Denta sync tasks to Celery (non-blocking)."""
-    from app.tasks.sync_1denta import sync_patients, sync_appointments
+    from app.tasks.sync_1denta import sync_patients, sync_appointments, sync_directories
 
+    sync_directories.delay()
     sync_patients.delay()
     sync_appointments.delay()
     return {"status": "started"}
