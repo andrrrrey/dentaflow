@@ -10,7 +10,8 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import delete, select
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -106,7 +107,28 @@ async def list_resources(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
+    from app.models.appointment import Appointment
+
     items, synced_at = await _get_cached(db, "resource")
+    known_ids = {str(item.get("id", "")) for item in items}
+
+    # Also surface doctors referenced in appointments but absent from directory_cache
+    # (e.g. archived staff whose names 1Denta no longer provides via API).
+    appt_rows = (await db.execute(
+        select(Appointment.doctor_id, func.max(Appointment.doctor_name).label("doctor_name"))
+        .where(Appointment.doctor_id.isnot(None), Appointment.doctor_id != "")
+        .group_by(Appointment.doctor_id)
+    )).all()
+    for row in appt_rows:
+        if row.doctor_id and row.doctor_id not in known_ids:
+            items.append({
+                "id": row.doctor_id,
+                "name": row.doctor_name or f"Врач #{row.doctor_id}",
+                "description": "Не в онлайн-записи 1Denta",
+                "_placeholder": True,
+            })
+            known_ids.add(row.doctor_id)
+
     return {"resources": items, "synced_at": synced_at}
 
 
@@ -172,6 +194,50 @@ async def sync_from_1denta(
         "errors": errors,
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+class UpdateResourceNameBody(BaseModel):
+    name: str
+
+
+@router.patch("/resources/{external_id}")
+async def update_resource_name(
+    external_id: str,
+    body: UpdateResourceNameBody,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Manually set a doctor/resource name and propagate to all their appointments."""
+    from app.models.appointment import Appointment
+
+    now = datetime.now(timezone.utc)
+    existing = (await db.execute(
+        select(DirectoryCache).where(
+            DirectoryCache.category == "resource",
+            DirectoryCache.external_id == external_id,
+        )
+    )).scalar_one_or_none()
+
+    if existing:
+        existing.name = body.name
+        existing.data = {**(existing.data or {}), "name": body.name, "title": body.name}
+        existing.synced_at = now
+    else:
+        db.add(DirectoryCache(
+            category="resource",
+            external_id=external_id,
+            name=body.name,
+            data={"id": external_id, "name": body.name, "title": body.name, "description": ""},
+            synced_at=now,
+        ))
+
+    await db.execute(
+        update(Appointment)
+        .where(Appointment.doctor_id == external_id)
+        .values(doctor_name=body.name)
+    )
+    await db.commit()
+    return {"external_id": external_id, "name": body.name}
 
 
 async def _backfill_doctor_names(db: AsyncSession, resources: list[dict]) -> None:

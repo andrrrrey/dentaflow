@@ -14,6 +14,7 @@ export interface ResourceItem {
   id: number | string;
   name: string;
   description?: string;
+  _placeholder?: boolean;
   [key: string]: unknown;
 }
 
@@ -70,6 +71,21 @@ export interface SyncResult {
   errors: Record<string, string>;
   synced_at: string;
   error?: string;
+}
+
+export function useUpdateResourceName() {
+  const qc = useQueryClient();
+  return useMutation<{ external_id: string; name: string }, Error, { externalId: string; name: string }>({
+    mutationFn: async ({ externalId, name }) => {
+      const { data } = await api.patch(`/directories/resources/${externalId}`, { name });
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["directories-resources"] });
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+      qc.invalidateQueries({ queryKey: ["doctors-list"] });
+    },
+  });
 }
 
 export function useSyncDirectories() {

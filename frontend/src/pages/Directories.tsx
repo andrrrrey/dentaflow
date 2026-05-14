@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Stethoscope, Users, Package, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { Stethoscope, Users, Package, RefreshCw, CheckCircle, AlertCircle, Pencil, X, Check } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import Card from "../components/ui/Card";
-import { useServices, useResources, useCommodities, useSyncDirectories } from "../api/directories";
+import { useServices, useResources, useCommodities, useSyncDirectories, useUpdateResourceName, ResourceItem } from "../api/directories";
 
 type Tab = "services" | "resources" | "commodities";
 
@@ -151,16 +151,10 @@ export default function Directories() {
           resources.length === 0 ? <Empty text="Нет данных о врачах" /> : (
             <table className="w-full border-collapse">
               <thead>
-                <tr>{["ID", "Имя", "Описание"].map((h) => <TH key={h}>{h}</TH>)}</tr>
+                <tr>{["ID", "Имя", "Описание", ""].map((h) => <TH key={h}>{h}</TH>)}</tr>
               </thead>
               <tbody>
-                {resources.map((r) => (
-                  <TR key={r.id}>
-                    <TD mono>{String(r.id)}</TD>
-                    <TD bold>{r.name}</TD>
-                    <TD>{r.description || "—"}</TD>
-                  </TR>
-                ))}
+                {resources.map((r) => <ResourceRow key={r.id} resource={r} />)}
               </tbody>
             </table>
           )
@@ -189,6 +183,72 @@ export default function Directories() {
         )}
       </Card>
     </div>
+  );
+}
+
+function ResourceRow({ resource }: { resource: ResourceItem }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(resource.name);
+  const updateName = useUpdateResourceName();
+
+  const handleSave = async () => {
+    if (!name.trim() || name === resource.name) { setEditing(false); return; }
+    await updateName.mutateAsync({ externalId: String(resource.id), name: name.trim() });
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") { setName(resource.name); setEditing(false); }
+  };
+
+  const isPlaceholder = resource._placeholder === true;
+
+  return (
+    <TR>
+      <TD mono>{String(resource.id)}</TD>
+      <td className="py-[10px] px-[12px] text-[12.5px]">
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="border border-[rgba(91,76,245,0.3)] rounded-lg px-2 py-[3px] text-[12.5px] outline-none focus:border-[#5B4CF5] w-48"
+            />
+            <button
+              onClick={handleSave}
+              disabled={updateName.isPending}
+              className="p-1 rounded-md text-[#00c9a7] hover:bg-[rgba(0,201,167,0.1)] border-none cursor-pointer bg-transparent disabled:opacity-50"
+            >
+              <Check size={13} />
+            </button>
+            <button
+              onClick={() => { setName(resource.name); setEditing(false); }}
+              className="p-1 rounded-md text-text-muted hover:bg-[rgba(0,0,0,0.05)] border-none cursor-pointer bg-transparent"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 group">
+            <span className={`font-semibold ${isPlaceholder ? "text-[#f5a623]" : ""}`}>
+              {resource.name}
+            </span>
+            <button
+              onClick={() => { setName(resource.name); setEditing(true); }}
+              className="p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 border-none cursor-pointer bg-transparent text-text-muted transition-opacity"
+              title="Изменить имя"
+            >
+              <Pencil size={11} />
+            </button>
+          </div>
+        )}
+      </td>
+      <TD>{resource.description || "—"}</TD>
+      <td className="py-[10px] px-[12px] w-[1%]" />
+    </TR>
   );
 }
 
