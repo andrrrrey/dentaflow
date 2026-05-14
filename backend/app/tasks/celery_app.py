@@ -37,6 +37,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.sync_1denta.sync_appointments",
         "schedule": 300.0,  # every 5 minutes
     },
+    "sync-1denta-directories": {
+        "task": "app.tasks.sync_1denta.sync_directories",
+        "schedule": 3600.0,  # every hour
+    },
     "check-stale-leads": {
         "task": "app.tasks.alerts.check_stale_leads",
         "schedule": 300.0,  # every 5 minutes

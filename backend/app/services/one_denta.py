@@ -211,8 +211,9 @@ class OneDentaService:
                 rname = r.get("name", "")
                 if rid and rname:
                     resource_map[rid] = rname
+            logger.info("1Denta: loaded %d resources for doctor-name mapping", len(resource_map))
         except Exception:
-            pass
+            logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
         return [self._map_visit(v, resource_map) for v in visits if not v.get("deleted")]
 

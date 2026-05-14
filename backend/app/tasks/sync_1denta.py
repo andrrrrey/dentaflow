@@ -160,12 +160,10 @@ async def _sync_appointments_async() -> dict:
             if a_data.get("scheduled_at"):
                 try:
                     dt = datetime.fromisoformat(a_data["scheduled_at"])
-                    if dt.tzinfo is None:
-                        # 1denta returns naive Moscow time (UTC+3) — attach the timezone
-                        MSK = timezone(timedelta(hours=3))
-                        scheduled_at = dt.replace(tzinfo=MSK)
-                    else:
-                        scheduled_at = dt
+                    # 1denta returns Moscow local time (naive or +03:00).
+                    # Strip tzinfo so asyncpg stores the value as-is in UTC column;
+                    # the frontend treats it as Moscow local time for display.
+                    scheduled_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 except ValueError:
                     pass
 
@@ -309,4 +307,81 @@ def sync_appointments(self):
         return result
     except Exception as exc:
         logger.exception("sync_appointments failed")
+        raise self.retry(exc=exc, countdown=60)
+
+
+async def _sync_directories_async() -> dict:
+    """Sync services, resources (doctors) and commodities into directory_cache,
+    then backfill doctor_name on existing appointments."""
+    from sqlalchemy import select, delete, update
+    from app.database import async_session_factory
+    from app.models.directory_cache import DirectoryCache
+    from app.models.appointment import Appointment
+    from app.services.one_denta import OneDentaService
+
+    service = await OneDentaService.from_db_session_factory()
+    counts: dict[str, int] = {}
+
+    async with async_session_factory() as session:
+        now = datetime.now(timezone.utc)
+
+        def _item_name(category: str, item: dict) -> str:
+            if category == "service":
+                return item.get("title", item.get("name", ""))
+            if category == "resource":
+                return item.get("title", item.get("name", ""))
+            return item.get("title", item.get("name", ""))
+
+        for category, fetch_coro in [
+            ("service", service.get_services()),
+            ("resource", service.get_resources()),
+        ]:
+            try:
+                items = await fetch_coro
+                await session.execute(
+                    delete(DirectoryCache).where(DirectoryCache.category == category)
+                )
+                for item in items:
+                    session.add(DirectoryCache(
+                        external_id=str(item.get("id", "")),
+                        category=category,
+                        name=_item_name(category, item),
+                        data=item,
+                        synced_at=now,
+                    ))
+                counts[category] = len(items)
+                logger.info("sync_directories: %s=%d", category, len(items))
+            except Exception:
+                logger.exception("sync_directories: failed to sync %s", category)
+
+        # Backfill doctor_name on appointments that have doctor_id but no name
+        resource_rows = (await session.execute(
+            select(DirectoryCache.external_id, DirectoryCache.name)
+            .where(DirectoryCache.category == "resource",
+                   DirectoryCache.name != "")
+        )).all()
+        for ext_id, name in resource_rows:
+            await session.execute(
+                update(Appointment)
+                .where(
+                    Appointment.doctor_id == ext_id,
+                    (Appointment.doctor_name == None) | (Appointment.doctor_name == ""),
+                )
+                .values(doctor_name=name)
+            )
+
+        await session.commit()
+
+    return counts
+
+
+@celery_app.task(name="app.tasks.sync_1denta.sync_directories", bind=True, max_retries=3)
+def sync_directories(self):
+    """Sync reference data (doctors, services) from 1Denta and fix doctor names."""
+    try:
+        result = _run_async(_sync_directories_async())
+        logger.info("sync_directories complete: %s", result)
+        return result
+    except Exception as exc:
+        logger.exception("sync_directories failed")
         raise self.retry(exc=exc, countdown=60)
