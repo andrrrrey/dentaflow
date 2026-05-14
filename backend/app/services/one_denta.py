@@ -240,7 +240,9 @@ class OneDentaService:
                 resource_map[rid_str] = f"Врач #{rid_str}"
                 logger.info("1Denta: resource %s unresolvable — using placeholder", rid_str)
 
-        return [self._map_visit(v, resource_map, service_duration_map) for v in visits if not v.get("deleted")]
+        mapped = [self._map_visit(v, resource_map, service_duration_map) for v in visits if not v.get("deleted")]
+        self._infer_durations_from_schedule(mapped)
+        return mapped
 
     async def create_visit(
         self,
@@ -522,6 +524,47 @@ class OneDentaService:
             "deposit": deposit,
             "discount": discount,
         }
+
+    @staticmethod
+    def _infer_durations_from_schedule(visits: list[dict], max_gap_min: int = 180) -> None:
+        """Fill in duration_min for visits where the API returned None.
+
+        1Denta does not expose appointment duration in the visit response.
+        For back-to-back appointments the duration equals the gap to the next
+        appointment for the same doctor on the same day.  Gaps larger than
+        max_gap_min (default 3 h) are treated as lunch breaks / free time and
+        ignored so we don't inflate durations with idle time.
+        """
+        from collections import defaultdict
+        from datetime import datetime as _dt
+
+        # Group visits that still need a duration by (doctor_id, date)
+        groups: dict[tuple, list[dict]] = defaultdict(list)
+        for v in visits:
+            if v.get("duration_min") is not None:
+                continue
+            sched = v.get("scheduled_at")
+            doc = v.get("doctor_id")
+            if sched and doc:
+                try:
+                    day = _dt.fromisoformat(sched).date().isoformat()
+                    groups[(doc, day)].append(v)
+                except Exception:
+                    pass
+
+        for group in groups.values():
+            group.sort(key=lambda x: x.get("scheduled_at", ""))
+            for i, vm in enumerate(group):
+                if i + 1 >= len(group):
+                    break
+                try:
+                    curr = _dt.fromisoformat(vm["scheduled_at"])
+                    nxt = _dt.fromisoformat(group[i + 1]["scheduled_at"])
+                    diff = int((nxt - curr).total_seconds() // 60)
+                    if 0 < diff <= max_gap_min:
+                        vm["duration_min"] = diff
+                except Exception:
+                    pass
 
     @staticmethod
     def _map_visit(
