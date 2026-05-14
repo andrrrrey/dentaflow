@@ -544,16 +544,13 @@ class OneDentaService:
         )
         total_discount = sum(float(s.get("discount") or 0) for s in services)
         total_pay_sum = sum(float(s.get("paySum") or 0) for s in services)
-        # Duration: prefer timeEnd-datetime diff (most accurate), then lookup from
-        # service catalog (visit services don't embed durationSeconds), then fallback 30 min.
-        duration_min = 30
+        # Duration: 1Denta API does not return timeEnd or any duration field.
+        # Try service catalog lookup (only works for ~17 online-booking services).
+        # Return None when duration cannot be determined so the sync task
+        # preserves whatever value is already stored in the database.
+        duration_min: int | None = None
         time_start = v.get("datetime")
         time_end = v.get("timeEnd") or v.get("endAt") or v.get("endDatetime")
-        logger.info(
-            "1Denta visit %s: datetime=%r timeEnd=%r endAt=%r endDatetime=%r keys=%s",
-            v.get("id"), v.get("datetime"), v.get("timeEnd"), v.get("endAt"), v.get("endDatetime"),
-            list(v.keys()),
-        )
         if time_start and time_end:
             try:
                 from datetime import datetime as _dt, time as _time
@@ -561,16 +558,15 @@ class OneDentaService:
                 try:
                     end_dt = _dt.fromisoformat(time_end)
                 except ValueError:
-                    # 1Denta may return timeEnd as a time-only string e.g. "11:00:00"
+                    # timeEnd may be a time-only string e.g. "11:00:00"
                     end_dt = _dt.combine(start_dt.date(), _time.fromisoformat(time_end))
-                delta = end_dt - start_dt
-                computed = int(delta.total_seconds() // 60)
+                computed = int((end_dt - start_dt).total_seconds() // 60)
                 if computed > 0:
                     duration_min = computed
             except Exception:
-                logger.exception("1Denta visit %s: failed to parse timeEnd=%r", v.get("id"), time_end)
-        if duration_min == 30:
-            # Prefer catalog lookup; fall back to value embedded in service item (usually absent)
+                pass
+        if duration_min is None:
+            # Catalog lookup (only services configured for online booking have durationSeconds)
             if service_duration_map:
                 duration_sec = sum(
                     service_duration_map.get(str(s.get("id", "")), int(s.get("durationSeconds") or 0))
@@ -581,7 +577,9 @@ class OneDentaService:
             if duration_sec:
                 duration_min = duration_sec // 60
             else:
-                duration_min = int(v.get("duration") or v.get("durationMin") or 0) or 30
+                # Check if the visit itself carries a duration hint
+                raw = int(v.get("duration") or v.get("durationMin") or 0)
+                duration_min = raw if raw > 0 else None
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,
