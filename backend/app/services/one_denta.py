@@ -335,8 +335,26 @@ class OneDentaService:
         """Return staff members available for online booking."""
         if self._no_credentials():
             return []
-        data = await self._request("GET", "/api/v2/resource")
-        return data.get("resources", [])
+        data = await self._request("GET", "/api/v2/resource", params={"page": 1, "perPage": 200})
+        resources = data.get("resources", []) or data.get("data", [])
+        logger.info(
+            "1Denta: /api/v2/resource page 1 → %d resources, response keys=%s",
+            len(resources),
+            list(data.keys()),
+        )
+        # Handle pagination if the API returns meta (some versions paginate)
+        meta = data.get("meta", {})
+        if meta:
+            logger.info("1Denta: resource pagination meta=%s", meta)
+            last_page = meta.get("lastPage", 1)
+            for page in range(2, last_page + 1):
+                page_data = await self._request(
+                    "GET", "/api/v2/resource", params={"page": page, "perPage": 200}
+                )
+                page_items = page_data.get("resources", []) or page_data.get("data", [])
+                logger.info("1Denta: /api/v2/resource page %d → %d resources", page, len(page_items))
+                resources.extend(page_items)
+        return resources
 
     async def get_commodities(self) -> list[dict]:
         """Return commodities/products list."""
