@@ -42,20 +42,29 @@ async def _sync_patients_async() -> dict:
     created = 0
     updated = 0
 
+    # Batch-fetch all existing patients by external_id (single query instead of N+1)
+    all_ext_ids = [p["external_id"] for p in patients_data if p.get("external_id")]
+    if not all_ext_ids:
+        return {"created": 0, "updated": 0, "total": 0}
+
     async with async_session_factory() as session:
+        existing_rows = (await session.execute(
+            select(Patient).where(Patient.external_id.in_(all_ext_ids))
+        )).scalars().all()
+        existing_map = {p.external_id: p for p in existing_rows}
+
+        now_utc = datetime.now(timezone.utc)
+
         for p_data in patients_data:
             ext_id = p_data.get("external_id")
             if not ext_id:
                 continue
 
-            stmt = select(Patient).where(Patient.external_id == ext_id).limit(1)
-            result = await session.execute(stmt)
-            patient = result.scalar_one_or_none()
-
             sex_val = p_data.get("sex", 0)
             gender_val = "female" if sex_val == 2 else ("male" if sex_val == 1 else None)
             patient_type_val = p_data.get("type")
 
+            patient = existing_map.get(ext_id)
             if patient is None:
                 patient = Patient(
                     external_id=ext_id,
@@ -68,7 +77,7 @@ async def _sync_patients_async() -> dict:
                     gender=gender_val,
                     patient_type=patient_type_val,
                     raw_1denta_data=p_data,
-                    synced_at=datetime.now(timezone.utc),
+                    synced_at=now_utc,
                 )
                 if p_data.get("birth_date"):
                     try:
@@ -96,7 +105,7 @@ async def _sync_patients_async() -> dict:
                 patient.gender = gender_val or patient.gender
                 patient.patient_type = patient_type_val or patient.patient_type
                 patient.raw_1denta_data = p_data
-                patient.synced_at = datetime.now(timezone.utc)
+                patient.synced_at = now_utc
                 if p_data.get("last_visit_at"):
                     try:
                         patient.last_visit_at = datetime.fromisoformat(
