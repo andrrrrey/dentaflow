@@ -126,10 +126,14 @@ async def check_connection(service: str, db: AsyncSession) -> dict:
         return {"ok": False, "message": str(e)}
 
 
-def _novofon_sign(api_key: str, api_secret: str, params_str: str = "") -> str:
-    """Compute Novofon HMAC-SHA1 signature."""
+def _novofon_sign(api_secret: str, endpoint: str, params_str: str = "") -> str:
+    """Compute Novofon HMAC-SHA1 signature.
+
+    Signs: endpoint + params_str + md5(params_str)
+    This matches the official Zadarma/Novofon API client specification.
+    """
     params_md5 = hashlib.md5(params_str.encode()).hexdigest()
-    data = (params_str + params_md5).encode()
+    data = (endpoint + params_str + params_md5).encode()
     sig = hmac_lib.new(api_secret.encode(), data, hashlib.sha1).digest()
     return base64.b64encode(sig).decode()
 
@@ -142,10 +146,11 @@ async def _check_novofon(db: AsyncSession) -> dict:
     if not api_secret:
         return {"ok": False, "message": "API-secret не указан (поле 'Webhook Secret')"}
 
-    sign = _novofon_sign(api_key, api_secret)
+    endpoint = "/v1/info/balance"
+    sign = _novofon_sign(api_secret, endpoint)
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
-            "https://api.novofon.com/v1/info/balance",
+            f"https://api.novofon.com{endpoint}",
             headers={"Authorization": f"{api_key}:{sign}"},
         )
         if resp.status_code == 200:

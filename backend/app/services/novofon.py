@@ -33,10 +33,10 @@ class NovofonService:
         self.api_secret = api_secret or settings.NOVOFON_WEBHOOK_SECRET
         self.base_url = "https://api.novofon.com/v1"
 
-    def _auth_header(self, params_str: str = "") -> str:
-        """Build Novofon Authorization header value with HMAC-SHA1 signature."""
+    def _auth_header(self, endpoint: str, params_str: str = "") -> str:
+        """Build Novofon Authorization header: key:base64(HMAC-SHA1(secret, endpoint+params+md5(params)))."""
         params_md5 = hashlib.md5(params_str.encode()).hexdigest()
-        data = (params_str + params_md5).encode()
+        data = (endpoint + params_str + params_md5).encode()
         sig = hmac_lib.new(self.api_secret.encode(), data, hashlib.sha1).digest()
         sign = base64.b64encode(sig).decode()
         return f"{self.api_key}:{sign}"
@@ -121,10 +121,11 @@ class NovofonService:
                 "to": to_num,
             }
 
+        endpoint = "/v1/request/callback"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
-                f"{self.base_url}/request/callback",
-                headers={"Authorization": self._auth_header()},
+                f"https://api.novofon.com{endpoint}",
+                headers={"Authorization": self._auth_header(endpoint)},
                 json={"from": from_num, "to": to_num},
             )
             response.raise_for_status()
@@ -135,10 +136,11 @@ class NovofonService:
         if settings.APP_ENV == "development":
             return f"https://example.com/recordings/mock-{call_id}.mp3"
 
+        endpoint = f"/v1/pbx/record/{call_id}"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
-                f"{self.base_url}/pbx/record/{call_id}",
-                headers={"Authorization": self._auth_header()},
+                f"https://api.novofon.com{endpoint}",
+                headers={"Authorization": self._auth_header(endpoint)},
             )
             response.raise_for_status()
             data = response.json()
@@ -159,10 +161,11 @@ class NovofonService:
         if date_to:
             params["end"] = date_to.isoformat()
 
+        endpoint = "/v1/statistics/pbx"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
-                f"{self.base_url}/statistics/pbx",
-                headers={"Authorization": self._auth_header()},
+                f"https://api.novofon.com{endpoint}",
+                headers={"Authorization": self._auth_header(endpoint)},
                 params=params,
             )
             response.raise_for_status()
