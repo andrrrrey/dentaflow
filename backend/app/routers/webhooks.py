@@ -122,6 +122,7 @@ async def novofon_webhook(
         except Exception:
             body = {}
 
+    logger.info("Novofon raw webhook body: %s", body)
     body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
