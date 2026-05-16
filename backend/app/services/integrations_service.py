@@ -126,16 +126,22 @@ async def check_connection(service: str, db: AsyncSession) -> dict:
         return {"ok": False, "message": str(e)}
 
 
-def _novofon_sign(api_secret: str, endpoint: str, params_str: str = "") -> str:
-    """Compute Novofon HMAC-SHA1 signature.
+def _novofon_sign(api_secret: str, endpoint: str, params: dict | None = None) -> str:
+    """Compute Novofon HMAC-SHA1 signature per official PHP SDK.
 
-    Signs: endpoint + params_str + md5(params_str)
-    This matches the official Zadarma/Novofon API client specification.
+    PHP: base64_encode(hash_hmac('sha1', method+paramsStr+md5(paramsStr), secret))
+    hash_hmac without raw=true returns HEX string, so we base64-encode the hex.
+    'format=json' is always included in params (added by the SDK before signing).
     """
+    import urllib.parse
+    p = dict(params or {})
+    p["format"] = "json"
+    sorted_items = sorted(p.items())
+    params_str = urllib.parse.urlencode(sorted_items)
     params_md5 = hashlib.md5(params_str.encode()).hexdigest()
     data = (endpoint + params_str + params_md5).encode()
-    sig = hmac_lib.new(api_secret.encode(), data, hashlib.sha1).digest()
-    return base64.b64encode(sig).decode()
+    sig_hex = hmac_lib.new(api_secret.encode(), data, hashlib.sha1).hexdigest()
+    return base64.b64encode(sig_hex.encode()).decode()
 
 
 async def _check_novofon(db: AsyncSession) -> dict:
@@ -146,12 +152,13 @@ async def _check_novofon(db: AsyncSession) -> dict:
     if not api_secret:
         return {"ok": False, "message": "API-secret не указан (поле 'Webhook Secret')"}
 
-    endpoint = "/v1/info/balance"
+    endpoint = "/v1/info/balance/"
     sign = _novofon_sign(api_secret, endpoint)
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             f"https://api.novofon.com{endpoint}",
             headers={"Authorization": f"{api_key}:{sign}"},
+            params={"format": "json"},
         )
         if resp.status_code == 200:
             data = resp.json()
