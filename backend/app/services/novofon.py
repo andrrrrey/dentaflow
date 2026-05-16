@@ -7,6 +7,9 @@ external calls are mocked.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac as hmac_lib
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -25,9 +28,18 @@ def _utcnow() -> datetime:
 class NovofonService:
     """Async wrapper around the Novofon (ex-Zadarma) telephony API."""
 
-    def __init__(self) -> None:
-        self.api_key = settings.NOVOFON_API_KEY
+    def __init__(self, api_key: str | None = None, api_secret: str | None = None) -> None:
+        self.api_key = api_key or settings.NOVOFON_API_KEY
+        self.api_secret = api_secret or settings.NOVOFON_WEBHOOK_SECRET
         self.base_url = "https://api.novofon.com/v1"
+
+    def _auth_header(self, params_str: str = "") -> str:
+        """Build Novofon Authorization header value with HMAC-SHA1 signature."""
+        params_md5 = hashlib.md5(params_str.encode()).hexdigest()
+        data = (params_str + params_md5).encode()
+        sig = hmac_lib.new(self.api_secret.encode(), data, hashlib.sha1).digest()
+        sign = base64.b64encode(sig).decode()
+        return f"{self.api_key}:{sign}"
 
     # ------------------------------------------------------------------
     # Incoming events
@@ -112,7 +124,7 @@ class NovofonService:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.base_url}/request/callback",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                headers={"Authorization": self._auth_header()},
                 json={"from": from_num, "to": to_num},
             )
             response.raise_for_status()
@@ -126,7 +138,7 @@ class NovofonService:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self.base_url}/pbx/record/{call_id}",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                headers={"Authorization": self._auth_header()},
             )
             response.raise_for_status()
             data = response.json()
@@ -150,7 +162,7 @@ class NovofonService:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self.base_url}/statistics/pbx",
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                headers={"Authorization": self._auth_header()},
                 params=params,
             )
             response.raise_for_status()

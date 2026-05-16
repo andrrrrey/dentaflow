@@ -146,7 +146,7 @@ async def _check_novofon(db: AsyncSession) -> dict:
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             "https://api.novofon.com/v1/info/balance",
-            headers={"Authorization": f"Bearer {api_key}:{sign}"},
+            headers={"Authorization": f"{api_key}:{sign}"},
         )
         if resp.status_code == 200:
             data = resp.json()
