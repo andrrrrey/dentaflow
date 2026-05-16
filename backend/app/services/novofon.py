@@ -91,12 +91,14 @@ class NovofonService:
             create_callback_task = False
 
         phone = caller if direction == "inbound" else callee
+        import json as _json
+        content = _json.dumps({"caller_id": caller, "called_did": callee}, ensure_ascii=False)
 
         result: dict = {
             "channel": "novofon",
             "direction": direction,
             "type": comm_type,
-            "content": None,
+            "content": content,
             "duration_sec": duration,
             "status": status,
             "priority": priority,
