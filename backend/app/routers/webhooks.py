@@ -122,10 +122,6 @@ async def novofon_webhook(
         except Exception:
             body = {}
 
-    secret = body.get("webhook_secret") or request.headers.get("X-Webhook-Secret", "")
-    if settings.NOVOFON_WEBHOOK_SECRET and secret != settings.NOVOFON_WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid webhook secret")
-
     body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
