@@ -67,16 +67,66 @@ async def _get_slots(db: AsyncSession) -> list[dict]:
 # Novofon (telephony)
 # ------------------------------------------------------------------
 
+def _parse_novofon_notification(body: dict) -> dict:
+    """Map Novofon notification fields to our internal call-event format.
+
+    Novofon HTTP-notifications use different field names than the classic
+    Zadarma-style webhook events, so we normalise them here.
+    """
+    if "caller_id" in body or "event" in body:
+        return body  # already in our format
+
+    # Map notification template variables to internal fields
+    notification_name = body.get("notification_name", "").lower()
+    if "потерян" in notification_name or "missed" in notification_name:
+        event = "missed"
+    elif "завершён" in notification_name or "end" in notification_name:
+        event = "notify_end"
+    else:
+        event = "notify_start"
+
+    return {
+        "event": event,
+        "caller_id": body.get("contact_phone_number", ""),
+        "called_did": body.get("virtual_phone_number", ""),
+        "call_id": body.get("call_session_id") or body.get("communication_number", ""),
+        "duration": int(body.get("wait_time_duration") or 0),
+        "direction": "inbound",
+    }
+
+
 @router.post("/novofon")
 async def novofon_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle an incoming Novofon call event."""
-    body = await request.json()
+    """Handle an incoming Novofon call event (webhook or HTTP notification)."""
+    raw = await request.body()
+    content_type = request.headers.get("content-type", "")
+
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        from urllib.parse import parse_qs
+        try:
+            parsed = parse_qs(raw, encoding="utf-8", keep_blank_values=True)
+            body: dict = {
+                (k.decode() if isinstance(k, bytes) else k): (v[0].decode() if isinstance(v[0], bytes) else v[0])
+                for k, v in parsed.items() if v
+            }
+        except Exception:
+            form = await request.form()
+            body = dict(form)
+    else:
+        import json as _json
+        try:
+            body = _json.loads(raw) if raw else {}
+        except Exception:
+            body = {}
+
     secret = body.get("webhook_secret") or request.headers.get("X-Webhook-Secret", "")
     if settings.NOVOFON_WEBHOOK_SECRET and secret != settings.NOVOFON_WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
 
