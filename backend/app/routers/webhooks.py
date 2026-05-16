@@ -89,7 +89,7 @@ def _parse_novofon_notification(body: dict) -> dict:
         "event": event,
         "caller_id": body.get("contact_phone_number", ""),
         "called_did": body.get("virtual_phone_number", ""),
-        "call_id": body.get("call_session_id") or body.get("communication_number", ""),
+        "call_id": str(body.get("call_session_id") or body.get("communication_number") or ""),
         "duration": int(body.get("wait_time_duration") or 0),
         "direction": "inbound",
     }
@@ -122,7 +122,8 @@ async def novofon_webhook(
         except Exception:
             body = {}
 
-    logger.info("Novofon raw webhook body: %s", body)
+    import sys
+    print(f"NOVOFON_RAW_BODY: {body}", file=sys.stderr, flush=True)
     body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
