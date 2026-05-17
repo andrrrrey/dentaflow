@@ -74,6 +74,39 @@ function formatPhone(phone: string): string {
   return phone;
 }
 
+function extractPhoneFromContent(content: string | null | undefined): string | null {
+  if (!content) return null;
+  const m = content.match(/Телефон[:\s]+([^\n]+)/i);
+  return m ? m[1].trim() : null;
+}
+
+function getContactPhone(item: CommunicationItem): string | null {
+  if (item.type === "call" || item.type === "missed_call") {
+    const meta = parseCallContent(item.content);
+    if (meta?.callerId) return formatPhone(meta.callerId);
+  }
+  if (item.channel === "site") {
+    return extractPhoneFromContent(item.content);
+  }
+  return null;
+}
+
+function buildDealTitle(item: CommunicationItem): string {
+  const name = getDisplayName(item);
+  const phone = getContactPhone(item);
+  return phone
+    ? `Лид: ${name}, ${phone}`
+    : `Лид: ${name} (${channelLabel[item.channel] ?? item.channel})`;
+}
+
+function buildDealNotes(item: CommunicationItem): string | undefined {
+  const parts: string[] = [];
+  if (item.content) parts.push(item.content);
+  if (item.ai_summary) parts.push(`ИИ-анализ: ${item.ai_summary}`);
+  if (item.ai_next_action) parts.push(`Рекомендация: ${item.ai_next_action}`);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
 function getPreview(item: CommunicationItem): string {
   if (item.type === "missed_call") {
     const meta = parseCallContent(item.content);
@@ -260,24 +293,32 @@ function RequestRow({
 
 /* ── Right: detail panel ── */
 
-function DetailPanel({ item }: { item: CommunicationItem }) {
+function DetailPanel({
+  item,
+  isAdded,
+  onAdded,
+}: {
+  item: CommunicationItem;
+  isAdded: boolean;
+  onAdded: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [added, setAdded] = useState(false);
 
   const addLeadMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post("/deals/", {
-        title: `Лид: ${getDisplayName(item)} (${channelLabel[item.channel] ?? item.channel})`,
+        title: buildDealTitle(item),
         patient_id: item.patient_id ?? undefined,
         patient_name: item.patient_name ?? undefined,
         stage: "new",
         source_channel: item.channel,
+        notes: buildDealNotes(item),
       });
       await api.patch(`/communications/${item.id}`, { status: "in_progress" });
       return data;
     },
     onSuccess: () => {
-      setAdded(true);
+      onAdded();
       queryClient.invalidateQueries({ queryKey: ["pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["communications"] });
     },
@@ -361,16 +402,16 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
 
       {/* Add to pipeline CRM */}
       <button
-        onClick={() => !added && addLeadMutation.mutate()}
-        disabled={added || addLeadMutation.isPending}
+        onClick={() => !isAdded && addLeadMutation.mutate()}
+        disabled={isAdded || addLeadMutation.isPending}
         className="flex items-center justify-center gap-2 rounded-[14px] px-4 py-[12px] text-[13px] font-bold border-none cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
         style={
-          added
+          isAdded
             ? { background: "rgba(0,201,167,0.12)", color: "#00c9a7" }
             : { background: "linear-gradient(135deg, #5B4CF5, #3B7FED)", color: "#fff" }
         }
       >
-        {added ? (
+        {isAdded ? (
           <>
             <CheckCircle2 size={15} />
             Добавлено в воронку
@@ -391,6 +432,7 @@ function DetailPanel({ item }: { item: CommunicationItem }) {
 export default function Communications() {
   const { filters } = useCommunicationsStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -476,7 +518,12 @@ export default function Communications() {
           {/* Right: AI analysis panel */}
           <div>
             {selected ? (
-              <DetailPanel key={selected.id} item={selected} />
+              <DetailPanel
+                key={selected.id}
+                item={selected}
+                isAdded={addedIds.has(selected.id)}
+                onAdded={() => setAddedIds((prev) => new Set(prev).add(selected.id))}
+              />
             ) : (
               <div
                 className="rounded-[18px] h-full flex flex-col items-center justify-center gap-3"
