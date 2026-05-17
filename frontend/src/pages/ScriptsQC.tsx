@@ -164,7 +164,9 @@ function AnalysisPanel({ scriptName, analysis, error }: { scriptName: string; an
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted">Полнота:</span>
-          <span className="text-[18px] font-bold" style={{ color: complianceColor(analysis.completeness) }}>{analysis.completeness}%</span>
+          {analysis.completeness != null
+            ? <span className="text-[18px] font-bold" style={{ color: complianceColor(analysis.completeness) }}>{analysis.completeness}%</span>
+            : <span className="text-[18px] font-bold text-text-muted">—</span>}
         </div>
       </div>
       {analysis.strengths.length > 0 && (
@@ -278,6 +280,7 @@ export default function ScriptsQC() {
   const [compareScriptId, setCompareScriptId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [comparisonResult, setComparisonResult] = useState<CallComparison | null>(null);
+  const [comparisonHistory, setComparisonHistory] = useState<CallComparison[]>([]);
   const [compareError, setCompareError] = useState<string | null>(null);
   const [transcribingCallId, setTranscribingCallId] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
@@ -326,6 +329,7 @@ export default function ScriptsQC() {
     try {
       const result = await compareMutation.mutateAsync({ script_id: compareScriptId, transcript: transcript.trim() });
       setComparisonResult(result.comparison);
+      setComparisonHistory((prev) => [...prev, result.comparison]);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -351,9 +355,9 @@ export default function ScriptsQC() {
           icon={<Brain size={18} className="text-accent3" />}
         />
         <StatCard
-          label="Средняя оценка"
-          value={Object.keys(analysisResults).length > 0
-            ? `${Math.round(Object.values(analysisResults).reduce((s, a) => s + a.score, 0) / Object.keys(analysisResults).length)}%`
+          label="Средняя оценка (звонки)"
+          value={comparisonHistory.length > 0
+            ? `${Math.round(comparisonHistory.reduce((s, c) => s + c.compliance_pct, 0) / comparisonHistory.length)}%`
             : "—"}
           icon={<CheckCircle size={18} className="text-accent2" />}
         />
@@ -378,9 +382,9 @@ export default function ScriptsQC() {
             Нет загруженных скриптов. Нажмите «Загрузить скрипт» чтобы добавить первый.
           </div>
         ) : (
-          <div className="flex gap-4">
+          <div className="flex gap-5">
             {/* Scripts table */}
-            <div className="flex-1 min-w-0">
+            <div className="w-[420px] flex-shrink-0">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
@@ -446,7 +450,7 @@ export default function ScriptsQC() {
             </div>
 
             {/* AI Analysis panel */}
-            <div className="w-[340px] flex-shrink-0">
+            <div className="flex-1 min-w-0">
               <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">ИИ-анализ скрипта</div>
               <AnalysisPanel
                 scriptName={selectedScript?.name ?? ""}
