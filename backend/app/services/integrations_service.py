@@ -231,15 +231,10 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
     if not token:
         return {"ok": False, "message": "Токен бота не указан"}
 
-    has_ws = token != token.strip()
-    token_repr = f"len={len(token)} first5={token[:5]!r} last5={token[-5:]!r} has_ws={has_ws}"
-    logger.info("Max check: token %s", token_repr)
-
+    headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=10.0) as client:
-        req_url = "https://botapi.max.ru/me"
-        logger.info("Max check: GET %s?access_token=<hidden>", req_url)
-        resp = await client.get(req_url, params={"access_token": token})
-        logger.info("Max check: status=%s body=%s", resp.status_code, resp.text[:500])
+        resp = await client.get("https://botapi.max.ru/me", headers=headers)
+        logger.info("Max check /me: status=%s body=%s", resp.status_code, resp.text[:300])
 
         if resp.status_code == 200:
             data = resp.json()
@@ -248,7 +243,7 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
                 try:
                     reg = await client.post(
                         "https://botapi.max.ru/subscriptions",
-                        params={"access_token": token},
+                        headers=headers,
                         json={"url": webhook_url},
                     )
                     logger.info("Max webhook reg: status=%s body=%s", reg.status_code, reg.text[:300])
@@ -259,7 +254,7 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
                     logger.exception("Max webhook registration failed")
             return {"ok": True, "message": f"Подключено ({name})"}
         if resp.status_code == 401:
-            return {"ok": False, "message": f"Неверный токен бота (401). Ответ API: {resp.text[:200]}"}
+            return {"ok": False, "message": "Неверный токен бота (401)"}
         return {"ok": False, "message": f"Ошибка {resp.status_code}: {resp.text[:200]}"}
 
 
