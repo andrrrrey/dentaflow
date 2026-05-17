@@ -93,14 +93,24 @@ async def load_services(db: AsyncSession, page: int = 0, per_page: int = 10) -> 
 
 
 async def load_slots(service_id: str, date_str: str) -> list[dict]:
-    """Return available time slots from 1Denta across all doctors."""
+    """Return available time slots, cached in Redis for 10 minutes."""
+    cache_key = f"slots:{service_id}:{date_str}"
+    try:
+        rc = _rc()
+        cached = await rc.get(cache_key)
+        if cached:
+            logger.info("bot_flow: slots cache hit for %s", cache_key)
+            return json.loads(cached)
+    except Exception:
+        pass  # Redis unavailable — proceed to live fetch
+
     try:
         from app.services.one_denta import OneDentaService
         od = OneDentaService()
         resources = await od.get_resources() or []
         svc_ids = [service_id] if service_id else ["1"]
         slots: list[dict] = []
-        for res in resources:  # check all doctors, not just first 6
+        for res in resources:
             rid = str(res.get("external_id") or res.get("id") or "")
             doc = res.get("name", "Врач")
             if not rid:
@@ -111,7 +121,14 @@ async def load_slots(service_id: str, date_str: str) -> list[dict]:
                 time_part = dt_str[11:16] if len(dt_str) > 10 else dt_str
                 slots.append({"dt": dt_str, "time": time_part, "doctor": doc, "doctor_id": rid})
         slots.sort(key=lambda s: s["dt"])
-        return slots[:15]
+        slots = slots[:15]
+
+        try:
+            await _rc().setex(cache_key, 600, json.dumps(slots, ensure_ascii=False))  # 10 min TTL
+        except Exception:
+            pass
+
+        return slots
     except Exception:
         logger.exception("bot_flow: failed to load slots")
         return []
