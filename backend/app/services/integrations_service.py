@@ -118,6 +118,8 @@ async def check_connection(service: str, db: AsyncSession, webhook_url: str | No
             return await _check_telegram(db)
         elif service == "max_vk":
             return await _check_max_vk(db, webhook_url=webhook_url)
+        elif service == "bots":
+            return {"ok": True, "message": "Настройки сохранены"}
         elif service == "site":
             return await _check_site(db)
         elif service == "mail":
