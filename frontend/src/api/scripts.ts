@@ -107,3 +107,16 @@ export function useTranscribeCall() {
     },
   });
 }
+
+export function useTranscribeAudio() {
+  return useMutation<{ transcript: string }, Error, File>({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await api.post("/scripts/transcribe-audio", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+  });
+}
