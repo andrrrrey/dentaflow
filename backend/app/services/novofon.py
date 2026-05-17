@@ -72,23 +72,29 @@ class NovofonService:
 
         direction = "inbound" if event.get("direction") != "outbound" else "outbound"
 
-        # Determine communication type
-        if event_type in ("missed", "notify_out_start") or duration == 0:
+        # Determine communication type — event_type takes priority over duration
+        if event_type in ("call_end", "notify_end"):
+            comm_type = "call"
+            status = "new"
+            priority = "normal"
+            create_callback_task = False
+        elif event_type in ("missed", "notify_out_start"):
             comm_type = "missed_call"
             status = "new"
             priority = "high"
             create_callback_task = True
-        elif event_type in ("call_end", "notify_end"):
+        elif event_type in ("call_start", "notify_start"):
+            # Just ack; full record written on call_end or missed notification
             comm_type = "call"
             status = "new"
             priority = "normal"
             create_callback_task = False
         else:
-            # call_start or other — just ack, full processing on call_end
-            comm_type = "call"
+            # Unknown event — treat as missed to ensure callback task is created
+            comm_type = "missed_call"
             status = "new"
-            priority = "normal"
-            create_callback_task = False
+            priority = "high"
+            create_callback_task = True
 
         phone = caller if direction == "inbound" else callee
         import json as _json

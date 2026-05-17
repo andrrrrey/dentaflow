@@ -68,17 +68,33 @@ async def _get_slots(db: AsyncSession) -> list[dict]:
 # ------------------------------------------------------------------
 
 def _parse_novofon_notification(body: dict) -> dict:
-    """Map Novofon notification fields to our internal call-event format."""
-    if "caller_id" in body or "event" in body:
-        return body  # already in our format
+    """Map Novofon notification fields to our internal call-event format.
 
+    Novofon sends three notification types with different payload shapes:
+    - Завершённый вызов (answered): has call_duration > 0
+    - Потерянный вызов (missed): only has wait_time_duration, no call_duration
+    - Входящий вызов (started): has neither duration field set meaningfully
+
+    We use call_duration as the primary signal, notification_name as secondary.
+    """
+    if "caller_id" in body or "event" in body:
+        return body  # already in our internal format
+
+    # Primary: call_duration is only present in "завершённый вызов" (answered) notifications
+    call_duration = int(body.get("call_duration") or 0)
     notification_name = body.get("notification_name", "").lower()
-    if "потерян" in notification_name or "missed" in notification_name:
-        event = "missed"
-    elif "завершён" in notification_name or "end" in notification_name:
+
+    if call_duration > 0:
+        event = "notify_end"  # answered call
+    elif "завершён" in notification_name or "end" in notification_name or "answered" in notification_name:
         event = "notify_end"
-    else:
+    elif "потерян" in notification_name or "missed" in notification_name or "lost" in notification_name:
+        event = "missed"
+    elif "вход" in notification_name or "start" in notification_name or "incoming" in notification_name:
         event = "notify_start"
+    else:
+        # Unknown notification name — treat as missed if no call_duration (safer: creates callback task)
+        event = "missed"
 
     # contact_phone_number is nested inside contact_info
     contact_info = body.get("contact_info") or {}
@@ -90,7 +106,7 @@ def _parse_novofon_notification(body: dict) -> dict:
         "caller_id": caller_id,
         "called_did": body.get("virtual_phone_number", ""),
         "call_id": call_id,
-        "duration": int(body.get("wait_time_duration") or 0),
+        "duration": call_duration or int(body.get("wait_time_duration") or 0),
         "direction": "inbound",
     }
 
