@@ -87,9 +87,9 @@ class MaxVkService:
                   Each button: {"type": "callback", "text": "...", "payload": "..."}
         """
         if settings.APP_ENV == "development":
-            logger.info(
-                "DEV Max send_reply chat_id=%s text_len=%d buttons=%s (mock)",
-                chat_id, len(text), bool(buttons),
+            logger.warning(
+                "DEV MOCK Max send_reply — message NOT sent. chat_id=%s text_len=%d APP_ENV=%s",
+                chat_id, len(text), settings.APP_ENV,
             )
             return {"message": {"mid": "mock-mid", "seq": 1}}
 
@@ -106,13 +106,14 @@ class MaxVkService:
             ]
 
         headers = {"Authorization": self.bot_token}
+        logger.warning("Max send_reply REAL: chat_id=%s text_len=%d", chat_id, len(text))
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.API_URL}/messages",
                 headers=headers,
                 json=payload,
             )
-            logger.info("Max send_reply: status=%s body=%s", response.status_code, response.text[:300])
+            logger.warning("Max send_reply: status=%s body=%s", response.status_code, response.text[:300])
             response.raise_for_status()
             return response.json()
 
