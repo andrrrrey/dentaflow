@@ -188,9 +188,10 @@ async def upload_script_file(
 async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonService) -> str:
     """Find the Novofon recording URL for a given call_id.
 
-    First tries /v1/pbx/record/request/ (fast but often unreliable).
-    Falls back to /v1/statistics/pbx/ which includes the 'record' field
-    with a direct download link for every answered call.
+    First tries /v1/pbx/record/request/ (fast, returns direct link).
+    Falls back to /v1/statistics/pbx/ which includes the 'record' field.
+    Note: the returned URL requires Novofon auth to download — use
+    svc.download_recording_bytes() instead of plain httpx.get().
     """
     from datetime import timedelta
 
@@ -202,12 +203,8 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonServic
     try:
         url = await svc.get_recording(call_id)
         if url:
-            # Quick sanity-check: only return if the URL is reachable
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                head = await client.head(url)
-            if head.status_code < 400:
-                logger.info("Recording found via record/request API for call_id=%s", call_id)
-                return url
+            logger.info("Recording URL obtained via record/request API for call_id=%s: %.80s", call_id, url)
+            return url
     except Exception as exc:
         logger.debug("record/request API failed for call_id=%s: %s", call_id, exc)
 
@@ -222,9 +219,9 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonServic
         date_from = None
         date_to = None
     else:
-        # ±5 min window around the call
-        date_from = comm.created_at.replace(tzinfo=None) - timedelta(minutes=5)
-        date_to = comm.created_at.replace(tzinfo=None) + timedelta(minutes=5)
+        # ±10 min window around the call
+        date_from = comm.created_at.replace(tzinfo=None) - timedelta(minutes=10)
+        date_to = comm.created_at.replace(tzinfo=None) + timedelta(minutes=10)
 
     try:
         stats = await svc.get_call_history(date_from=date_from, date_to=date_to)
@@ -239,10 +236,9 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonServic
         record_url = stat.get("record") or stat.get("recording") or ""
         if not record_url:
             continue
-        # Prefer exact call_id match; otherwise take first record in the time window
         stat_call_id = str(stat.get("call_id") or stat.get("pbx_call_id") or "")
         if stat_call_id == call_id or comm is not None:
-            logger.info("Recording found via stats API: stat_call_id=%s url=%.80s...", stat_call_id, record_url)
+            logger.info("Recording found via stats API: stat_call_id=%s url=%.80s", stat_call_id, record_url)
             return record_url
 
     return ""
@@ -309,27 +305,19 @@ async def transcribe_call(
             ),
         )
 
-    logger.info("Downloading Novofon recording for call_id=%s url=%.80s...", body.call_id, url)
+    logger.info("Downloading Novofon recording for call_id=%s url=%.80s", body.call_id, url)
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            resp = await client.get(url)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        logger.error("Recording download failed: call_id=%s status=%s url=%.80s...",
-                     body.call_id, exc.response.status_code, url)
+    audio_bytes = await svc.download_recording_bytes(url)
+    if not audio_bytes:
+        logger.error("Failed to download recording for call_id=%s url=%.80s", body.call_id, url)
         raise HTTPException(
             status_code=502,
             detail=(
-                f"Файл записи скачать не удалось (HTTP {exc.response.status_code}). "
-                "Попробуйте снова через несколько минут."
+                "Не удалось скачать файл записи из Новофон. "
+                "Убедитесь, что у API-ключа есть доступ к записям, "
+                "и что запись не была удалена."
             ),
         )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Ошибка загрузки записи: {exc}")
-
-    if len(resp.content) < 1000:
-        raise HTTPException(status_code=404, detail="Файл записи пустой или повреждён.")
 
     ai = AIService()
     if not ai.api_key:
@@ -338,7 +326,7 @@ async def transcribe_call(
     try:
         from openai import AsyncOpenAI
         openai_client = AsyncOpenAI(api_key=ai.api_key)
-        audio_buffer = io.BytesIO(resp.content)
+        audio_buffer = io.BytesIO(audio_bytes)
         audio_buffer.name = f"{body.call_id}.mp3"
         result = await openai_client.audio.transcriptions.create(
             model="whisper-1",
