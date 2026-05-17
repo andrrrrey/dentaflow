@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy.sql import func
+
 from app.config import settings
 from app.database import get_db
 from app.models.communication import Communication
@@ -44,6 +46,27 @@ _max_vk = MaxVkService()
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: str | None = None) -> None:
+    """Insert or update BotUser record (used for appointment reminders)."""
+    try:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from app.models.bot_user import BotUser
+        values: dict = {"id": __import__("uuid").uuid4(), "channel": channel, "chat_id": chat_id, "user_id": user_id}
+        if phone:
+            values["phone"] = phone
+        set_dict: dict = {"last_seen_at": func.now()}
+        if phone:
+            set_dict["phone"] = phone
+        stmt = pg_insert(BotUser).values(**values).on_conflict_do_update(
+            index_elements=["channel", "user_id"],
+            set_=set_dict,
+        )
+        await db.execute(stmt)
+        await db.commit()
+    except Exception:
+        logger.exception("_upsert_bot_user failed for %s:%s", channel, user_id)
 
 
 # ------------------------------------------------------------------
@@ -249,8 +272,17 @@ async def telegram_webhook(
 
     # Communication is created only when user provides contacts (inside bot_flow)
 
+    # Track bot users for reminders (on /start)
+    is_start_tg = text.strip() == "/start"
+    if is_start_tg and user_id and chat_id:
+        await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
+
     if not chat_id:
         return {"status": "ok"}
+
+    # Upsert BotUser record on every interaction
+    if user_id and chat_id:
+        await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
 
     is_start = text.strip() == "/start"
     ai_enabled = await get_raw_value(db, "telegram_bot_ai_enabled")
@@ -324,6 +356,10 @@ async def max_webhook(
     if not chat_id:
         logger.warning("Max webhook: no chat_id, skipping reply")
         return {"ok": True}
+
+    # Upsert BotUser record on every interaction (including bot_started)
+    if user_id and chat_id:
+        await _upsert_bot_user(db, "max", str(chat_id), str(user_id))
 
     max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
     if not max_token:
