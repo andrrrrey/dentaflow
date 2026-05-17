@@ -230,8 +230,8 @@ async def _sync_appointments_async(
     # Runs after commit so new appointments are visible.
     await _backfill_doctor_names_async()
 
-    # Auto-create waiting_list deals for scheduled/confirmed appointments without a deal
-    await _sync_waiting_list_deals_async(appointments_data)
+    # Auto-create waiting_list deals disabled — deals are created manually via Communications
+    # await _sync_waiting_list_deals_async(appointments_data)
 
     return {"created": created, "updated": updated, "total": len(appointments_data)}
 
