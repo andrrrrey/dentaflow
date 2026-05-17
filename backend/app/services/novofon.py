@@ -62,46 +62,53 @@ class NovofonService:
     async def download_recording_bytes(self, url: str) -> bytes | None:
         """Download recording bytes from a Novofon recording URL.
 
-        Tries three strategies in order:
-        1. Auth header signed with the URL path (no format=json) — for my.novofon.ru links
-        2. Auth header with format=json — older API style
-        3. No auth — in case the URL is a pre-signed temporary link
+        api.novofon.com URLs: token is embedded in path, try no-auth first.
+        my.novofon.ru URLs: require API auth header — try both signing variants.
         """
         from urllib.parse import urlparse
         parsed = urlparse(url)
         path = parsed.path
+        is_api_url = (parsed.hostname or "").endswith("novofon.com") and path.startswith("/v1/")
 
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            # Strategy 1: path-signed auth (correct for file downloads)
+            # For api.novofon.com/v1/pbx/record/download/... the token is in the URL path
+            if is_api_url:
+                try:
+                    resp = await client.get(url)
+                    logger.info("api.novofon.com no-auth: status=%s len=%d", resp.status_code, len(resp.content))
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        return resp.content
+                except Exception as exc:
+                    logger.debug("api.novofon.com no-auth failed: %s", exc)
+
             if self.api_key and self.api_secret:
+                # Path-signed auth (no format=json — correct for binary file download)
                 try:
                     resp = await client.get(url, headers={"Authorization": self._download_auth_header(path)})
+                    logger.info("path-auth download: status=%s len=%d url=%.80s", resp.status_code, len(resp.content), url)
                     if resp.status_code == 200 and len(resp.content) > 1000:
-                        logger.info("Recording downloaded via path-auth: %d bytes from %s", len(resp.content), url[:80])
                         return resp.content
-                    logger.debug("Path-auth download: status=%s len=%d", resp.status_code, len(resp.content))
                 except Exception as exc:
-                    logger.debug("Path-auth download failed: %s", exc)
+                    logger.debug("path-auth download failed: %s", exc)
 
-                # Strategy 2: full HMAC auth with format=json
+                # Full HMAC auth with format=json (some Novofon download endpoints use this)
                 try:
                     resp = await client.get(url, headers={"Authorization": self._auth_header(path)})
+                    logger.info("full-auth download: status=%s len=%d", resp.status_code, len(resp.content))
                     if resp.status_code == 200 and len(resp.content) > 1000:
-                        logger.info("Recording downloaded via full-auth: %d bytes", len(resp.content))
                         return resp.content
-                    logger.debug("Full-auth download: status=%s len=%d", resp.status_code, len(resp.content))
                 except Exception as exc:
-                    logger.debug("Full-auth download failed: %s", exc)
+                    logger.debug("full-auth download failed: %s", exc)
 
-            # Strategy 3: unauthenticated (pre-signed URL)
-            try:
-                resp = await client.get(url)
-                if resp.status_code == 200 and len(resp.content) > 1000:
-                    logger.info("Recording downloaded without auth: %d bytes", len(resp.content))
-                    return resp.content
-                logger.warning("Unauthenticated download: status=%s len=%d url=%s", resp.status_code, len(resp.content), url[:80])
-            except Exception as exc:
-                logger.error("Unauthenticated download failed: %s", exc)
+            # Last resort: unauthenticated
+            if not is_api_url:
+                try:
+                    resp = await client.get(url)
+                    logger.info("no-auth download: status=%s len=%d url=%.80s", resp.status_code, len(resp.content), url)
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        return resp.content
+                except Exception as exc:
+                    logger.error("no-auth download failed: %s", exc)
 
         return None
 
@@ -205,21 +212,42 @@ class NovofonService:
             return response.json()
 
     async def get_recording(self, call_id: str) -> str:
-        """Return the URL of the call recording for *call_id*."""
+        """Return the URL of the call recording for *call_id*.
+
+        Tries call_id as both 'call_id' and 'pbx_call_id' parameters.
+        Returns empty string if not found or on any error.
+        """
         if settings.APP_ENV == "development":
             return f"https://example.com/recordings/mock-{call_id}.mp3"
 
-        endpoint = f"/v1/pbx/record/request/"
-        req_params = {"call_id": call_id}
+        endpoint = "/v1/pbx/record/request/"
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(
-                f"https://api.novofon.com{endpoint}",
-                headers={"Authorization": self._auth_header(endpoint, req_params)},
-                params={**req_params, "format": "json"},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("link", "")
+            for param_name in ("call_id", "pbx_call_id"):
+                req_params = {param_name: call_id}
+                try:
+                    response = await client.get(
+                        f"https://api.novofon.com{endpoint}",
+                        headers={"Authorization": self._auth_header(endpoint, req_params)},
+                        params={**req_params, "format": "json"},
+                    )
+                    data = response.json()
+                    logger.info(
+                        "record/request (param=%s call_id=%s) → status=%s data=%s",
+                        param_name, call_id, response.status_code, data,
+                    )
+                    # Single link
+                    link = data.get("link") or ""
+                    # Multiple links (when pbx_call_id is used)
+                    if not link:
+                        links = data.get("links") or []
+                        if links:
+                            first = links[0]
+                            link = first if isinstance(first, str) else (first.get("link") or "")
+                    if link:
+                        return link
+                except Exception as exc:
+                    logger.debug("record/request (param=%s): %s", param_name, exc)
+        return ""
 
     async def get_call_history(
         self,
