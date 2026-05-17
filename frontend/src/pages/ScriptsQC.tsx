@@ -392,8 +392,12 @@ export default function ScriptsQC() {
           <span className="text-[12px] text-text-muted">{answeredCalls.length} за 30 дней</span>
         </div>
         {transcribeError && (
-          <div className="mb-3 px-3 py-2 rounded-xl text-[12px] font-medium text-[#c52048]" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
-            {transcribeError}
+          <div className="mb-3 px-4 py-3 rounded-xl text-[12px] text-[#c52048] flex flex-col gap-1" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
+            <span className="font-bold">Ошибка автоматической расшифровки:</span>
+            <span>{transcribeError}</span>
+            <span className="text-text-muted mt-1">
+              Вы можете вставить расшифровку вручную в секцию «Сравнение звонка со скриптом» ниже.
+            </span>
           </div>
         )}
         {answeredCalls.length === 0 ? (
@@ -435,8 +439,8 @@ export default function ScriptsQC() {
         )}
       </Card>
 
-      {/* Compare with call section */}
-      {showCompare && (
+      {/* Compare with call section — always visible */}
+      {true && (
         <Card>
           <h2 className="text-[15px] font-bold text-text-main mb-4">
             <GitCompare size={16} className="inline mr-2 text-accent2" />

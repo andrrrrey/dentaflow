@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import io
+import logging
 import uuid
 
 import httpx
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -196,25 +199,52 @@ async def transcribe_call(
     api_key = await get_raw_value(db, "novofon_api_key")
     api_secret = await get_raw_value(db, "novofon_webhook_secret")
     svc = NovofonService(api_key=api_key or None, api_secret=api_secret or None)
-    url = await svc.get_recording(body.call_id)
-
-    if not url:
-        raise HTTPException(status_code=404, detail="Recording not found")
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        url = await svc.get_recording(body.call_id)
+    except Exception as exc:
+        logger.error("Novofon get_recording error for call_id=%s: %s", body.call_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Novofon API не вернул запись для звонка {body.call_id}: {exc}",
+        )
+
+    if not url:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Novofon не нашёл запись для этого звонка. "
+                "Проверьте: включена ли запись разговоров в настройках Novofon, "
+                "и есть ли у API-ключа доступ к записям."
+            ),
+        )
+
+    logger.info("Downloading Novofon recording for call_id=%s url=%s", body.call_id, url)
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             resp = await client.get(url)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Recording download failed: call_id=%s url=%s status=%s",
+            body.call_id, url, exc.response.status_code,
+        )
         raise HTTPException(
             status_code=502,
-            detail=f"Не удалось скачать запись звонка: HTTP {exc.response.status_code}",
+            detail=(
+                f"Запись найдена, но файл недоступен (HTTP {exc.response.status_code}). "
+                "Возможно запись ещё обрабатывается Novofon — попробуйте через несколько минут."
+            ),
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Ошибка при получении записи: {exc}")
+        raise HTTPException(status_code=502, detail=f"Ошибка загрузки записи: {exc}")
 
     if len(resp.content) < 1000:
-        raise HTTPException(status_code=404, detail="Запись звонка не найдена или пуста")
+        raise HTTPException(
+            status_code=404,
+            detail="Файл записи пустой или повреждён. Возможно запись ещё не готова.",
+        )
 
     ai = AIService()
     if not ai.api_key:
