@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level token cache so it survives across service instantiations
 _cached_token: str | None = None
+_auth_locked_until: float = 0.0  # epoch seconds; don't retry auth before this time
 
 
 def _utcnow() -> datetime:
@@ -414,14 +415,24 @@ class OneDentaService:
 
     async def _authenticate(self) -> str:
         """POST /api/v1/auth → return JWT token."""
+        global _auth_locked_until
+        import time
+        if time.time() < _auth_locked_until:
+            wait = int(_auth_locked_until - time.time())
+            raise RuntimeError(f"1Denta auth locked for {wait}s (account temporarily blocked by 1Denta)")
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{self.base_url}/api/v1/auth",
                 json={"email": self.email, "password": self.password},
                 headers={"Content-Type": "application/json"},
             )
+            if response.status_code == 423:
+                _auth_locked_until = time.time() + 1800  # don't retry for 30 min
+                logger.error("1Denta: account locked (423) — will not retry auth for 30 min")
+                response.raise_for_status()
             response.raise_for_status()
             token = response.json()["token"]
+            _auth_locked_until = 0.0
             logger.info("1Denta: obtained new JWT token")
             return token
 
