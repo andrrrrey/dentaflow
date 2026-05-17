@@ -191,15 +191,6 @@ class NovofonService:
 
     async def make_call(self, from_num: str, to_num: str) -> dict:
         """Initiate an outbound call from *from_num* to *to_num*."""
-        if settings.APP_ENV == "development":
-            logger.info("DEV make_call %s -> %s (mock)", from_num, to_num)
-            return {
-                "call_id": f"mock-{uuid.uuid4().hex[:8]}",
-                "status": "initiated",
-                "from": from_num,
-                "to": to_num,
-            }
-
         endpoint = "/v1/request/callback/"
         body = {"from": from_num, "to": to_num}
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -217,8 +208,8 @@ class NovofonService:
         Tries call_id as both 'call_id' and 'pbx_call_id' parameters.
         Returns empty string if not found or on any error.
         """
-        if settings.APP_ENV == "development":
-            return f"https://example.com/recordings/mock-{call_id}.mp3"
+        if not self.api_key or not self.api_secret:
+            return ""
 
         endpoint = "/v1/pbx/record/request/"
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -235,9 +226,7 @@ class NovofonService:
                         "record/request (param=%s call_id=%s) → status=%s data=%s",
                         param_name, call_id, response.status_code, data,
                     )
-                    # Single link
                     link = data.get("link") or ""
-                    # Multiple links (when pbx_call_id is used)
                     if not link:
                         links = data.get("links") or []
                         if links:
