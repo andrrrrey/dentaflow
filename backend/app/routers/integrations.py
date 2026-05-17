@@ -23,7 +23,10 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 
 def _max_webhook_url(request: Request) -> str:
-    return str(request.base_url).rstrip("/") + "/api/v1/webhooks/max"
+    # Respect X-Forwarded-Proto / Host set by nginx
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}/api/v1/webhooks/max"
 
 
 @router.get("/")
