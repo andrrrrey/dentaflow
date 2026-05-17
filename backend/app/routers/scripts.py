@@ -312,12 +312,28 @@ async def transcribe_call(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Download a Novofon call recording and transcribe it with Whisper."""
-    api_key = await get_raw_value(db, "novofon_api_key")
-    api_secret = await get_raw_value(db, "novofon_webhook_secret")
-    svc = NovofonService(api_key=api_key or None, api_secret=api_secret or None)
+    from app.config import settings as app_settings
 
-    # Step 1: find the recording URL via Novofon statistics API
-    # (more reliable than /v1/pbx/record/request/ which often returns 404)
+    api_key = (await get_raw_value(db, "novofon_api_key")) or app_settings.NOVOFON_API_KEY
+    api_secret = (await get_raw_value(db, "novofon_webhook_secret")) or app_settings.NOVOFON_WEBHOOK_SECRET
+
+    logger.info(
+        "transcribe_call: call_id=%s api_key=%s api_secret=%s",
+        body.call_id,
+        (api_key[:8] + "...") if api_key else "MISSING",
+        "SET" if api_secret else "MISSING",
+    )
+
+    if not api_key or not api_secret:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "API-ключ или секрет Новофон не настроены. "
+                "Перейдите в Настройки → Интеграции → Новофон и сохраните ключи."
+            ),
+        )
+
+    svc = NovofonService(api_key=api_key, api_secret=api_secret)
     url = await _find_recording_url(body.call_id, db, svc)
 
     if not url:
