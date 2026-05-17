@@ -252,9 +252,11 @@ export default function ScriptsQC() {
   const [transcript, setTranscript] = useState("");
   const [comparisonResult, setComparisonResult] = useState<CallComparison | null>(null);
   const [transcribingCallId, setTranscribingCallId] = useState<string | null>(null);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   const { data: callsData } = useCalls({ days: 30, status: "answered" });
-  const answeredCalls = callsData?.calls ?? [];
+  // Only show calls with actual duration (recordings exist for non-zero duration calls)
+  const answeredCalls = (callsData?.calls ?? []).filter((c) => c.duration > 0);
 
   const scripts = data?.scripts ?? [];
 
@@ -269,12 +271,19 @@ export default function ScriptsQC() {
 
   async function handleTranscribe(call: CallRecord) {
     setTranscribingCallId(call.call_id);
+    setTranscribeError(null);
     setShowCompare(true);
     try {
       const result = await transcribeMutation.mutateAsync(call.call_id);
       setTranscript(result.transcript);
-    } catch { /* ignore */ }
-    setTranscribingCallId(null);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? "Не удалось расшифровать звонок";
+      setTranscribeError(msg);
+    } finally {
+      setTranscribingCallId(null);
+    }
   }
 
   async function handleCompare() {
@@ -382,13 +391,18 @@ export default function ScriptsQC() {
           </h2>
           <span className="text-[12px] text-text-muted">{answeredCalls.length} за 30 дней</span>
         </div>
+        {transcribeError && (
+          <div className="mb-3 px-3 py-2 rounded-xl text-[12px] font-medium text-[#c52048]" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
+            {transcribeError}
+          </div>
+        )}
         {answeredCalls.length === 0 ? (
           <div className="text-center text-text-muted py-8 text-[13px]">
-            Нет отвеченных звонков за последние 30 дней
+            Нет отвеченных звонков с записью за последние 30 дней
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {answeredCalls.slice(0, 20).map((call) => (
+            {answeredCalls.slice(0, 30).map((call) => (
               <div key={call.call_id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.08)" }}>
                 <div className="flex-shrink-0">
                   {call.direction === "outbound"
@@ -403,17 +417,18 @@ export default function ScriptsQC() {
                     {formatCallDate(call.started_at)} · {formatDuration(call.duration)}
                   </div>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleTranscribe(call)}
-                  disabled={transcribingCallId === call.call_id}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleTranscribe(call); }}
+                  disabled={transcribingCallId !== null}
+                  className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: transcribingCallId === call.call_id ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
                 >
                   {transcribingCallId === call.call_id
-                    ? <Loader2 size={12} className="animate-spin mr-1" />
-                    : <Mic size={12} className="mr-1" />}
-                  {transcribingCallId === call.call_id ? "Расшифровка..." : "Расшифровать"}
-                </Button>
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Mic size={12} />}
+                  <span>{transcribingCallId === call.call_id ? "Расшифровка..." : "Расшифровать"}</span>
+                </button>
               </div>
             ))}
           </div>

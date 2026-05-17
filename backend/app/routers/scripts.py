@@ -201,22 +201,38 @@ async def transcribe_call(
     if not url:
         raise HTTPException(status_code=404, detail="Recording not found")
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.get(url)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(url)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Не удалось скачать запись звонка: HTTP {exc.response.status_code}",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ошибка при получении записи: {exc}")
+
+    if len(resp.content) < 1000:
+        raise HTTPException(status_code=404, detail="Запись звонка не найдена или пуста")
 
     ai = AIService()
     if not ai.api_key:
-        raise HTTPException(status_code=503, detail="AI service not configured")
+        raise HTTPException(status_code=503, detail="OpenAI API key не настроен")
 
-    from openai import AsyncOpenAI
-    openai_client = AsyncOpenAI(api_key=ai.api_key)
-    audio_buffer = io.BytesIO(resp.content)
-    audio_buffer.name = f"{body.call_id}.mp3"
-    result = await openai_client.audio.transcriptions.create(
-        model="whisper-1",
-        file=audio_buffer,
-        language="ru",
-    )
+    try:
+        from openai import AsyncOpenAI
+        openai_client = AsyncOpenAI(api_key=ai.api_key)
+        audio_buffer = io.BytesIO(resp.content)
+        audio_buffer.name = f"{body.call_id}.mp3"
+        result = await openai_client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_buffer,
+            language="ru",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ошибка транскрибации: {exc}")
+
     return {"call_id": body.call_id, "transcript": result.text}
 
 
