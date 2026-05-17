@@ -86,13 +86,6 @@ class MaxVkService:
         buttons:  Optional 2-D list of inline buttons.
                   Each button: {"type": "callback", "text": "...", "payload": "..."}
         """
-        if settings.APP_ENV == "development":
-            logger.warning(
-                "DEV MOCK Max send_reply — message NOT sent. chat_id=%s text_len=%d APP_ENV=%s",
-                chat_id, len(text), settings.APP_ENV,
-            )
-            return {"message": {"mid": "mock-mid", "seq": 1}}
-
         payload: dict = {
             "recipient": {"chat_id": chat_id},
             "text": text,
@@ -119,8 +112,6 @@ class MaxVkService:
 
     async def answer_callback(self, callback_id: str, notification: str = "") -> None:
         """Acknowledge an inline button press."""
-        if settings.APP_ENV == "development":
-            return
         headers = {"Authorization": self.bot_token}
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
