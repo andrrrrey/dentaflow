@@ -186,12 +186,12 @@ async def upload_script_file(
 
 
 async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonService) -> str:
-    """Find the Novofon recording URL for a given call_id.
+    """Find a downloadable Novofon recording URL for the given call_id.
 
-    First tries /v1/pbx/record/request/ (fast, returns direct link).
-    Falls back to /v1/statistics/pbx/ which includes the 'record' field.
-    Note: the returned URL requires Novofon auth to download — use
-    svc.download_recording_bytes() instead of plain httpx.get().
+    Strategy:
+    1. /v1/pbx/record/request/ with call_id → returns api.novofon.com URL (best)
+    2. /v1/statistics/pbx/ → extract call IDs → retry /v1/pbx/record/request/ with those
+    3. Last resort: use the my.novofon.ru URL from stats (requires auth to download)
     """
     from datetime import timedelta
 
@@ -200,26 +200,22 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonServic
     from app.models.communication import Communication
 
     # --- Method 1: direct recording request API ---
-    try:
-        url = await svc.get_recording(call_id)
-        if url:
-            logger.info("Recording URL obtained via record/request API for call_id=%s: %.80s", call_id, url)
-            return url
-    except Exception as exc:
-        logger.debug("record/request API failed for call_id=%s: %s", call_id, exc)
+    url = await svc.get_recording(call_id)
+    if url:
+        logger.info("Recording URL via record/request (call_id=%s): %.80s", call_id, url)
+        return url
 
-    # --- Method 2: statistics API – look up the call by timestamp ---
+    # --- Method 2: statistics API → re-request recording with stats call IDs ---
     result = await db.execute(
         sa_select(Communication).where(Communication.external_id == call_id)
     )
     comm = result.scalar_one_or_none()
 
     if comm is None:
-        logger.warning("Communication not found for call_id=%s, trying stats with wide window", call_id)
+        logger.warning("Communication not found for call_id=%s; trying stats with wide window", call_id)
         date_from = None
         date_to = None
     else:
-        # ±10 min window around the call
         date_from = comm.created_at.replace(tzinfo=None) - timedelta(minutes=10)
         date_to = comm.created_at.replace(tzinfo=None) + timedelta(minutes=10)
 
@@ -229,19 +225,48 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonServic
         logger.error("Novofon stats API error: %s", exc)
         return ""
 
-    logger.info("Novofon stats returned %d records for call_id=%s window=%s..%s",
+    logger.info("Stats returned %d records (call_id=%s, window=%s..%s)",
                 len(stats), call_id, date_from, date_to)
 
+    fallback_url = ""
     for stat in stats:
-        record_url = stat.get("record") or stat.get("recording") or ""
-        if not record_url:
-            continue
-        stat_call_id = str(stat.get("call_id") or stat.get("pbx_call_id") or "")
-        if stat_call_id == call_id or comm is not None:
-            logger.info("Recording found via stats API: stat_call_id=%s url=%.80s", stat_call_id, record_url)
-            return record_url
+        s_call_id = str(stat.get("call_id") or "")
+        s_pbx_call_id = str(stat.get("pbx_call_id") or "")
+        s_call_id_with_rec = str(stat.get("call_id_with_rec") or "")
+        s_record_url = stat.get("record") or stat.get("recording") or ""
 
-    return ""
+        logger.info(
+            "Stat: call_id=%s pbx_call_id=%s call_id_with_rec=%s record=%.80s",
+            s_call_id, s_pbx_call_id, s_call_id_with_rec, s_record_url,
+        )
+
+        is_match = (
+            s_call_id == call_id
+            or s_pbx_call_id == call_id
+            or comm is not None  # time-window match
+        )
+        if not is_match:
+            continue
+
+        # Try to get a proper api.novofon.com URL using call IDs found in stats.
+        # call_id_with_rec is the most reliable identifier for the recording.
+        for cid in filter(None, [s_call_id_with_rec, s_call_id, s_pbx_call_id]):
+            if cid == call_id:
+                continue  # already tried this one above
+            url = await svc.get_recording(cid)
+            if url:
+                logger.info("Recording URL via stats→record/request (cid=%s): %.80s", cid, url)
+                return url
+
+        # Save my.novofon.ru URL as last resort (requires browser-session auth)
+        if s_record_url and not fallback_url:
+            fallback_url = s_record_url
+
+    if fallback_url:
+        logger.warning(
+            "Using my.novofon.ru fallback URL (may need browser auth): %.80s", fallback_url
+        )
+    return fallback_url
 
 
 class TranscribeCallBody(BaseModel):
