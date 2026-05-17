@@ -138,15 +138,43 @@ async def delete_stage_deals(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Delete all deals in the given pipeline stage."""
+    """Bulk-delete all deals in the given pipeline stage."""
+    from sqlalchemy import text
+
     stage = await db.get(PipelineStage, stage_id)
     if stage is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-    result = await db.execute(select(Deal).where(Deal.stage == stage.key))
-    deals = result.scalars().all()
-    deleted_count = len(deals)
-    for deal in deals:
-        await db.delete(deal)
+
+    # Count first
+    count_result = await db.execute(
+        text("SELECT COUNT(*) FROM deals WHERE stage = :stage"),
+        {"stage": stage.key},
+    )
+    deleted_count = count_result.scalar() or 0
+
+    # Cascade-delete related rows, then deals — all in raw SQL for speed
+    await db.execute(
+        text("""
+            DELETE FROM deal_stage_history
+            WHERE deal_id IN (SELECT id FROM deals WHERE stage = :stage)
+        """),
+        {"stage": stage.key},
+    )
+    await db.execute(
+        text("""
+            DELETE FROM deal_notes
+            WHERE deal_id IN (SELECT id FROM deals WHERE stage = :stage)
+        """),
+        {"stage": stage.key},
+    )
+    await db.execute(
+        text("UPDATE tasks SET deal_id = NULL WHERE deal_id IN (SELECT id FROM deals WHERE stage = :stage)"),
+        {"stage": stage.key},
+    )
+    await db.execute(
+        text("DELETE FROM deals WHERE stage = :stage"),
+        {"stage": stage.key},
+    )
     await db.commit()
     return {"deleted": deleted_count}
 
