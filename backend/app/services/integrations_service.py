@@ -231,10 +231,10 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
     if not token:
         return {"ok": False, "message": "Токен бота не указан"}
 
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": token}
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get("https://botapi.max.ru/me", headers=headers)
-        logger.info("Max check /me: status=%s body=%s", resp.status_code, resp.text[:300])
+        resp = await client.get("https://platform-api.max.ru/me", headers=headers)
+        logger.info("Max check /me status=%s body=%s", resp.status_code, resp.text[:400])
 
         if resp.status_code == 200:
             data = resp.json()
@@ -242,20 +242,19 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
             if webhook_url:
                 try:
                     reg = await client.post(
-                        "https://botapi.max.ru/subscriptions",
+                        "https://platform-api.max.ru/subscriptions",
                         headers=headers,
                         json={"url": webhook_url},
                     )
                     logger.info("Max webhook reg: status=%s body=%s", reg.status_code, reg.text[:300])
                     if reg.status_code == 200:
                         return {"ok": True, "message": f"Подключено ({name}), webhook зарегистрирован"}
-                    logger.warning("Max webhook registration returned %s: %s", reg.status_code, reg.text[:200])
+                    logger.warning("Max webhook reg error %s: %s", reg.status_code, reg.text[:200])
                 except Exception:
                     logger.exception("Max webhook registration failed")
             return {"ok": True, "message": f"Подключено ({name})"}
-        if resp.status_code == 401:
-            return {"ok": False, "message": "Неверный токен бота (401)"}
-        return {"ok": False, "message": f"Ошибка {resp.status_code}: {resp.text[:200]}"}
+
+        return {"ok": False, "message": f"Ошибка {resp.status_code}: {resp.text[:300]}"}
 
 
 async def _check_site(db: AsyncSession) -> dict:

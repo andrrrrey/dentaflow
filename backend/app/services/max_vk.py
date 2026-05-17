@@ -39,7 +39,7 @@ def _utcnow() -> datetime:
 class MaxVkService:
     """Service-layer wrapper around the Max messenger Bot API."""
 
-    API_URL = "https://botapi.max.ru"
+    API_URL = "https://platform-api.max.ru"
 
     def __init__(self, bot_token: str | None = None) -> None:
         # bot_token is the access_token issued when creating a bot via @MaxBotAPI in Max messenger
@@ -105,7 +105,7 @@ class MaxVkService:
                 }
             ]
 
-        headers = {"Authorization": f"Bearer {self.bot_token}"}
+        headers = {"Authorization": self.bot_token}
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.API_URL}/messages",
@@ -119,7 +119,7 @@ class MaxVkService:
         """Acknowledge an inline button press."""
         if settings.APP_ENV == "development":
             return
-        headers = {"Authorization": f"Bearer {self.bot_token}"}
+        headers = {"Authorization": self.bot_token}
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
                 f"{self.API_URL}/answers",
@@ -129,7 +129,7 @@ class MaxVkService:
 
     async def register_webhook(self, url: str) -> dict:
         """Register (or update) the bot webhook URL."""
-        headers = {"Authorization": f"Bearer {self.bot_token}"}
+        headers = {"Authorization": self.bot_token}
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.API_URL}/subscriptions",
