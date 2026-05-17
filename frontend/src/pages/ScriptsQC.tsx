@@ -4,7 +4,7 @@ import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
 import { ClipboardList, Plus, X, Brain, GitCompare, Trash2, Loader2, CheckCircle, Phone, PhoneIncoming, PhoneOutgoing, Upload, FileText, Mic } from "lucide-react";
-import { useScripts, useCreateScript, useDeleteScript, useAnalyzeScript, useCompareCallWithScript, useUploadScript, useTranscribeCall } from "../api/scripts";
+import { useScripts, useCreateScript, useDeleteScript, useAnalyzeScript, useCompareCallWithScript, useUploadScript, useTranscribeCall, useTranscribeAudio } from "../api/scripts";
 import type { ScriptAnalysis, CallComparison } from "../api/scripts";
 import { useCalls } from "../api/calls";
 import type { CallRecord } from "../api/calls";
@@ -242,6 +242,10 @@ export default function ScriptsQC() {
   const analyzeMutation = useAnalyzeScript();
   const compareMutation = useCompareCallWithScript();
   const transcribeMutation = useTranscribeCall();
+  const transcribeAudioMutation = useTranscribeAudio();
+
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAudioCallId, setPendingAudioCallId] = useState<string | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<Record<string, ScriptAnalysis>>({});
@@ -253,6 +257,7 @@ export default function ScriptsQC() {
   const [comparisonResult, setComparisonResult] = useState<CallComparison | null>(null);
   const [transcribingCallId, setTranscribingCallId] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
 
   const { data: callsData } = useCalls({ days: 30, status: "answered" });
   // Only show calls with actual duration (recordings exist for non-zero duration calls)
@@ -283,6 +288,32 @@ export default function ScriptsQC() {
       setTranscribeError(msg);
     } finally {
       setTranscribingCallId(null);
+    }
+  }
+
+  function handleUploadAudioClick(callId: string) {
+    setPendingAudioCallId(callId);
+    audioInputRef.current?.click();
+  }
+
+  async function handleAudioFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingAudio(true);
+    setTranscribeError(null);
+    setShowCompare(true);
+    try {
+      const result = await transcribeAudioMutation.mutateAsync(file);
+      setTranscript(result.transcript);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? "Не удалось расшифровать аудио файл";
+      setTranscribeError(msg);
+    } finally {
+      setUploadingAudio(false);
+      setPendingAudioCallId(null);
     }
   }
 
@@ -391,13 +422,30 @@ export default function ScriptsQC() {
           </h2>
           <span className="text-[12px] text-text-muted">{answeredCalls.length} за 30 дней</span>
         </div>
+        {/* Hidden audio file input */}
+        <input
+          ref={audioInputRef}
+          type="file"
+          accept="audio/*,.mp3,.wav,.ogg,.m4a,.mp4"
+          className="hidden"
+          onChange={handleAudioFileChange}
+        />
         {transcribeError && (
-          <div className="mb-3 px-4 py-3 rounded-xl text-[12px] text-[#c52048] flex flex-col gap-1" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
+          <div className="mb-3 px-4 py-3 rounded-xl text-[12px] text-[#c52048] flex flex-col gap-2" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
             <span className="font-bold">Ошибка автоматической расшифровки:</span>
             <span>{transcribeError}</span>
-            <span className="text-text-muted mt-1">
-              Вы можете вставить расшифровку вручную в секцию «Сравнение звонка со скриптом» ниже.
-            </span>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-text-muted">Загрузите MP3/WAV файл вручную:</span>
+              <button
+                onClick={() => audioInputRef.current?.click()}
+                disabled={uploadingAudio}
+                className="flex items-center gap-1 px-3 py-[5px] rounded-lg text-[12px] font-semibold border-none cursor-pointer disabled:opacity-50"
+                style={{ background: "rgba(197,32,72,0.12)", color: "#c52048" }}
+              >
+                {uploadingAudio ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                {uploadingAudio ? "Расшифровка..." : "Загрузить аудио"}
+              </button>
+            </div>
           </div>
         )}
         {answeredCalls.length === 0 ? (
@@ -421,18 +469,37 @@ export default function ScriptsQC() {
                     {formatCallDate(call.started_at)} · {formatDuration(call.duration)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); handleTranscribe(call); }}
-                  disabled={transcribingCallId !== null}
-                  className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: transcribingCallId === call.call_id ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
-                >
-                  {transcribingCallId === call.call_id
-                    ? <Loader2 size={12} className="animate-spin" />
-                    : <Mic size={12} />}
-                  <span>{transcribingCallId === call.call_id ? "Расшифровка..." : "Расшифровать"}</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleTranscribe(call); }}
+                    disabled={transcribingCallId !== null || uploadingAudio}
+                    className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: transcribingCallId === call.call_id ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+                    title="Автоматически скачать и расшифровать запись из Новофон"
+                  >
+                    {transcribingCallId === call.call_id
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Mic size={12} />}
+                    <span>{transcribingCallId === call.call_id ? "Расшифровка..." : "Авто"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleUploadAudioClick(call.call_id); }}
+                    disabled={transcribingCallId !== null || uploadingAudio}
+                    className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: uploadingAudio && pendingAudioCallId === call.call_id ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.06)",
+                      color: "#5B4CF5",
+                    }}
+                    title="Загрузить MP3/WAV файл с компьютера"
+                  >
+                    {uploadingAudio && pendingAudioCallId === call.call_id
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Upload size={12} />}
+                    <span>{uploadingAudio && pendingAudioCallId === call.call_id ? "..." : "Файл"}</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>

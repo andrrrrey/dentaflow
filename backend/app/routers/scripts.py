@@ -252,6 +252,38 @@ class TranscribeCallBody(BaseModel):
     call_id: str
 
 
+@router.post("/transcribe-audio")
+async def transcribe_audio_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Transcribe an uploaded audio file (mp3/wav/ogg/m4a) using OpenAI Whisper."""
+    content = await file.read()
+    if len(content) < 1000:
+        raise HTTPException(status_code=400, detail="Файл слишком мал или пустой")
+
+    ai = AIService()
+    if not ai.api_key:
+        raise HTTPException(status_code=503, detail="OpenAI API key не настроен в системе")
+
+    filename = file.filename or "recording.mp3"
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=ai.api_key)
+        buf = io.BytesIO(content)
+        buf.name = filename
+        result = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=buf,
+            language="ru",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ошибка транскрибации: {exc}")
+
+    return {"transcript": result.text}
+
+
 @router.post("/transcribe-call")
 async def transcribe_call(
     body: TranscribeCallBody,
