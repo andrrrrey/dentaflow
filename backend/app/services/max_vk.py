@@ -86,12 +86,9 @@ class MaxVkService:
         buttons:  Optional 2-D list of inline buttons.
                   Each button: {"type": "callback", "text": "...", "payload": "..."}
         """
-        payload: dict = {
-            "recipient": {"chat_id": chat_id},
-            "text": text,
-        }
+        body: dict = {"text": text}
         if buttons:
-            payload["attachments"] = [
+            body["attachments"] = [
                 {
                     "type": "inline_keyboard",
                     "payload": {"buttons": buttons},
@@ -99,14 +96,15 @@ class MaxVkService:
             ]
 
         headers = {"Authorization": self.bot_token}
-        logger.warning("Max send_reply REAL: chat_id=%s text_len=%d", chat_id, len(text))
+        logger.warning("Max send_reply REAL: chat_id=%s text_len=%d payload=%s", chat_id, len(text), str(body)[:200])
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 f"{self.API_URL}/messages",
                 headers=headers,
-                json=payload,
+                params={"chat_id": chat_id},
+                json=body,
             )
-            logger.warning("Max send_reply: status=%s body=%s", response.status_code, response.text[:300])
+            logger.warning("Max send_reply: status=%s body=%s", response.status_code, response.text[:500])
             response.raise_for_status()
             return response.json()
 
