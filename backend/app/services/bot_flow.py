@@ -155,10 +155,12 @@ def kb_main() -> dict:
         "tg": _tg([
             [_tg_btn("📅 Записаться на приём", "book")],
             [_tg_btn("💬 Задать вопрос", "ask")],
+            [_tg_btn("📞 Связаться с менеджером", "manager")],
         ]),
         "max": [
             [_max_btn("📅 Записаться на приём", "book")],
             [_max_btn("💬 Задать вопрос", "ask")],
+            [_max_btn("📞 Связаться с менеджером", "manager")],
         ],
     }
 
@@ -168,6 +170,48 @@ def kb_back_main() -> dict:
         "tg": _tg([[_tg_btn("🔙 Главное меню", "menu")]]),
         "max": [[_max_btn("🔙 Главное меню", "menu")]],
     }
+
+
+def kb_cancel() -> dict:
+    return {
+        "tg": _tg([[_tg_btn("❌ Отмена", "menu")]]),
+        "max": [[_max_btn("❌ Отмена", "menu")]],
+    }
+
+
+def kb_ai_chat() -> dict:
+    """Keyboard shown after each AI reply — quick actions without leaving chat."""
+    return {
+        "tg": _tg([
+            [_tg_btn("📅 Записаться на приём", "ai_book"),
+             _tg_btn("📞 Связаться с менеджером", "ai_manager")],
+            [_tg_btn("🔙 Главное меню", "menu")],
+        ]),
+        "max": [
+            [_max_btn("📅 Записаться", "ai_book"),
+             _max_btn("📞 Менеджер", "ai_manager")],
+            [_max_btn("🔙 Главное меню", "menu")],
+        ],
+    }
+
+
+_BOOKING_KEYWORDS = {
+    "записаться", "запись", "записать", "записан", "приём", "прием",
+    "appointment", "хочу попасть", "попасть к врачу",
+}
+_MANAGER_KEYWORDS = {
+    "менеджер", "менеджера", "администратор", "позвоните", "перезвоните",
+    "обратный звонок", "свяжитесь", "свяжись",
+}
+
+
+def _detect_intent(text: str) -> str | None:
+    t = text.lower()
+    if any(kw in t for kw in _BOOKING_KEYWORDS):
+        return "book"
+    if any(kw in t for kw in _MANAGER_KEYWORDS):
+        return "manager"
+    return None
 
 
 def kb_services(services: list[dict], page: int = 0, has_more: bool = False) -> dict:
@@ -338,28 +382,133 @@ async def process(
             slot = slots[idx]
         except (IndexError, ValueError):
             return reply("Слот не найден. Выберите снова.", kb_dates())
-        await set_state(channel, uid, {**state, "step": "bk_conf", "slot_idx": idx})
+        await set_state(channel, uid, {**state, "step": "bk_name", "slot_idx": idx})
         return reply(
-            f"✅ Вы выбрали:\n\n"
-            f"🦷 <b>{state.get('service_name', '')}</b>\n"
-            f"📅 {state.get('date', '')}\n"
-            f"🕐 {slot['time']}\n"
+            f"Отлично! Вы выбрали:\n"
+            f"🦷 {state.get('service_name', '')}\n"
+            f"📅 {state.get('date', '')}, {slot['time']}\n"
             f"👨‍⚕️ {slot['doctor']}\n\n"
-            "Подтвердить запись?",
-            kb_confirm(),
+            "Для записи введите ваше имя:",
+            kb_cancel(),
         )
 
+    if payload == "manager":
+        await set_state(channel, uid, {**state, "step": "mgr_name"})
+        return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
+
+    if payload == "ai_book":
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book"})
+        return reply("Для записи мне нужны ваши контакты.\n\nВведите ваше имя:", kb_cancel())
+
+    if payload == "ai_manager":
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager"})
+        return reply("Хорошо, передам менеджеру! Введите ваше имя:", kb_cancel())
+
+    if payload.startswith("cancel_appt:"):
+        reminder_id = payload.split(":", 1)[1]
+        return await _do_cancel_appt(db, channel, uid, reminder_id)
+
+    if payload.startswith("reschedule:"):
+        reminder_id = payload.split(":", 1)[1]
+        return await _do_reschedule_start(db, channel, uid, state, reminder_id)
+
     if payload == "confirm":
-        return await _do_confirm(state, channel, uid, clinic_name)
+        return await _do_confirm(state, channel, uid, clinic_name, db, chat_id=uid)
 
     if payload == "back":
         return await _do_back(state, channel, uid)
 
     # ── Text messages ─────────────────────────────────────────────────
 
+    if step == "bk_name":
+        name = text.strip()
+        if not name:
+            return reply("Пожалуйста, введите ваше имя:", kb_cancel())
+        await set_state(channel, uid, {**state, "step": "bk_phone", "contact_name": name})
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+
+    if step == "bk_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+        slots = state.get("slots", [])
+        slot_idx = state.get("slot_idx", 0)
+        slot = slots[slot_idx] if slot_idx < len(slots) else {}
+        await set_state(channel, uid, {**state, "step": "bk_conf", "contact_phone": phone})
+        return reply(
+            f"Подтвердите запись:\n\n"
+            f"👤 {state.get('contact_name', '')}, {phone}\n"
+            f"🦷 {state.get('service_name', '')}\n"
+            f"📅 {state.get('date', '')}, {slot.get('time', '')}\n"
+            f"👨‍⚕️ {slot.get('doctor', '')}",
+            kb_confirm(),
+        )
+
+    if step == "mgr_name":
+        name = text.strip()
+        if not name:
+            return reply("Пожалуйста, введите ваше имя:", kb_cancel())
+        await set_state(channel, uid, {**state, "step": "mgr_phone", "contact_name": name})
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+
+    if step == "mgr_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+        name = state.get("contact_name", "")
+        await clear_state(channel, uid)
+        await _create_lead_comm(db, channel, name, phone,
+                                comment="просит перезвонить менеджера", create_patient=False)
+        return reply(
+            f"Спасибо, {name}! Менеджер свяжется с вами в ближайшее время.",
+            kb_main(),
+        )
+
+    if step == "ai_lead_name":
+        name = text.strip()
+        if not name:
+            return reply("Пожалуйста, введите ваше имя:", kb_cancel())
+        await set_state(channel, uid, {**state, "step": "ai_lead_phone", "contact_name": name})
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+
+    if step == "ai_lead_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+        name = state.get("contact_name", "")
+        lead_type = state.get("lead_type", "book")
+        await clear_state(channel, uid)
+        if lead_type == "manager":
+            await _create_lead_comm(db, channel, name, phone,
+                                    comment="просит перезвонить менеджера", create_patient=False)
+            return reply(
+                f"Спасибо, {name}! Менеджер свяжется с вами в ближайшее время.",
+                kb_main(),
+            )
+        else:
+            await _create_lead_comm(db, channel, name, phone,
+                                    comment="перезвонить и записать на прием", create_patient=False)
+            return reply(
+                f"Спасибо, {name}! Администратор свяжется с вами для записи на приём.",
+                kb_main(),
+            )
+
     if step == "ai_chat":
+        intent = _detect_intent(text)
+        if intent == "book":
+            await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book"})
+            return reply(
+                "Конечно, помогу записаться! Для этого мне нужны ваши контакты.\n\nВведите ваше имя:",
+                kb_cancel(),
+            )
+        if intent == "manager":
+            await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager"})
+            return reply(
+                "Хорошо, передам менеджеру! Введите ваше имя:",
+                kb_cancel(),
+            )
         r = await ai_svc.chat_with_patient(text, kb_context=kb_ctx, system_prompt=system_prompt)
-        return reply(r, kb_back_main())
+        return reply(r, kb_ai_chat())
 
     # First message or unknown state → welcome
     if not step or not text.strip():
@@ -378,54 +527,187 @@ async def process(
 # Internal helpers
 # ------------------------------------------------------------------
 
-async def _do_confirm(state: dict, channel: str, uid, clinic_name: str) -> dict:
+async def _do_confirm(state: dict, channel: str, uid, clinic_name: str, db, chat_id=None) -> dict:
     slots: list[dict] = state.get("slots", [])
     slot_idx: int = state.get("slot_idx", 0)
     slot = slots[slot_idx] if slot_idx < len(slots) else {}
     service_id = state.get("service_id", "")
     service_name = state.get("service_name", "")
     date_str = state.get("date", "")
+    name = state.get("contact_name", "")
+    phone = state.get("contact_phone", "")
+    doctor_id = slot.get("doctor_id", "")
+    dt_raw = slot.get("dt", "")
 
-    booked = False
+    # Create or find patient
+    patient_id = None
     try:
-        from datetime import datetime as dt_cls
+        from sqlalchemy import select
+        from app.models.patient import Patient
+        if phone:
+            stmt = select(Patient).where(Patient.phone == phone).limit(1)
+            row = (await db.execute(stmt)).scalar_one_or_none()
+            if row:
+                patient_id = row.id
+            else:
+                parts = name.strip().split(None, 2)
+                p = Patient(
+                    first_name=parts[1] if len(parts) > 1 else "",
+                    last_name=parts[0] if parts else name,
+                    middle_name=parts[2] if len(parts) > 2 else "",
+                    phone=phone,
+                )
+                db.add(p)
+                await db.flush()
+                patient_id = p.id
+    except Exception:
+        logger.exception("bot_flow: failed to create patient")
+
+    # Book in 1Denta
+    booked = False
+    visit_id: str | None = None
+    try:
         from app.services.one_denta import OneDentaService
-        doctor_id = slot.get("doctor_id", "")
-        dt_raw = slot.get("dt", "")
         if doctor_id and dt_raw:
             od = OneDentaService()
-            await od.create_visit(
-                name="Пациент из бота",
-                phone="",
+            visit_data = await od.create_visit(
+                name=name or "Пациент из бота",
+                phone=phone,
                 email="",
                 service_ids=[service_id] if service_id else [],
                 resource_id=doctor_id,
-                dt=dt_cls.fromisoformat(dt_raw),
+                dt=dt_raw,
                 comment=f"Запись через бот ({channel})",
             )
+            visit_id = str(visit_data.get("id") or visit_data.get("visitId") or "")
             booked = True
     except Exception:
         logger.exception("bot_flow: create_visit failed")
 
+    # Create communication
+    try:
+        from app.models.communication import Communication
+        from app.services.realtime import realtime
+        ch = channel if channel != "tg" else "telegram"
+        comm = Communication(
+            patient_id=patient_id,
+            channel=ch,
+            direction="inbound",
+            type="message",
+            content=(
+                f"Запись через бот: {service_name}, {date_str} {slot.get('time', '')}, "
+                f"врач: {slot.get('doctor', '')}. Имя: {name}, тел: {phone}"
+            ),
+            status="new",
+            priority="high",
+        )
+        db.add(comm)
+        await db.flush()
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": comm.channel,
+            "type": comm.type, "priority": comm.priority,
+        })
+    except Exception:
+        logger.exception("bot_flow: failed to create communication")
+
+    # Save reminder for 24h notification
+    try:
+        from datetime import datetime as dt_cls, timezone
+        from app.models.bot_reminder import BotReminder
+        if dt_raw:
+            scheduled = dt_cls.fromisoformat(dt_raw)
+            if scheduled.tzinfo is None:
+                scheduled = scheduled.replace(tzinfo=timezone.utc)
+            reminder = BotReminder(
+                channel=channel if channel != "tg" else "telegram",
+                chat_id=str(chat_id or uid),
+                user_id=str(uid),
+                patient_name=name,
+                patient_phone=phone,
+                service_name=service_name,
+                doctor_name=slot.get("doctor", ""),
+                scheduled_at=scheduled,
+                one_denta_visit_id=visit_id,
+                service_id=service_id,
+                doctor_id=doctor_id,
+            )
+            db.add(reminder)
+    except Exception:
+        logger.exception("bot_flow: failed to save reminder")
+
+    await db.commit()
     await clear_state(channel, uid)
 
     if booked:
         text = (
-            f"🎉 <b>Запись подтверждена!</b>\n\n"
+            f"Запись подтверждена!\n\n"
             f"🦷 {service_name}\n"
             f"📅 {date_str}, {slot.get('time', '')}\n"
             f"👨‍⚕️ {slot.get('doctor', '')}\n\n"
-            "Ждём вас! Клиника свяжется с вами для подтверждения."
+            "Мы пришлём напоминание за сутки до визита."
         )
     else:
         text = (
-            f"📋 <b>Заявка принята!</b>\n\n"
+            f"Заявка принята!\n\n"
             f"🦷 {service_name}\n"
             f"📅 {date_str}, {slot.get('time', '')}\n"
             f"👨‍⚕️ {slot.get('doctor', '')}\n\n"
-            "Администратор клиники свяжется с вами для подтверждения записи."
+            "Администратор свяжется с вами для подтверждения записи."
         )
     return reply(text, kb_main())
+
+
+async def _create_lead_comm(
+    db,
+    channel: str,
+    name: str,
+    phone: str,
+    comment: str = "запрос через бот",
+    create_patient: bool = True,
+) -> None:
+    """Create communication (and optionally patient) for a bot lead."""
+    try:
+        from sqlalchemy import select
+        from app.models.patient import Patient
+        from app.models.communication import Communication
+        from app.services.realtime import realtime
+
+        patient_id = None
+        if create_patient and phone:
+            stmt = select(Patient).where(Patient.phone == phone).limit(1)
+            row = (await db.execute(stmt)).scalar_one_or_none()
+            if row:
+                patient_id = row.id
+            else:
+                parts = name.strip().split(None, 2)
+                p = Patient(
+                    first_name=parts[1] if len(parts) > 1 else "",
+                    last_name=parts[0] if parts else name,
+                    middle_name=parts[2] if len(parts) > 2 else "",
+                    phone=phone,
+                )
+                db.add(p)
+                await db.flush()
+                patient_id = p.id
+
+        ch = channel if channel != "tg" else "telegram"
+        comm = Communication(
+            patient_id=patient_id,
+            channel=ch,
+            direction="inbound",
+            type="message",
+            content=f"Имя: {name}, тел: {phone}. {comment}",
+            status="new",
+            priority="high",
+        )
+        db.add(comm)
+        await db.commit()
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": comm.channel,
+            "type": comm.type, "priority": comm.priority,
+        })
+    except Exception:
+        logger.exception("bot_flow: failed to create lead communication")
 
 
 async def _do_back(state: dict, channel: str, uid) -> dict:
@@ -441,6 +723,74 @@ async def _do_back(state: dict, channel: str, uid) -> dict:
         return reply("Выберите удобное время:", kb_slots(slots))
     await clear_state(channel, uid)
     return reply("Главное меню:", kb_main())
+
+
+async def _do_cancel_appt(db, channel: str, uid, reminder_id: str) -> dict:
+    try:
+        from sqlalchemy import select
+        from app.models.bot_reminder import BotReminder
+        stmt = select(BotReminder).where(BotReminder.id == reminder_id)
+        reminder = (await db.execute(stmt)).scalar_one_or_none()
+        if not reminder or reminder.cancelled:
+            return reply("Запись уже отменена или не найдена.", kb_main())
+
+        if reminder.one_denta_visit_id:
+            try:
+                from app.services.one_denta import OneDentaService
+                od = OneDentaService()
+                await od.delete_visit(reminder.one_denta_visit_id)
+            except Exception:
+                logger.exception("bot_flow: failed to delete 1Denta visit")
+
+        reminder.cancelled = True
+        await db.commit()
+    except Exception:
+        logger.exception("bot_flow: cancel_appt failed")
+
+    return reply(
+        "Ваша запись отменена. Если хотите записаться снова — нажмите «Записаться на приём».",
+        kb_main(),
+    )
+
+
+async def _do_reschedule_start(db, channel: str, uid, state: dict, reminder_id: str) -> dict:
+    try:
+        from sqlalchemy import select
+        from app.models.bot_reminder import BotReminder
+        stmt = select(BotReminder).where(BotReminder.id == reminder_id)
+        reminder = (await db.execute(stmt)).scalar_one_or_none()
+        if not reminder or reminder.cancelled:
+            return reply("Запись не найдена или уже отменена.", kb_main())
+
+        # Cancel old visit, then start new booking for same service
+        if reminder.one_denta_visit_id:
+            try:
+                from app.services.one_denta import OneDentaService
+                od = OneDentaService()
+                await od.delete_visit(reminder.one_denta_visit_id)
+            except Exception:
+                logger.exception("bot_flow: reschedule delete_visit failed")
+
+        reminder.cancelled = True
+        await db.commit()
+
+        # Pre-fill state with previous service so user picks new date only
+        await set_state(channel, uid, {
+            "step": "bk_date",
+            "service_id": reminder.service_id or "",
+            "service_name": reminder.service_name or "",
+            "contact_name": reminder.patient_name or "",
+            "contact_phone": reminder.patient_phone or "",
+            "services": [],
+            "svc_page": 0,
+        })
+        return reply(
+            f"Старая запись отменена. Выберите новую дату для «{reminder.service_name}»:",
+            kb_dates(),
+        )
+    except Exception:
+        logger.exception("bot_flow: reschedule_start failed")
+        return reply("Не удалось перенести запись. Попробуйте снова.", kb_main())
 
 
 def _welcome(welcome_message: str, clinic_name: str) -> str:
