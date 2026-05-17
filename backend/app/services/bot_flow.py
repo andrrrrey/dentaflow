@@ -68,17 +68,28 @@ async def clear_state(channel: str, uid) -> None:
 # Data helpers
 # ------------------------------------------------------------------
 
-async def load_services(db: AsyncSession) -> list[dict]:
-    """Return services from directory cache (no API call needed)."""
+async def load_services(db: AsyncSession, page: int = 0, per_page: int = 10) -> tuple[list[dict], bool]:
+    """Return paginated services from directory cache. Returns (services, has_more)."""
     try:
-        from sqlalchemy import select
+        from sqlalchemy import select, func as sqlfunc
         from app.models.directory_cache import DirectoryCache
-        stmt = select(DirectoryCache).where(DirectoryCache.category == "service").limit(10)
+        offset = page * per_page
+        stmt = (
+            select(DirectoryCache)
+            .where(DirectoryCache.category == "service")
+            .order_by(DirectoryCache.name)
+            .offset(offset)
+            .limit(per_page + 1)
+        )
         rows = (await db.execute(stmt)).scalars().all()
-        return [{"id": r.external_id or str(i), "name": r.name} for i, r in enumerate(rows)]
+        has_more = len(rows) > per_page
+        return (
+            [{"id": r.external_id or str(i + offset), "name": r.name} for i, r in enumerate(rows[:per_page])],
+            has_more,
+        )
     except Exception:
         logger.exception("bot_flow: failed to load services")
-        return []
+        return [], False
 
 
 async def load_slots(service_id: str, date_str: str) -> list[dict]:
@@ -89,7 +100,7 @@ async def load_slots(service_id: str, date_str: str) -> list[dict]:
         resources = await od.get_resources() or []
         svc_ids = [service_id] if service_id else ["1"]
         slots: list[dict] = []
-        for res in resources[:6]:
+        for res in resources:  # check all doctors, not just first 6
             rid = str(res.get("external_id") or res.get("id") or "")
             doc = res.get("name", "Врач")
             if not rid:
@@ -99,7 +110,8 @@ async def load_slots(service_id: str, date_str: str) -> list[dict]:
                 dt_str = str(t)
                 time_part = dt_str[11:16] if len(dt_str) > 10 else dt_str
                 slots.append({"dt": dt_str, "time": time_part, "doctor": doc, "doctor_id": rid})
-        return slots[:10]
+        slots.sort(key=lambda s: s["dt"])
+        return slots[:15]
     except Exception:
         logger.exception("bot_flow: failed to load slots")
         return []
@@ -141,11 +153,26 @@ def kb_back_main() -> dict:
     }
 
 
-def kb_services(services: list[dict]) -> dict:
-    tg_rows = [[_tg_btn(s["name"][:40], f"svc:{i}")] for i, s in enumerate(services)]
-    tg_rows.append([_tg_btn("🔙 Назад", "menu")])
-    max_rows = [[_max_btn(s["name"][:40], f"svc:{i}")] for i, s in enumerate(services)]
-    max_rows.append([_max_btn("🔙 Назад", "menu")])
+def kb_services(services: list[dict], page: int = 0, has_more: bool = False) -> dict:
+    tg_rows = [[_tg_btn(s["name"][:40], f"svc:{page}:{i}")] for i, s in enumerate(services)]
+    nav: list = []
+    if page > 0:
+        nav.append(_tg_btn("◀️ Назад", f"svc_page:{page - 1}"))
+    if has_more:
+        nav.append(_tg_btn("Ещё ▶️", f"svc_page:{page + 1}"))
+    if nav:
+        tg_rows.append(nav)
+    tg_rows.append([_tg_btn("🔙 Главное меню", "menu")])
+
+    max_rows = [[_max_btn(s["name"][:40], f"svc:{page}:{i}")] for i, s in enumerate(services)]
+    max_nav: list = []
+    if page > 0:
+        max_nav.append(_max_btn("◀️ Назад", f"svc_page:{page - 1}"))
+    if has_more:
+        max_nav.append(_max_btn("Ещё ▶️", f"svc_page:{page + 1}"))
+    if max_nav:
+        max_rows.append(max_nav)
+    max_rows.append([_max_btn("🔙 Главное меню", "menu")])
     return {"tg": _tg(tg_rows), "max": max_rows}
 
 
@@ -227,9 +254,15 @@ async def process(
 
     # ── Button callbacks ──────────────────────────────────────────────
 
-    if payload == "book":
-        services = await load_services(db)
-        if not services:
+    if payload == "book" or payload.startswith("svc_page:"):
+        page = 0
+        if payload.startswith("svc_page:"):
+            try:
+                page = int(payload.split(":")[1])
+            except (IndexError, ValueError):
+                page = 0
+        services, has_more = await load_services(db, page=page)
+        if not services and page == 0:
             # 1Denta not configured — fall back to AI booking intent
             await set_state(channel, uid, {**state, "step": "ai_chat"})
             r = await ai_svc.chat_with_patient(
@@ -237,24 +270,29 @@ async def process(
                 kb_context=kb_ctx, system_prompt=system_prompt,
             )
             return reply(r, kb_back_main())
-        await set_state(channel, uid, {"step": "bk_svc", "services": services})
-        return reply("Выберите услугу:", kb_services(services))
+        await set_state(channel, uid, {"step": "bk_svc", "svc_page": page, "services": services})
+        return reply("Выберите услугу:", kb_services(services, page=page, has_more=has_more))
 
     if payload == "ask":
         await set_state(channel, uid, {**state, "step": "ai_chat"})
         return reply("💬 Задайте ваш вопрос — я постараюсь помочь!", kb_back_main())
 
     if payload.startswith("svc:"):
+        # format: svc:{page}:{index}
+        parts = payload.split(":")
+        try:
+            idx = int(parts[2]) if len(parts) == 3 else int(parts[1])
+        except (IndexError, ValueError):
+            return reply("Услуга не найдена. Попробуйте снова.", kb_main())
         services = state.get("services", [])
         try:
-            idx = int(payload.split(":")[1])
             svc = services[idx]
-        except (IndexError, ValueError, KeyError):
+        except IndexError:
             return reply("Услуга не найдена. Попробуйте снова.", kb_main())
         await set_state(channel, uid, {**state, "step": "bk_date",
                                        "service_id": svc["id"], "service_name": svc["name"]})
         return reply(
-            f"Вы выбрали: <b>{svc['name']}</b>\n\nВыберите удобную дату:",
+            f"Вы выбрали: {svc['name']}\n\nВыберите удобную дату:",
             kb_dates(),
         )
 
@@ -377,7 +415,8 @@ async def _do_back(state: dict, channel: str, uid) -> dict:
     step = state.get("step", "")
     if step == "bk_date":
         services = state.get("services", [])
-        return reply("Выберите услугу:", kb_services(services))
+        page = state.get("svc_page", 0)
+        return reply("Выберите услугу:", kb_services(services, page=page, has_more=False))
     if step == "bk_slot":
         return reply("Выберите удобную дату:", kb_dates())
     if step == "bk_conf":
