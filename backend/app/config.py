@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    APP_ENV: str = "development"
+    APP_ENV: str = "production"
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 
