@@ -266,11 +266,10 @@ async def telegram_webhook(
     if not chat_id:
         return {"status": "ok"}
 
+    is_start = text.strip() == "/start"
     ai_enabled = await get_raw_value(db, "telegram_bot_ai_enabled")
-    if ai_enabled != "true":
-        return {"status": "ok"}
 
-    # Load shared bot config
+    # Load shared bot config (welcome + booking work without AI)
     clinic_name = (
         await get_raw_value(db, "bot_clinic_name")
         or await get_raw_value(db, "telegram_clinic_name")
@@ -278,17 +277,21 @@ async def telegram_webhook(
         or "нашей клинике"
     )
     welcome_msg = await get_raw_value(db, "bot_welcome_message")
+
+    # If AI disabled: only respond to /start and button presses
+    if ai_enabled != "true" and not is_start and not is_callback:
+        return {"status": "ok"}
+
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
     kb_ctx = await get_kb_context(db)
     raw_prompt = await get_raw_value(db, "telegram_bot_system_prompt")
     system_prompt = raw_prompt or _default_system_prompt(clinic_name)
-
     ai_svc = AIService(api_key=ai_key or None)
 
     resp = await bot_process(
         channel="tg",
         uid=user_id,
-        is_start=(text.strip() == "/start"),
+        is_start=is_start,
         payload=callback_data if is_callback else "",
         text=text,
         db=db,
@@ -354,11 +357,7 @@ async def max_webhook(
     if is_callback:
         await max_svc.answer_callback(result.get("callback_id", ""))
 
-    ai_enabled = await get_raw_value(db, "max_bot_ai_enabled")
-    if ai_enabled != "true":
-        return {"ok": True}
-
-    # Load shared bot config
+    # Load shared bot config (needed for welcome + booking, not just AI)
     clinic_name = (
         await get_raw_value(db, "bot_clinic_name")
         or await get_raw_value(db, "max_clinic_name")
@@ -366,24 +365,28 @@ async def max_webhook(
         or "нашей клинике"
     )
     welcome_msg = await get_raw_value(db, "bot_welcome_message")
+    ai_enabled = await get_raw_value(db, "max_bot_ai_enabled")
+
+    # bot_started: always send welcome + menu regardless of ai_enabled
+    is_start = (update_type == "bot_started")
+
+    # Extract button payload from callback content
+    btn_payload = payload
+    if not btn_payload and is_callback:
+        raw_payload = result.get("content", "")
+        if raw_payload.startswith("[кнопка] "):
+            btn_payload = raw_payload[9:]
+
+    # If AI is disabled, only handle bot_started (welcome) and booking buttons
+    # Skip ai_chat responses
+    if ai_enabled != "true" and not is_start and not btn_payload:
+        return {"ok": True}
+
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
     kb_ctx = await get_kb_context(db)
     raw_prompt = await get_raw_value(db, "max_bot_system_prompt")
     system_prompt = raw_prompt or _default_system_prompt(clinic_name)
-
     ai_svc = AIService(api_key=ai_key or None)
-
-    # bot_started always triggers welcome regardless of stored state
-    is_start = (update_type == "bot_started")
-
-    # For Max: the button payload comes from the parsed callback
-    # map legacy payloads to new ones
-    btn_payload = payload
-    if not btn_payload and is_callback:
-        raw_payload = result.get("content", "")
-        # content for callbacks is "[кнопка] <payload>"
-        if raw_payload.startswith("[кнопка] "):
-            btn_payload = raw_payload[9:]
 
     resp = await bot_process(
         channel="max",
