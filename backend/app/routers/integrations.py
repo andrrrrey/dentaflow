@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -11,10 +13,17 @@ from app.models.user import User
 from app.services.integrations_service import (
     check_connection,
     get_masked_settings,
+    get_raw_value,
     save_settings,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
+
+
+def _max_webhook_url(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/api/v1/webhooks/max"
 
 
 @router.get("/")
@@ -28,18 +37,35 @@ async def list_integrations(
 
 @router.put("/")
 async def update_integrations(
+    request: Request,
     body: dict,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    await save_settings(db, body.get("settings", body))
+    settings_data = body.get("settings", body)
+    await save_settings(db, settings_data)
+
+    # Auto-register Max webhook whenever a non-masked token is saved
+    new_token = settings_data.get("max_bot_token", "")
+    if new_token and "*" not in new_token:
+        from app.services.max_vk import MaxVkService
+        webhook_url = _max_webhook_url(request)
+        try:
+            svc = MaxVkService(bot_token=new_token.strip())
+            await svc.register_webhook(webhook_url)
+            logger.info("Max webhook auto-registered: %s", webhook_url)
+        except Exception:
+            logger.warning("Max webhook auto-registration failed (will retry on next check)")
+
     return {"ok": True}
 
 
 @router.post("/check/{service}")
 async def check_integration(
     service: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    return await check_connection(service, db)
+    webhook_url = _max_webhook_url(request) if service == "max_vk" else None
+    return await check_connection(service, db, webhook_url=webhook_url)

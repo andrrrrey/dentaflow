@@ -82,6 +82,8 @@ async def save_settings(db: AsyncSession, settings: dict[str, str]) -> None:
     for key, value in settings.items():
         if key not in ALL_KEYS:
             continue
+        if isinstance(value, str):
+            value = value.strip()
         if key in MASKED_KEYS and value and "*" in value:
             continue
 
@@ -103,7 +105,7 @@ async def get_raw_value(db: AsyncSession, key: str) -> str:
     return row or ""
 
 
-async def check_connection(service: str, db: AsyncSession) -> dict:
+async def check_connection(service: str, db: AsyncSession, webhook_url: str | None = None) -> dict:
     try:
         if service == "novofon":
             return await _check_novofon(db)
@@ -114,7 +116,7 @@ async def check_connection(service: str, db: AsyncSession) -> dict:
         elif service == "telegram":
             return await _check_telegram(db)
         elif service == "max_vk":
-            return await _check_max_vk(db)
+            return await _check_max_vk(db, webhook_url=webhook_url)
         elif service == "site":
             return await _check_site(db)
         elif service == "mail":
@@ -224,7 +226,7 @@ async def _check_telegram(db: AsyncSession) -> dict:
         return {"ok": False, "message": data.get("description", "Ошибка")}
 
 
-async def _check_max_vk(db: AsyncSession) -> dict:
+async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dict:
     token = await get_raw_value(db, "max_bot_token")
     if not token:
         return {"ok": False, "message": "Токен бота не указан"}
@@ -237,6 +239,18 @@ async def _check_max_vk(db: AsyncSession) -> dict:
         if resp.status_code == 200:
             data = resp.json()
             name = data.get("name") or data.get("username") or "бот"
+            if webhook_url:
+                try:
+                    reg = await client.post(
+                        "https://botapi.max.ru/subscriptions",
+                        params={"access_token": token},
+                        json={"url": webhook_url},
+                    )
+                    if reg.status_code == 200:
+                        return {"ok": True, "message": f"Подключено ({name}), webhook зарегистрирован"}
+                    logger.warning("Max webhook registration returned %s: %s", reg.status_code, reg.text[:200])
+                except Exception:
+                    logger.exception("Max webhook registration failed")
             return {"ok": True, "message": f"Подключено ({name})"}
         if resp.status_code == 401:
             return {"ok": False, "message": "Неверный токен бота (401)"}
