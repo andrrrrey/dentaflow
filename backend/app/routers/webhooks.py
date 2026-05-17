@@ -122,8 +122,6 @@ async def novofon_webhook(
         except Exception:
             body = {}
 
-    import sys
-    print(f"NOVOFON_RAW_BODY: {body}", file=sys.stderr, flush=True)
     body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
