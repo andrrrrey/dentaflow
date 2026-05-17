@@ -71,21 +71,38 @@ def _parse_novofon_notification(body: dict) -> dict:
     """Map Novofon notification fields to our internal call-event format.
 
     Novofon sends three notification types with different payload shapes:
-    - Завершённый вызов (answered): has call_duration > 0
-    - Потерянный вызов (missed): only has wait_time_duration, no call_duration
-    - Входящий вызов (started): has neither duration field set meaningfully
-
-    We use call_duration as the primary signal, notification_name as secondary.
+    - Входящий вызов: call_session_id at top level, no duration fields
+    - Завершённый вызов: call_session_id inside call_info, talk_time_duration inside call_info
+    - Потерянный вызов: call_session_id at top level, wait_time_duration at top level
     """
     if "caller_id" in body or "event" in body:
         return body  # already in our internal format
 
-    # Primary: call_duration is only present in "завершённый вызов" (answered) notifications
-    call_duration = int(body.get("call_duration") or 0)
+    contact_info = body.get("contact_info") or {}
+    call_info = body.get("call_info") or {}
+
+    # call_session_id is at top level for Входящий/Потерянный,
+    # but nested inside call_info for Завершённый
+    call_id = str(
+        body.get("call_session_id")
+        or call_info.get("call_session_id")
+        or body.get("external_id")
+        or contact_info.get("communication_number")
+        or ""
+    )
+
+    # talk_time_duration > 0 means someone actually talked → answered call
+    # This field only appears in "Завершённый вызов" notifications
+    talk_duration = int(call_info.get("talk_time_duration") or 0)
+    wait_duration = int(call_info.get("wait_time_duration") or body.get("wait_time_duration") or 0)
+
     notification_name = body.get("notification_name", "").lower()
 
-    if call_duration > 0:
-        event = "notify_end"  # answered call
+    if talk_duration > 0:
+        event = "notify_end"  # answered: talk_time_duration > 0 is the definitive signal
+    elif call_info:
+        # call_info is present → this is a "Завершённый" notification even if talk_duration=0
+        event = "notify_end"
     elif "завершён" in notification_name or "end" in notification_name or "answered" in notification_name:
         event = "notify_end"
     elif "потерян" in notification_name or "missed" in notification_name or "lost" in notification_name:
@@ -93,18 +110,13 @@ def _parse_novofon_notification(body: dict) -> dict:
     elif "вход" in notification_name or "start" in notification_name or "incoming" in notification_name:
         event = "notify_start"
     else:
-        # Unknown notification name — treat as missed if no call_duration (safer: creates callback task)
         event = "missed"
 
-    # contact_phone_number is nested inside contact_info
-    contact_info = body.get("contact_info") or {}
     caller_id = contact_info.get("contact_phone_number", "") or body.get("contact_phone_number", "")
-    # call_session_id is the canonical call ID; external_id is what the user's template may send
-    call_id = str(
-        body.get("call_session_id")
-        or body.get("external_id")
-        or contact_info.get("communication_number")
-        or ""
+
+    logger.debug(
+        "Novofon parsed: event=%s call_id=%s caller=%s talk_dur=%s notification=%r",
+        event, call_id, caller_id, talk_duration, body.get("notification_name", ""),
     )
 
     return {
@@ -112,7 +124,7 @@ def _parse_novofon_notification(body: dict) -> dict:
         "caller_id": caller_id,
         "called_did": body.get("virtual_phone_number", ""),
         "call_id": call_id,
-        "duration": call_duration or int(body.get("wait_time_duration") or 0),
+        "duration": talk_duration or wait_duration,
         "direction": "inbound",
     }
 
@@ -145,14 +157,6 @@ async def novofon_webhook(
             body = {}
 
     body = _parse_novofon_notification(body)
-
-    logger.info(
-        "Novofon raw parsed: event=%s call_id=%s caller=%s notification_name=%r",
-        body.get("event"),
-        body.get("call_id"),
-        body.get("caller_id"),
-        body.get("notification_name", ""),
-    )
 
     result = await _novofon.handle_call_event(body)
 
