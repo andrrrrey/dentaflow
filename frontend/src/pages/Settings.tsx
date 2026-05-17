@@ -447,9 +447,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
         <ol className="list-decimal list-inside space-y-1 text-text-muted">
           <li>Откройте мессенджер Max → найдите <b>@MaxBotAPI</b> → создайте бота командой <code>/newbot</code></li>
           <li>Получите <b>токен бота</b> и вставьте его ниже</li>
-          <li>Зарегистрируйте webhook командой:<br/>
-            <code className="text-[11px] break-all">curl -X POST "https://botapi.max.ru/subscriptions?access_token=&lt;ТОКЕН&gt;" -H "Content-Type: application/json" -d '{`{"url":"https://ВАШ_ДОМЕН/api/v1/webhooks/max"}`}'</code>
-          </li>
+          <li>Нажмите <b>«Сохранить все»</b> — webhook зарегистрируется автоматически</li>
           <li>Включите «AI-ответы» — бот начнёт консультировать пациентов</li>
           <li>Загрузите файлы в <b>«Базу знаний бота»</b> выше — прайс, FAQ, описание услуг</li>
         </ol>
