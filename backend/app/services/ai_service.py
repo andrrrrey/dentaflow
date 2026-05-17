@@ -217,6 +217,7 @@ class AIService:
         kb_context: str = "",
         system_prompt: str = "",
         available_slots: list[dict] | None = None,
+        history: list[dict] | None = None,
     ) -> str:
         """Generate a patient-facing reply for Telegram / VK Max bots.
 
@@ -255,7 +256,7 @@ class AIService:
         if slot_hint:
             user_text += slot_hint
 
-        result = await self._chat(system=system, user=user_text, parse_json=False)
+        result = await self._chat(system=system, user=user_text, parse_json=False, history=history or [])
         if isinstance(result, dict):
             return result.get("text", "Извините, произошла ошибка. Позвоните нам напрямую.")
         return result or "Извините, произошла ошибка. Позвоните нам напрямую."
@@ -325,6 +326,7 @@ class AIService:
         system: str,
         user: str,
         parse_json: bool = False,
+        history: list[dict] | None = None,
     ) -> dict | str:
         if not self._client:
             if parse_json:
@@ -333,12 +335,15 @@ class AIService:
         client = self._client
 
         try:
+            messages = [{"role": "system", "content": system}]
+            for h in (history or []):
+                if h.get("role") in ("user", "assistant") and h.get("content"):
+                    messages.append({"role": h["role"], "content": h["content"][:2000]})
+            messages.append({"role": "user", "content": user})
+
             response = await client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                messages=messages,
                 temperature=0.4,
                 max_tokens=1024,
             )
