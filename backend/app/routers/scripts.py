@@ -185,6 +185,69 @@ async def upload_script_file(
     }
 
 
+async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonService) -> str:
+    """Find the Novofon recording URL for a given call_id.
+
+    First tries /v1/pbx/record/request/ (fast but often unreliable).
+    Falls back to /v1/statistics/pbx/ which includes the 'record' field
+    with a direct download link for every answered call.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import select as sa_select
+
+    from app.models.communication import Communication
+
+    # --- Method 1: direct recording request API ---
+    try:
+        url = await svc.get_recording(call_id)
+        if url:
+            # Quick sanity-check: only return if the URL is reachable
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                head = await client.head(url)
+            if head.status_code < 400:
+                logger.info("Recording found via record/request API for call_id=%s", call_id)
+                return url
+    except Exception as exc:
+        logger.debug("record/request API failed for call_id=%s: %s", call_id, exc)
+
+    # --- Method 2: statistics API – look up the call by timestamp ---
+    result = await db.execute(
+        sa_select(Communication).where(Communication.external_id == call_id)
+    )
+    comm = result.scalar_one_or_none()
+
+    if comm is None:
+        logger.warning("Communication not found for call_id=%s, trying stats with wide window", call_id)
+        date_from = None
+        date_to = None
+    else:
+        # ±5 min window around the call
+        date_from = comm.created_at.replace(tzinfo=None) - timedelta(minutes=5)
+        date_to = comm.created_at.replace(tzinfo=None) + timedelta(minutes=5)
+
+    try:
+        stats = await svc.get_call_history(date_from=date_from, date_to=date_to)
+    except Exception as exc:
+        logger.error("Novofon stats API error: %s", exc)
+        return ""
+
+    logger.info("Novofon stats returned %d records for call_id=%s window=%s..%s",
+                len(stats), call_id, date_from, date_to)
+
+    for stat in stats:
+        record_url = stat.get("record") or stat.get("recording") or ""
+        if not record_url:
+            continue
+        # Prefer exact call_id match; otherwise take first record in the time window
+        stat_call_id = str(stat.get("call_id") or stat.get("pbx_call_id") or "")
+        if stat_call_id == call_id or comm is not None:
+            logger.info("Recording found via stats API: stat_call_id=%s url=%.80s...", stat_call_id, record_url)
+            return record_url
+
+    return ""
+
+
 class TranscribeCallBody(BaseModel):
     call_id: str
 
@@ -200,51 +263,41 @@ async def transcribe_call(
     api_secret = await get_raw_value(db, "novofon_webhook_secret")
     svc = NovofonService(api_key=api_key or None, api_secret=api_secret or None)
 
-    try:
-        url = await svc.get_recording(body.call_id)
-    except Exception as exc:
-        logger.error("Novofon get_recording error for call_id=%s: %s", body.call_id, exc)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Novofon API не вернул запись для звонка {body.call_id}: {exc}",
-        )
+    # Step 1: find the recording URL via Novofon statistics API
+    # (more reliable than /v1/pbx/record/request/ which often returns 404)
+    url = await _find_recording_url(body.call_id, db, svc)
 
     if not url:
         raise HTTPException(
             status_code=404,
             detail=(
-                "Novofon не нашёл запись для этого звонка. "
+                "Не удалось найти запись для этого звонка в Novofon. "
                 "Проверьте: включена ли запись разговоров в настройках Novofon, "
-                "и есть ли у API-ключа доступ к записям."
+                "и есть ли у API-ключа доступ к статистике и записям."
             ),
         )
 
-    logger.info("Downloading Novofon recording for call_id=%s url=%s", body.call_id, url)
+    logger.info("Downloading Novofon recording for call_id=%s url=%.80s...", body.call_id, url)
 
     try:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             resp = await client.get(url)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        logger.error(
-            "Recording download failed: call_id=%s url=%s status=%s",
-            body.call_id, url, exc.response.status_code,
-        )
+        logger.error("Recording download failed: call_id=%s status=%s url=%.80s...",
+                     body.call_id, exc.response.status_code, url)
         raise HTTPException(
             status_code=502,
             detail=(
-                f"Запись найдена, но файл недоступен (HTTP {exc.response.status_code}). "
-                "Возможно запись ещё обрабатывается Novofon — попробуйте через несколько минут."
+                f"Файл записи скачать не удалось (HTTP {exc.response.status_code}). "
+                "Попробуйте снова через несколько минут."
             ),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Ошибка загрузки записи: {exc}")
 
     if len(resp.content) < 1000:
-        raise HTTPException(
-            status_code=404,
-            detail="Файл записи пустой или повреждён. Возможно запись ещё не готова.",
-        )
+        raise HTTPException(status_code=404, detail="Файл записи пустой или повреждён.")
 
     ai = AIService()
     if not ai.api_key:
