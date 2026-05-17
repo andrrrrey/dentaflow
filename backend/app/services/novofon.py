@@ -50,6 +50,61 @@ class NovofonService:
         sign = base64.b64encode(sig_hex.encode()).decode()
         return f"{self.api_key}:{sign}"
 
+    def _download_auth_header(self, path: str) -> str:
+        """Build Authorization header for a direct file-download URL (no format=json)."""
+        params_str = ""
+        params_md5 = hashlib.md5(params_str.encode()).hexdigest()
+        data = (path + params_str + params_md5).encode()
+        sig_hex = hmac_lib.new(self.api_secret.encode(), data, hashlib.sha1).hexdigest()
+        sign = base64.b64encode(sig_hex.encode()).decode()
+        return f"{self.api_key}:{sign}"
+
+    async def download_recording_bytes(self, url: str) -> bytes | None:
+        """Download recording bytes from a Novofon recording URL.
+
+        Tries three strategies in order:
+        1. Auth header signed with the URL path (no format=json) — for my.novofon.ru links
+        2. Auth header with format=json — older API style
+        3. No auth — in case the URL is a pre-signed temporary link
+        """
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        path = parsed.path
+
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            # Strategy 1: path-signed auth (correct for file downloads)
+            if self.api_key and self.api_secret:
+                try:
+                    resp = await client.get(url, headers={"Authorization": self._download_auth_header(path)})
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        logger.info("Recording downloaded via path-auth: %d bytes from %s", len(resp.content), url[:80])
+                        return resp.content
+                    logger.debug("Path-auth download: status=%s len=%d", resp.status_code, len(resp.content))
+                except Exception as exc:
+                    logger.debug("Path-auth download failed: %s", exc)
+
+                # Strategy 2: full HMAC auth with format=json
+                try:
+                    resp = await client.get(url, headers={"Authorization": self._auth_header(path)})
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        logger.info("Recording downloaded via full-auth: %d bytes", len(resp.content))
+                        return resp.content
+                    logger.debug("Full-auth download: status=%s len=%d", resp.status_code, len(resp.content))
+                except Exception as exc:
+                    logger.debug("Full-auth download failed: %s", exc)
+
+            # Strategy 3: unauthenticated (pre-signed URL)
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 200 and len(resp.content) > 1000:
+                    logger.info("Recording downloaded without auth: %d bytes", len(resp.content))
+                    return resp.content
+                logger.warning("Unauthenticated download: status=%s len=%d url=%s", resp.status_code, len(resp.content), url[:80])
+            except Exception as exc:
+                logger.error("Unauthenticated download failed: %s", exc)
+
+        return None
+
     # ------------------------------------------------------------------
     # Incoming events
     # ------------------------------------------------------------------
