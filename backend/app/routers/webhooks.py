@@ -99,7 +99,13 @@ def _parse_novofon_notification(body: dict) -> dict:
     # contact_phone_number is nested inside contact_info
     contact_info = body.get("contact_info") or {}
     caller_id = contact_info.get("contact_phone_number", "") or body.get("contact_phone_number", "")
-    call_id = str(body.get("call_session_id") or contact_info.get("communication_number") or "")
+    # call_session_id is the canonical call ID; external_id is what the user's template may send
+    call_id = str(
+        body.get("call_session_id")
+        or body.get("external_id")
+        or contact_info.get("communication_number")
+        or ""
+    )
 
     return {
         "event": event,
@@ -140,6 +146,14 @@ async def novofon_webhook(
 
     body = _parse_novofon_notification(body)
 
+    logger.info(
+        "Novofon raw parsed: event=%s call_id=%s caller=%s notification_name=%r",
+        body.get("event"),
+        body.get("call_id"),
+        body.get("caller_id"),
+        body.get("notification_name", ""),
+    )
+
     result = await _novofon.handle_call_event(body)
 
     patient_id = None
@@ -151,6 +165,36 @@ async def novofon_webhook(
         if patient:
             patient_id = patient.id
 
+    # Deduplication: if an answered-call notification arrives for a call_id that was
+    # previously stored as missed_call, upgrade that record instead of creating a duplicate.
+    external_id = result.get("external_id")
+    if external_id and result["type"] == "call":
+        existing_stmt = (
+            select(Communication)
+            .where(
+                Communication.channel == "novofon",
+                Communication.external_id == external_id,
+                Communication.type == "missed_call",
+            )
+            .limit(1)
+        )
+        existing_row = await db.execute(existing_stmt)
+        existing_comm = existing_row.scalar_one_or_none()
+        if existing_comm:
+            existing_comm.type = "call"
+            existing_comm.duration_sec = result.get("duration_sec") or existing_comm.duration_sec
+            existing_comm.priority = "normal"
+            existing_comm.content = result.get("content") or existing_comm.content
+            await db.commit()
+            await realtime.publish("new_communication", {
+                "id": str(existing_comm.id),
+                "channel": existing_comm.channel,
+                "type": existing_comm.type,
+                "priority": existing_comm.priority,
+            })
+            logger.info("Novofon: upgraded missed→answered for comm_id=%s call_id=%s", existing_comm.id, external_id)
+            return {"status": "ok", "communication_id": str(existing_comm.id)}
+
     comm = Communication(
         patient_id=patient_id,
         channel=result["channel"],
@@ -160,7 +204,7 @@ async def novofon_webhook(
         duration_sec=result.get("duration_sec"),
         status=result["status"],
         priority=result["priority"],
-        external_id=result.get("external_id"),
+        external_id=external_id,
     )
     db.add(comm)
     await db.flush()
