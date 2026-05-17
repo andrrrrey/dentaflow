@@ -19,11 +19,12 @@ from app.models.communication import Communication
 from app.models.patient import Patient
 from app.models.task import Task
 from app.services.novofon import NovofonService
-from app.services.telegram_bot import TelegramBotService, _INLINE_KEYBOARD
+from app.services.telegram_bot import TelegramBotService
 from app.services.max_vk import MaxVkService
 from app.services.realtime import realtime
 from app.services.integrations_service import get_raw_value
 from app.services.ai_service import AIService
+from app.services.bot_flow import process as bot_process
 from app.routers.knowledge_base import get_kb_context
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,6 @@ _max_vk = MaxVkService()
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
-
-async def _get_slots(db: AsyncSession) -> list[dict]:
-    """Fetch up to 5 available appointment slots from 1Denta (best-effort)."""
-    try:
-        from datetime import date, timedelta
-        from app.services.one_denta import OneDentaService
-        svc = OneDentaService()
-        date_from = date.today()
-        date_to = date_from + timedelta(days=7)
-        appts = await svc.get_appointments(str(date_from), str(date_to))
-        # Return raw appointments as "busy" info; for slots we'd need get_available_slots
-        # Here we build a simplified slot list from appointments response structure
-        slots = []
-        for a in (appts or [])[:5]:
-            slots.append({
-                "datetime": a.get("scheduled_at") or a.get("date", ""),
-                "doctor": a.get("doctor_name", "Врач"),
-            })
-        return slots
-    except Exception:
-        return []
 
 
 # ------------------------------------------------------------------
@@ -244,10 +224,9 @@ async def telegram_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle an incoming Telegram bot update with AI consultation reply."""
+    """Handle an incoming Telegram bot update."""
     body = await request.json()
 
-    # Validate secret (passed as query param by Telegram setWebhook)
     secret = request.query_params.get("secret", "")
     stored_secret = await get_raw_value(db, "telegram_webhook_secret") or settings.TELEGRAM_WEBHOOK_SECRET
     if stored_secret and secret != stored_secret:
@@ -257,98 +236,70 @@ async def telegram_webhook(
 
     chat_id = result.get("chat_id")
     is_callback = result.get("is_callback", False)
-    callback_data = result.get("callback_data", "")
+    callback_data = result.get("callback_data", "") or ""
+    text = result.get("content", "") or ""
+    user_id = result.get("telegram_user_id") or chat_id
 
-    # --- Handle inline button presses ---
-    if is_callback and chat_id:
-        cq_id = result.get("callback_query_id", "")
-        await _telegram.answer_callback_query(cq_id)
+    # Acknowledge button press immediately
+    if is_callback:
+        await _telegram.answer_callback_query(result.get("callback_query_id", ""))
 
-        if callback_data == "book_appointment":
-            slots = await _get_slots(db)
-            ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
-            system_prompt = await get_raw_value(db, "telegram_bot_system_prompt")
-            kb_ctx = await get_kb_context(db)
-            ai_svc = AIService(api_key=ai_key or None)
-            reply = await ai_svc.chat_with_patient(
-                "Пациент хочет записаться на приём. Покажи доступные слоты и предложи выбрать.",
-                kb_context=kb_ctx,
-                system_prompt=system_prompt,
-                available_slots=slots,
-            )
-            await _telegram.send_reply(chat_id, reply, reply_markup=_INLINE_KEYBOARD)
-        elif callback_data == "contact_clinic":
-            await _telegram.send_reply(
-                chat_id,
-                "📞 Для связи с клиникой позвоните нам или напишите администратору.",
-                reply_markup=_INLINE_KEYBOARD,
-            )
-        return {"status": "ok"}
+    # Persist non-empty incoming messages
+    if text or is_callback:
+        comm = Communication(
+            channel=result["channel"],
+            direction=result["direction"],
+            type=result["type"],
+            content=text or f"[кнопка] {callback_data}",
+            status=result["status"],
+            priority=result["priority"],
+            external_id=result.get("external_id"),
+        )
+        db.add(comm)
+        await db.commit()
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": "telegram",
+            "type": comm.type, "priority": comm.priority,
+        })
+        logger.info("Telegram webhook: comm_id=%s", comm.id)
 
-    if not result.get("content"):
-        return {"status": "ok"}
-
-    # --- Persist communication ---
-    comm = Communication(
-        channel=result["channel"],
-        direction=result["direction"],
-        type=result["type"],
-        content=result.get("content"),
-        status=result["status"],
-        priority=result["priority"],
-        external_id=result.get("external_id"),
-    )
-    db.add(comm)
-    await db.commit()
-
-    await realtime.publish("new_communication", {
-        "id": str(comm.id),
-        "channel": comm.channel,
-        "type": comm.type,
-        "priority": comm.priority,
-    })
-
-    logger.info("Telegram webhook processed: comm_id=%s", comm.id)
-
-    # --- AI auto-reply ---
     if not chat_id:
-        return {"status": "ok", "communication_id": str(comm.id)}
+        return {"status": "ok"}
 
     ai_enabled = await get_raw_value(db, "telegram_bot_ai_enabled")
     if ai_enabled != "true":
-        return {"status": "ok", "communication_id": str(comm.id)}
+        return {"status": "ok"}
 
-    text = result.get("content", "")
-
-    # /start command → welcome message
-    if text.strip() == "/start":
-        clinic_name = await get_raw_value(db, "telegram_clinic_name") or "нашей клинике"
-        await _telegram.send_reply(
-            chat_id,
-            _telegram.welcome_text(clinic_name),
-            reply_markup=_INLINE_KEYBOARD,
-        )
-        return {"status": "ok", "communication_id": str(comm.id)}
-
-    # Regular message → AI consultation
+    # Load shared bot config
+    clinic_name = (
+        await get_raw_value(db, "bot_clinic_name")
+        or await get_raw_value(db, "telegram_clinic_name")
+        or await get_raw_value(db, "max_clinic_name")
+        or "нашей клинике"
+    )
+    welcome_msg = await get_raw_value(db, "bot_welcome_message")
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
-    system_prompt = await get_raw_value(db, "telegram_bot_system_prompt")
     kb_ctx = await get_kb_context(db)
-
-    slots: list[dict] = []
-    if any(w in text.lower() for w in ["запис", "приём", "прием", "свободн", "слот", "время"]):
-        slots = await _get_slots(db)
+    raw_prompt = await get_raw_value(db, "telegram_bot_system_prompt")
+    system_prompt = raw_prompt or _default_system_prompt(clinic_name)
 
     ai_svc = AIService(api_key=ai_key or None)
-    reply = await ai_svc.chat_with_patient(
-        text,
-        kb_context=kb_ctx,
-        system_prompt=system_prompt,
-        available_slots=slots,
-    )
-    await _telegram.send_reply(chat_id, reply, reply_markup=_INLINE_KEYBOARD)
 
-    return {"status": "ok", "communication_id": str(comm.id)}
+    resp = await bot_process(
+        channel="tg",
+        uid=user_id,
+        is_start=(text.strip() == "/start"),
+        payload=callback_data if is_callback else "",
+        text=text,
+        db=db,
+        clinic_name=clinic_name,
+        welcome_message=welcome_msg,
+        ai_svc=ai_svc,
+        kb_ctx=kb_ctx,
+        system_prompt=system_prompt,
+    )
+    await _telegram.send_reply(chat_id, resp["text"], reply_markup=resp["kb"]["tg"])
+    return {"status": "ok"}
 
 
 # ------------------------------------------------------------------
@@ -360,94 +311,108 @@ async def max_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle Max messenger Bot API events with AI consultation reply.
-
-    Max sends POST requests for every update (message_created,
-    message_callback, bot_started, etc.).  The handler must return
-    HTTP 200 OK — any other status causes retries.
-    """
+    """Handle Max messenger Bot API events."""
     body = await request.json()
 
     result = await _max_vk.handle_callback(body)
 
-    # Ignored event types — just ack
     if isinstance(result, dict) and result.get("status") == "ignored":
         return {"ok": True}
 
-    # Persist Communication
+    chat_id = result.get("max_chat_id")
+    user_id = result.get("max_user_id") or chat_id
+    update_type = result.get("update_type", "")
+    is_callback = result.get("is_callback", False)
+    payload = result.get("callback_id_payload", "") or ""  # custom payload field
+    text = result.get("content", "") or ""
+
+    # Persist incoming message/event
     comm = Communication(
         channel=result["channel"],
         direction=result["direction"],
         type=result["type"],
-        content=result.get("content"),
+        content=text,
         status=result["status"],
         priority=result["priority"],
         external_id=result.get("external_id"),
     )
     db.add(comm)
     await db.commit()
-
     await realtime.publish("new_communication", {
-        "id": str(comm.id),
-        "channel": comm.channel,
-        "type": comm.type,
-        "priority": comm.priority,
+        "id": str(comm.id), "channel": "max",
+        "type": comm.type, "priority": comm.priority,
     })
+    logger.info("Max webhook: comm_id=%s update_type=%s", comm.id, update_type)
 
-    logger.info("Max webhook processed: comm_id=%s update_type=%s", comm.id, result.get("update_type"))
-
-    chat_id = result.get("max_chat_id")
     if not chat_id:
         return {"ok": True}
 
-    # Re-create service with token from DB (may differ from env)
     max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
     max_svc = MaxVkService(bot_token=max_token)
+
+    # Acknowledge button press
+    if is_callback:
+        await max_svc.answer_callback(result.get("callback_id", ""))
 
     ai_enabled = await get_raw_value(db, "max_bot_ai_enabled")
     if ai_enabled != "true":
         return {"ok": True}
 
-    update_type = result.get("update_type", "")
-    is_booking = result.get("is_booking_button", False)
-    is_callback = result.get("is_callback", False)
-    text = result.get("content", "")
-
-    # Acknowledge button press
-    if is_callback:
-        callback_id = result.get("callback_id", "")
-        await max_svc.answer_callback(callback_id)
-
-    # bot_started → welcome message
-    if update_type == "bot_started":
-        clinic_name = await get_raw_value(db, "max_clinic_name") or await get_raw_value(db, "telegram_clinic_name") or "нашей клинике"
-        await max_svc.send_reply(
-            chat_id,
-            max_svc.welcome_text(clinic_name),
-            buttons=max_svc.book_keyboard(),
-        )
-        return {"ok": True}
-
-    # Build AI reply
-    slots: list[dict] = []
-    if is_booking or any(w in text.lower() for w in ["запис", "приём", "прием", "свободн", "слот", "время"]):
-        slots = await _get_slots(db)
-
-    ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
-    system_prompt = await get_raw_value(db, "max_bot_system_prompt")
-    kb_ctx = await get_kb_context(db)
-
-    query = "Пациент хочет записаться на приём. Покажи доступные слоты." if is_booking else text
-    ai_svc = AIService(api_key=ai_key or None)
-    reply = await ai_svc.chat_with_patient(
-        query,
-        kb_context=kb_ctx,
-        system_prompt=system_prompt,
-        available_slots=slots,
+    # Load shared bot config
+    clinic_name = (
+        await get_raw_value(db, "bot_clinic_name")
+        or await get_raw_value(db, "max_clinic_name")
+        or await get_raw_value(db, "telegram_clinic_name")
+        or "нашей клинике"
     )
-    await max_svc.send_reply(chat_id, reply, buttons=max_svc.book_keyboard())
+    welcome_msg = await get_raw_value(db, "bot_welcome_message")
+    ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
+    kb_ctx = await get_kb_context(db)
+    raw_prompt = await get_raw_value(db, "max_bot_system_prompt")
+    system_prompt = raw_prompt or _default_system_prompt(clinic_name)
 
+    ai_svc = AIService(api_key=ai_key or None)
+
+    # bot_started always triggers welcome regardless of stored state
+    is_start = (update_type == "bot_started")
+
+    # For Max: the button payload comes from the parsed callback
+    # map legacy payloads to new ones
+    btn_payload = payload
+    if not btn_payload and is_callback:
+        raw_payload = result.get("content", "")
+        # content for callbacks is "[кнопка] <payload>"
+        if raw_payload.startswith("[кнопка] "):
+            btn_payload = raw_payload[9:]
+
+    resp = await bot_process(
+        channel="max",
+        uid=user_id,
+        is_start=is_start,
+        payload=btn_payload if is_callback else "",
+        text=text if not is_callback else "",
+        db=db,
+        clinic_name=clinic_name,
+        welcome_message=welcome_msg,
+        ai_svc=ai_svc,
+        kb_ctx=kb_ctx,
+        system_prompt=system_prompt,
+    )
+
+    # Max doesn't support HTML tags — strip basic ones
+    clean_text = resp["text"].replace("<b>", "").replace("</b>", "")
+    await max_svc.send_reply(chat_id, clean_text, buttons=resp["kb"]["max"])
     return {"ok": True}
+
+
+def _default_system_prompt(clinic_name: str) -> str:
+    return (
+        f"Ты — вежливый AI-ассистент стоматологии «{clinic_name}». "
+        "Строго следуй только данным из базы знаний клиники. "
+        "Не придумывай цены, услуги или время работы — используй только то, что есть в базе знаний. "
+        "Если нужной информации нет в базе знаний, честно скажи об этом и предложи позвонить в клинику. "
+        "Отвечай кратко и по делу на русском языке."
+    )
 
 
 # ------------------------------------------------------------------

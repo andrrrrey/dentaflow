@@ -219,7 +219,8 @@ class MaxVkService:
             "sender_name": name or str(user_id),
             "update_type": "message_callback",
             "callback_id": callback_id,
-            "is_booking_button": payload == "book_appointment",
+            "callback_id_payload": payload,
+            "is_booking_button": payload in ("book", "book_appointment"),
             "is_callback": True,
         }
 

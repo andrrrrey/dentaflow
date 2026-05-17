@@ -411,6 +411,16 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     ],
   },
   {
+    service: "bots",
+    title: "Настройки ботов (общие)",
+    icon: <Bot size={15} />,
+    description: "Приветственное сообщение и название клиники — одинаковые для Telegram и Max",
+    fields: [
+      { key: "bot_clinic_name", label: "Название клиники (для ботов)", placeholder: "Стоматология Арт Смайл" },
+      { key: "bot_welcome_message", label: "Приветственное сообщение (оставьте пустым для стандартного)", multiline: true, placeholder: "👋 Добро пожаловать! Я AI-ассистент клиники..." },
+    ],
+  },
+  {
     service: "telegram",
     title: "Telegram",
     icon: <Bot size={15} />,
@@ -423,17 +433,19 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
           <li>Скопируйте Bot Token и вставьте ниже</li>
           <li>Укажите Webhook Secret (любая случайная строка)</li>
           <li>Зарегистрируйте вебхук: <code>curl -X POST https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook -d "url=https://ВАШ_ДОМЕН/api/v1/webhooks/telegram?secret=&lt;SECRET&gt;"</code></li>
-          <li>Включите «AI-ответы» — бот начнёт автоматически отвечать на сообщения</li>
+          <li>Включите «AI-ответы» — бот запустится с приветствием и меню</li>
         </ol>
+        <div className="mt-1 text-text-muted">
+          Бот показывает меню «Записаться / Задать вопрос», ведёт по шагам выбора услуги, даты и времени.
+        </div>
       </div>
     ),
     fields: [
       { key: "telegram_bot_token", label: "Bot Token", type: "password", placeholder: "123456:ABC..." },
       { key: "telegram_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет для setWebhook" },
       { key: "telegram_owner_chat_id", label: "Chat ID владельца (для ежедневных отчётов)", placeholder: "123456789" },
-      { key: "telegram_clinic_name", label: "Название клиники (в приветствии бота)", placeholder: "Стоматология Улыбка" },
       { key: "telegram_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
-      { key: "telegram_bot_system_prompt", label: "Системный промпт бота (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
+      { key: "telegram_bot_system_prompt", label: "Системный промпт (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
     ],
   },
   {
@@ -448,19 +460,18 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
           <li>Откройте мессенджер Max → найдите <b>@MaxBotAPI</b> → создайте бота командой <code>/newbot</code></li>
           <li>Получите <b>токен бота</b> и вставьте его ниже</li>
           <li>Нажмите <b>«Сохранить все»</b> — webhook зарегистрируется автоматически</li>
-          <li>Включите «AI-ответы» — бот начнёт консультировать пациентов</li>
+          <li>Включите «AI-ответы» — бот запустится с приветствием и меню</li>
           <li>Загрузите файлы в <b>«Базу знаний бота»</b> выше — прайс, FAQ, описание услуг</li>
         </ol>
         <div className="mt-1 text-text-muted">
-          Бот автоматически отвечает на вопросы, показывает кнопки «Записаться» и проверяет свободные слоты в расписании.
+          Бот показывает меню «Записаться / Задать вопрос», помогает выбрать услугу, дату и время — и передаёт запись в систему.
         </div>
       </div>
     ),
     fields: [
       { key: "max_bot_token", label: "Токен бота (из @MaxBotAPI)", type: "password", placeholder: "Токен вида eyJ..." },
-      { key: "max_clinic_name", label: "Название клиники (в приветствии бота)", placeholder: "Стоматология Улыбка" },
       { key: "max_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
-      { key: "max_bot_system_prompt", label: "Системный промпт бота (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
+      { key: "max_bot_system_prompt", label: "Системный промпт (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },
     ],
   },
   {

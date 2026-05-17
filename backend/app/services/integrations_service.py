@@ -21,6 +21,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
     "novofon": ["novofon_api_key", "novofon_webhook_secret"],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
     "openai": ["openai_api_key", "openai_model"],
+    "bots": ["bot_welcome_message", "bot_clinic_name"],
     "telegram": [
         "telegram_bot_token",
         "telegram_webhook_secret",
