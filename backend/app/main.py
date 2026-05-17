@@ -5,9 +5,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.config import settings
 from app.routers import (
@@ -52,9 +50,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
-# Trust forwarded headers from nginx so request.base_url returns the public HTTPS URL
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # CORS
 origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",")]
