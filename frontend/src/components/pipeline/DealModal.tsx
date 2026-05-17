@@ -88,7 +88,7 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
   const toggleTaskMutation = useToggleTask();
   const deleteTaskMutation = useDeleteTask();
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [taskForm, setTaskForm] = useState({ type: "callback", title: "", due_at: "" });
+  const [taskForm, setTaskForm] = useState({ type: "callback", title: "", due_at: "", assigned_to: "" });
 
   const stages = apiStages?.map((s) => ({ key: s.key, label: s.label })) ?? [];
 
@@ -135,15 +135,16 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
   };
 
   const handleCreateTask = async () => {
-    if (!taskForm.title.trim() || !taskForm.due_at) return;
+    if (!taskForm.title.trim() || !taskForm.due_at || !taskForm.assigned_to) return;
     await createTaskMutation.mutateAsync({
       type: taskForm.type,
       title: taskForm.title.trim(),
       due_at: new Date(taskForm.due_at).toISOString(),
       deal_id: deal.id,
       patient_id: deal.patient_id,
+      assigned_to: taskForm.assigned_to,
     });
-    setTaskForm({ type: "callback", title: "", due_at: "" });
+    setTaskForm({ type: "callback", title: "", due_at: "", assigned_to: "" });
     setShowTaskForm(false);
   };
 
@@ -298,9 +299,19 @@ export default function DealModal({ deal, onClose }: DealModalProps) {
                   </select>
                   <input type="text" placeholder="Название задачи" value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} className="rounded-[10px] px-3 py-2 text-[12px] text-text-main outline-none" style={inputStyle} />
                   <input type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} className="rounded-[10px] px-3 py-2 text-[12px] text-text-main outline-none" style={inputStyle} />
+                  <select
+                    value={taskForm.assigned_to}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, assigned_to: e.target.value }))}
+                    className="rounded-[10px] px-3 py-2 text-[12px] text-text-main outline-none cursor-pointer"
+                    style={taskForm.assigned_to ? inputStyle : { ...inputStyle, borderColor: "#f44b6e" }}
+                    required
+                  >
+                    <option value="">Ответственный *</option>
+                    {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setShowTaskForm(false)}>Отмена</Button>
-                    <Button variant="primary" size="sm" onClick={handleCreateTask} disabled={createTaskMutation.isPending || !taskForm.title.trim() || !taskForm.due_at}>
+                    <Button variant="primary" size="sm" onClick={handleCreateTask} disabled={createTaskMutation.isPending || !taskForm.title.trim() || !taskForm.due_at || !taskForm.assigned_to}>
                       {createTaskMutation.isPending ? "Создание..." : "Создать"}
                     </Button>
                   </div>

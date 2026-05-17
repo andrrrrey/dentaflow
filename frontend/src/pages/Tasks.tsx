@@ -55,7 +55,7 @@ export default function Tasks() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.due_at) return;
+    if (!form.title.trim() || !form.due_at || !form.assigned_to) return;
     createTask.mutate(
       {
         type: form.type,
@@ -171,9 +171,11 @@ export default function Tasks() {
             <select
               value={form.assigned_to}
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
-              className="rounded-[10px] border border-[rgba(91,76,245,0.18)] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none focus:border-accent2"
+              className="rounded-[10px] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none"
+              style={{ border: form.assigned_to ? "1px solid rgba(91,76,245,0.18)" : "1px solid #f44b6e" }}
+              required
             >
-              <option value="">Ответственный</option>
+              <option value="">Ответственный *</option>
               {admins.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
@@ -182,7 +184,7 @@ export default function Tasks() {
               type="submit"
               variant="primary"
               size="sm"
-              disabled={!form.title.trim() || !form.due_at || createTask.isPending}
+              disabled={!form.title.trim() || !form.due_at || !form.assigned_to || createTask.isPending}
             >
               {createTask.isPending ? "Создаём..." : "Создать"}
             </Button>

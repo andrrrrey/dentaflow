@@ -6,11 +6,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.deal import Deal
 from app.models.pipeline_stage import PipelineStage
 from app.models.user import User
 
@@ -129,6 +130,46 @@ async def rename_stage(
         id=str(stage.id), key=stage.key, label=stage.label,
         color=stage.color, position=stage.position, is_system=stage.is_system,
     )
+
+
+@router.delete("/{stage_id}/deals", status_code=status.HTTP_200_OK)
+async def delete_stage_deals(
+    stage_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete all deals in the given pipeline stage."""
+    stage = await db.get(PipelineStage, stage_id)
+    if stage is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+    result = await db.execute(select(Deal).where(Deal.stage == stage.key))
+    deals = result.scalars().all()
+    deleted_count = len(deals)
+    for deal in deals:
+        await db.delete(deal)
+    await db.commit()
+    return {"deleted": deleted_count}
+
+
+@router.delete("/{stage_id}", status_code=status.HTTP_200_OK)
+async def delete_stage(
+    stage_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete a non-system pipeline stage, moving its deals to 'new'."""
+    stage = await db.get(PipelineStage, stage_id)
+    if stage is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+    if stage.is_system:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete system stages",
+        )
+    await db.execute(sql_update(Deal).where(Deal.stage == stage.key).values(stage="new"))
+    await db.delete(stage)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.put("/reorder")

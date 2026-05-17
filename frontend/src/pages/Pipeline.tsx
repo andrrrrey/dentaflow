@@ -10,7 +10,7 @@ import DealModal from "../components/pipeline/DealModal";
 import AddDealModal from "../components/pipeline/AddDealModal";
 import { usePipelineQuery, useMoveDeal, useDeleteDeal } from "../api/deals";
 import { usePatientsByStage } from "../api/pipeline_ext";
-import { usePipelineStages, useRenameStage, useReorderStages } from "../api/pipelineStages";
+import { usePipelineStages, useRenameStage, useReorderStages, useDeleteStage, useDeleteStageDeals } from "../api/pipelineStages";
 import { useStaff } from "../api/staff";
 import type { PipelineStage } from "../api/pipelineStages";
 import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
@@ -178,6 +178,10 @@ export default function Pipeline() {
   const { data: apiStages } = usePipelineStages();
   const renameStageMutation = useRenameStage();
   const reorderStagesMutation = useReorderStages();
+  const deleteStageMutation = useDeleteStage();
+  const deleteStageDealsMutation = useDeleteStageDeals();
+  const [confirmDeleteStageId, setConfirmDeleteStageId] = useState<string | null>(null);
+  const [confirmDeleteDealsStageId, setConfirmDeleteDealsStageId] = useState<string | null>(null);
   const { data: staffData } = useStaff();
   const adminUsers = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
 
@@ -301,13 +305,71 @@ export default function Pipeline() {
                   </span>
                 )}
                 {!stage.is_system && editingStageId !== stage.id && (
-                  <button
-                    onClick={() => handleRenameStage(stage.id, stage.label)}
-                    className="text-text-muted hover:text-accent2 bg-transparent border-none cursor-pointer p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Переименовать"
-                  >
-                    <Pencil size={12} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleRenameStage(stage.id, stage.label)}
+                      className="text-text-muted hover:text-accent2 bg-transparent border-none cursor-pointer p-1 transition-colors"
+                      title="Переименовать"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    {confirmDeleteDealsStageId === stage.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            deleteStageDealsMutation.mutate(stage.id);
+                            setConfirmDeleteDealsStageId(null);
+                          }}
+                          className="px-[6px] py-[2px] rounded-md text-[9.5px] font-bold text-white border-none cursor-pointer"
+                          style={{ background: "#F44B6E" }}
+                        >
+                          Да, удалить сделки
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteDealsStageId(null)}
+                          className="text-text-muted bg-transparent border-none cursor-pointer p-1"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteDealsStageId(stage.id)}
+                        className="text-text-muted hover:text-[#F44B6E] bg-transparent border-none cursor-pointer p-1 transition-colors text-[10px] font-semibold"
+                        title="Удалить все сделки из этапа"
+                      >
+                        Очистить
+                      </button>
+                    )}
+                    {confirmDeleteStageId === stage.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            deleteStageMutation.mutate(stage.id);
+                            setConfirmDeleteStageId(null);
+                          }}
+                          className="px-[6px] py-[2px] rounded-md text-[9.5px] font-bold text-white border-none cursor-pointer"
+                          style={{ background: "#F44B6E" }}
+                        >
+                          Удалить этап
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteStageId(null)}
+                          className="text-text-muted bg-transparent border-none cursor-pointer p-1"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteStageId(stage.id)}
+                        className="text-text-muted hover:text-[#F44B6E] bg-transparent border-none cursor-pointer p-1 transition-colors"
+                        title="Удалить этап"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}

@@ -52,14 +52,46 @@ function getDisplayName(item: CommunicationItem): string {
   return "Новый контакт";
 }
 
+function parseCallContent(content: string | null | undefined): { callerId: string; calledDid: string } | null {
+  if (!content) return null;
+  try {
+    const meta = JSON.parse(content);
+    if (meta.caller_id || meta.called_did) {
+      return { callerId: meta.caller_id ?? "", calledDid: meta.called_did ?? "" };
+    }
+  } catch {
+    // not JSON
+  }
+  return null;
+}
+
+function formatPhone(phone: string): string {
+  if (!phone) return "—";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11) {
+    return `+${digits[0]} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9)}`;
+  }
+  return phone;
+}
+
 function getPreview(item: CommunicationItem): string {
-  if (item.type === "missed_call") return "Пропущенный звонок";
+  if (item.type === "missed_call") {
+    const meta = parseCallContent(item.content);
+    if (meta) return `Пропущенный звонок от ${formatPhone(meta.callerId)}`;
+    return "Пропущенный звонок";
+  }
   if (item.type === "call" && item.duration_sec != null) {
     const m = Math.floor(item.duration_sec / 60);
     const s = item.duration_sec % 60;
-    return item.content
-      ? `[${m}:${String(s).padStart(2, "0")}] ${item.content}`
-      : `Звонок (${m}:${String(s).padStart(2, "0")})`;
+    const duration = `${m}:${String(s).padStart(2, "0")}`;
+    const meta = parseCallContent(item.content);
+    if (meta) {
+      const who = item.direction === "inbound"
+        ? `Входящий от ${formatPhone(meta.callerId)}`
+        : `Исходящий на ${formatPhone(meta.calledDid)}`;
+      return `[${duration}] ${who}`;
+    }
+    return `Звонок (${duration})`;
   }
   return item.content ?? "Нет содержания";
 }
