@@ -126,9 +126,6 @@ class AIService:
 
     async def analyze_script(self, script_content: str) -> dict:
         """Analyze a call script for quality, completeness, and weaknesses."""
-        if settings.APP_ENV == "development":
-            return self._mock_script_analysis()
-
         prompt = (
             "Проанализируй скрипт звонка для администратора стоматологической клиники.\n"
             "Оцени:\n"
@@ -149,9 +146,6 @@ class AIService:
 
     async def compare_call_with_script(self, transcript: str, script_content: str) -> dict:
         """Compare a call transcript with a script to determine compliance."""
-        if settings.APP_ENV == "development":
-            return self._mock_call_comparison()
-
         prompt = (
             "Сравни расшифровку звонка со скриптом для администратора "
             "стоматологической клиники.\n"
