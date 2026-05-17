@@ -39,16 +39,15 @@ const statusDot: Record<string, string> = {
 
 function extractNameFromContent(content: string | null | undefined): string | null {
   if (!content) return null;
-  const m = content.match(/Имя:\s*([^\n]+)/);
+  // Stop at comma, period, newline so inline formats like "Имя: Андрей, тел:" work too
+  const m = content.match(/Имя:\s*([^,\n.]+)/);
   return m ? m[1].trim() : null;
 }
 
 function getDisplayName(item: CommunicationItem): string {
   if (item.patient_name) return item.patient_name;
-  if (item.channel === "site") {
-    const extracted = extractNameFromContent(item.content);
-    if (extracted) return extracted;
-  }
+  const extracted = extractNameFromContent(item.content);
+  if (extracted) return extracted;
   return "Новый контакт";
 }
 
@@ -76,8 +75,10 @@ function formatPhone(phone: string): string {
 
 function extractPhoneFromContent(content: string | null | undefined): string | null {
   if (!content) return null;
-  const m = content.match(/Телефон[:\s]+([^\n]+)/i);
-  return m ? m[1].trim() : null;
+  // Matches both "тел: +79270120777" and "Телефон: xxx"
+  const m = content.match(/(?:тел|Телефон)[.:\s]+([+\d][\d\s\-().]{6,})/i);
+  if (!m) return null;
+  return m[1].trim().replace(/[.\s]+$/, "");
 }
 
 function getContactPhone(item: CommunicationItem): string | null {
@@ -85,10 +86,8 @@ function getContactPhone(item: CommunicationItem): string | null {
     const meta = parseCallContent(item.content);
     if (meta?.callerId) return formatPhone(meta.callerId);
   }
-  if (item.channel === "site") {
-    return extractPhoneFromContent(item.content);
-  }
-  return null;
+  // Try to extract phone from content for any channel (site forms, max bot, etc.)
+  return extractPhoneFromContent(item.content);
 }
 
 function buildDealTitle(item: CommunicationItem): string {
@@ -432,7 +431,14 @@ function DetailPanel({
 export default function Communications() {
   const { filters } = useCommunicationsStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [addedIds, setAddedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("comm_added_to_crm");
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -522,7 +528,11 @@ export default function Communications() {
                 key={selected.id}
                 item={selected}
                 isAdded={addedIds.has(selected.id)}
-                onAdded={() => setAddedIds((prev) => new Set(prev).add(selected.id))}
+                onAdded={() => setAddedIds((prev) => {
+                  const next = new Set(prev).add(selected.id);
+                  try { localStorage.setItem("comm_added_to_crm", JSON.stringify([...next])); } catch {}
+                  return next;
+                })}
               />
             ) : (
               <div
