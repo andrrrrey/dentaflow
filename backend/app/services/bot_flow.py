@@ -438,6 +438,21 @@ async def _create_lead_comm(
         logger.exception("bot_flow: failed to create lead communication")
 
 
+async def _update_bot_user_phone(db, channel: str, user_id: str, phone: str) -> None:
+    """Store phone number on BotUser record so reminders can match by phone."""
+    try:
+        from sqlalchemy import update as sa_update
+        from app.models.bot_user import BotUser
+        await db.execute(
+            sa_update(BotUser)
+            .where(BotUser.channel == channel, BotUser.user_id == user_id)
+            .values(phone=phone)
+        )
+        await db.commit()
+    except Exception:
+        logger.warning("bot_flow: could not update bot_user phone")
+
+
 async def _do_back(state: dict, channel: str, uid) -> dict:
     await clear_state(channel, uid)
     return reply("Главное меню:", kb_main())

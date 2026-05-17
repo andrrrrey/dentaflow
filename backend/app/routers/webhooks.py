@@ -49,19 +49,6 @@ _max_vk = MaxVkService()
 
 
 async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: str | None = None) -> None:
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-    from app.models.bot_user import BotUser
-    stmt = pg_insert(BotUser).values(
-        channel=channel, chat_id=chat_id, user_id=user_id, phone=phone,
-    ).on_conflict_do_update(
-        index_elements=["channel", "user_id"],
-        set_={"last_seen_at": func.now(), **({"phone": phone} if phone else {})},
-    )
-    await db.execute(stmt)
-    await db.commit()
-
-
-async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: str | None = None) -> None:
     """Insert or update BotUser record (used for appointment reminders)."""
     try:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
