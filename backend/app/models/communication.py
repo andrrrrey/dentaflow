@@ -39,7 +39,7 @@ class Communication(Base):
     ai_tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_next_action: Mapped[str | None] = mapped_column(Text, nullable=True)
-    external_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
