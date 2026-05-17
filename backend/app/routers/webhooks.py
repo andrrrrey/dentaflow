@@ -68,15 +68,10 @@ async def _get_slots(db: AsyncSession) -> list[dict]:
 # ------------------------------------------------------------------
 
 def _parse_novofon_notification(body: dict) -> dict:
-    """Map Novofon notification fields to our internal call-event format.
-
-    Novofon HTTP-notifications use different field names than the classic
-    Zadarma-style webhook events, so we normalise them here.
-    """
+    """Map Novofon notification fields to our internal call-event format."""
     if "caller_id" in body or "event" in body:
         return body  # already in our format
 
-    # Map notification template variables to internal fields
     notification_name = body.get("notification_name", "").lower()
     if "потерян" in notification_name or "missed" in notification_name:
         event = "missed"
@@ -85,11 +80,16 @@ def _parse_novofon_notification(body: dict) -> dict:
     else:
         event = "notify_start"
 
+    # contact_phone_number is nested inside contact_info
+    contact_info = body.get("contact_info") or {}
+    caller_id = contact_info.get("contact_phone_number", "") or body.get("contact_phone_number", "")
+    call_id = str(body.get("call_session_id") or contact_info.get("communication_number") or "")
+
     return {
         "event": event,
-        "caller_id": body.get("contact_phone_number", ""),
+        "caller_id": caller_id,
         "called_did": body.get("virtual_phone_number", ""),
-        "call_id": str(body.get("call_session_id") or body.get("communication_number") or ""),
+        "call_id": call_id,
         "duration": int(body.get("wait_time_duration") or 0),
         "direction": "inbound",
     }
