@@ -316,8 +316,106 @@ async def max_webhook(
 ):
     """Handle Max messenger Bot API events."""
     body = await request.json()
+    logger.info("Max webhook raw: update_type=%s", body.get("update_type"))
 
     result = await _max_vk.handle_callback(body)
+    logger.info("Max webhook parsed: update_type=%s chat_id=%s user_id=%s is_callback=%s",
+                result.get("update_type"), result.get("max_chat_id"),
+                result.get("max_user_id"), result.get("is_callback"))
+
+    if isinstance(result, dict) and result.get("status") == "ignored":
+        return {"ok": True}
+
+    chat_id = result.get("max_chat_id")
+    user_id = result.get("max_user_id") or chat_id
+    update_type = result.get("update_type", "")
+    is_callback = result.get("is_callback", False)
+    payload = result.get("callback_id_payload", "") or ""
+    text = result.get("content", "") or ""
+
+    # Persist incoming message/event
+    try:
+        comm = Communication(
+            channel=result["channel"],
+            direction=result["direction"],
+            type=result["type"],
+            content=text,
+            status=result["status"],
+            priority=result["priority"],
+            external_id=result.get("external_id"),
+        )
+        db.add(comm)
+        await db.commit()
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": "max",
+            "type": comm.type, "priority": comm.priority,
+        })
+        logger.info("Max webhook: comm_id=%s update_type=%s", comm.id, update_type)
+    except Exception:
+        logger.exception("Max webhook: failed to persist comm")
+
+    if not chat_id:
+        logger.warning("Max webhook: no chat_id, skipping reply")
+        return {"ok": True}
+
+    max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
+    if not max_token:
+        logger.error("Max webhook: no bot token configured")
+        return {"ok": True}
+
+    max_svc = MaxVkService(bot_token=max_token)
+
+    if is_callback:
+        await max_svc.answer_callback(result.get("callback_id", ""))
+
+    clinic_name = (
+        await get_raw_value(db, "bot_clinic_name")
+        or await get_raw_value(db, "max_clinic_name")
+        or await get_raw_value(db, "telegram_clinic_name")
+        or "нашей клинике"
+    )
+    welcome_msg = await get_raw_value(db, "bot_welcome_message")
+    ai_enabled = await get_raw_value(db, "max_bot_ai_enabled")
+    is_start = (update_type == "bot_started")
+
+    btn_payload = payload
+    if not btn_payload and is_callback:
+        raw_payload = result.get("content", "")
+        if raw_payload.startswith("[кнопка] "):
+            btn_payload = raw_payload[9:]
+
+    if ai_enabled != "true" and not is_start and not btn_payload:
+        logger.info("Max webhook: AI disabled, skipping text reply for update_type=%s", update_type)
+        return {"ok": True}
+
+    ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
+    kb_ctx = await get_kb_context(db)
+    raw_prompt = await get_raw_value(db, "max_bot_system_prompt")
+    system_prompt = raw_prompt or _default_system_prompt(clinic_name)
+    ai_svc = AIService(api_key=ai_key or None)
+
+    try:
+        resp = await bot_process(
+            channel="max",
+            uid=user_id,
+            is_start=is_start,
+            payload=btn_payload if is_callback else "",
+            text=text if not is_callback else "",
+            db=db,
+            clinic_name=clinic_name,
+            welcome_message=welcome_msg,
+            ai_svc=ai_svc,
+            kb_ctx=kb_ctx,
+            system_prompt=system_prompt,
+        )
+        clean_text = resp["text"].replace("<b>", "").replace("</b>", "")
+        logger.info("Max webhook: sending reply len=%d buttons=%d to chat_id=%s",
+                    len(clean_text), len(resp["kb"]["max"]), chat_id)
+        await max_svc.send_reply(chat_id, clean_text, buttons=resp["kb"]["max"])
+    except Exception:
+        logger.exception("Max webhook: failed to send reply to chat_id=%s", chat_id)
+
+    return {"ok": True}
 
     if isinstance(result, dict) and result.get("status") == "ignored":
         return {"ok": True}

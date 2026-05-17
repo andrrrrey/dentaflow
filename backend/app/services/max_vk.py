@@ -112,6 +112,7 @@ class MaxVkService:
                 headers=headers,
                 json=payload,
             )
+            logger.info("Max send_reply: status=%s body=%s", response.status_code, response.text[:300])
             response.raise_for_status()
             return response.json()
 
