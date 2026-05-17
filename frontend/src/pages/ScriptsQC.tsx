@@ -3,7 +3,7 @@ import StatCard from "../components/ui/StatCard";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
-import { ClipboardList, Plus, X, Brain, GitCompare, Trash2, Loader2, CheckCircle, Phone, PhoneIncoming, PhoneOutgoing, Upload, FileText, Mic } from "lucide-react";
+import { ClipboardList, Plus, X, Brain, GitCompare, Trash2, Loader2, CheckCircle, Phone, PhoneIncoming, PhoneOutgoing, Upload, FileText, Mic, AlertCircle } from "lucide-react";
 import { useScripts, useCreateScript, useDeleteScript, useAnalyzeScript, useCompareCallWithScript, useUploadScript, useTranscribeCall } from "../api/scripts";
 import type { ScriptAnalysis, CallComparison } from "../api/scripts";
 import { useCalls } from "../api/calls";
@@ -74,7 +74,6 @@ function AddScriptModal({ onClose }: { onClose: () => void }) {
             <input value={category} onChange={(e) => setCategory(e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Входящий звонок" />
           </div>
 
-          {/* Input mode toggle */}
           <div className="flex gap-2">
             <button
               onClick={() => setInputMode("text")}
@@ -131,19 +130,41 @@ function AddScriptModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* -- Analysis Result -- */
+/* -- Analysis Panel -- */
 
-function AnalysisResult({ analysis }: { analysis: ScriptAnalysis }) {
+function AnalysisPanel({ scriptName, analysis, error }: { scriptName: string; analysis: ScriptAnalysis | null; error: string | null }) {
+  if (error) {
+    return (
+      <div className="flex flex-col gap-2 p-4 rounded-xl" style={{ background: "rgba(244,75,110,0.05)", border: "1px solid rgba(244,75,110,0.15)" }}>
+        <div className="flex items-center gap-2 text-[#c52048]">
+          <AlertCircle size={15} />
+          <span className="text-[13px] font-semibold">Ошибка анализа</span>
+        </div>
+        <p className="text-[12px] text-text-muted">{error}</p>
+      </div>
+    );
+  }
+
+  if (!analysis) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-8 rounded-xl h-full" style={{ background: "rgba(91,76,245,0.03)", border: "1px dashed rgba(91,76,245,0.15)" }}>
+        <Brain size={32} className="text-accent2 opacity-30" />
+        <p className="text-[13px] text-text-muted text-center">Выберите скрипт и нажмите «Анализ» для получения ИИ-оценки</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-3 mt-3 p-4 rounded-xl" style={{ background: "rgba(91,76,245,0.04)", border: "1px solid rgba(91,76,245,0.1)" }}>
+    <div className="flex flex-col gap-3 p-4 rounded-xl" style={{ background: "rgba(91,76,245,0.04)", border: "1px solid rgba(91,76,245,0.1)" }}>
+      <div className="text-[13px] font-bold text-text-main">{scriptName}</div>
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted">Качество:</span>
-          <span className="text-[16px] font-bold" style={{ color: complianceColor(analysis.score) }}>{analysis.score}%</span>
+          <span className="text-[18px] font-bold" style={{ color: complianceColor(analysis.score) }}>{analysis.score}%</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[12px] text-text-muted">Полнота:</span>
-          <span className="text-[16px] font-bold" style={{ color: complianceColor(analysis.completeness) }}>{analysis.completeness}%</span>
+          <span className="text-[18px] font-bold" style={{ color: complianceColor(analysis.completeness) }}>{analysis.completeness}%</span>
         </div>
       </div>
       {analysis.strengths.length > 0 && (
@@ -165,7 +186,7 @@ function AnalysisResult({ analysis }: { analysis: ScriptAnalysis }) {
       {analysis.recommendations.length > 0 && (
         <div>
           <div className="text-[11px] font-bold text-text-muted uppercase mb-1">Рекомендации</div>
-          <ul className="text-[12px] text-text-main list-disc list-inside">
+          <ul className="text-[12px] text-text-main list-disc list-inside flex flex-col gap-[2px]">
             {analysis.recommendations.map((r, i) => <li key={i}>{r}</li>)}
           </ul>
         </div>
@@ -210,7 +231,7 @@ function ComparisonResult({ comparison }: { comparison: CallComparison }) {
       {comparison.recommendations.length > 0 && (
         <div>
           <div className="text-[11px] font-bold text-text-muted uppercase mb-1">Рекомендации</div>
-          <ul className="text-[12px] text-text-main list-disc list-inside">
+          <ul className="text-[12px] text-text-main list-disc list-inside flex flex-col gap-[2px]">
             {comparison.recommendations.map((r, i) => <li key={i}>{r}</li>)}
           </ul>
         </div>
@@ -234,6 +255,12 @@ function formatCallDate(iso: string): string {
   } catch { return "—"; }
 }
 
+function formatScriptDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch { return "—"; }
+}
+
 /* -- Component -- */
 
 export default function ScriptsQC() {
@@ -244,34 +271,41 @@ export default function ScriptsQC() {
   const transcribeMutation = useTranscribeCall();
   const [showAddModal, setShowAddModal] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<Record<string, ScriptAnalysis>>({});
+  const [analysisErrors, setAnalysisErrors] = useState<Record<string, string>>({});
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
 
-  const [showCompare, setShowCompare] = useState(false);
   const [compareScriptId, setCompareScriptId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [comparisonResult, setComparisonResult] = useState<CallComparison | null>(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
   const [transcribingCallId, setTranscribingCallId] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   const { data: callsData } = useCalls({ days: 30, status: "answered" });
-  // Only show calls with actual duration (recordings exist for non-zero duration calls)
   const answeredCalls = (callsData?.calls ?? []).filter((c) => c.duration > 0);
 
   const scripts = data?.scripts ?? [];
 
   async function handleAnalyze(scriptId: string) {
     setAnalyzingId(scriptId);
+    setSelectedScriptId(scriptId);
+    setAnalysisErrors((prev) => { const n = { ...prev }; delete n[scriptId]; return n; });
     try {
       const result = await analyzeMutation.mutateAsync(scriptId);
       setAnalysisResults((prev) => ({ ...prev, [scriptId]: result.analysis }));
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? "Ошибка при анализе скрипта";
+      setAnalysisErrors((prev) => ({ ...prev, [scriptId]: msg }));
+    }
     setAnalyzingId(null);
   }
 
   async function handleTranscribe(call: CallRecord) {
     setTranscribingCallId(call.call_id);
     setTranscribeError(null);
-    setShowCompare(true);
     try {
       const result = await transcribeMutation.mutateAsync(call.call_id);
       setTranscript(result.transcript);
@@ -287,11 +321,20 @@ export default function ScriptsQC() {
 
   async function handleCompare() {
     if (!compareScriptId || !transcript.trim()) return;
+    setCompareError(null);
+    setComparisonResult(null);
     try {
       const result = await compareMutation.mutateAsync({ script_id: compareScriptId, transcript: transcript.trim() });
       setComparisonResult(result.comparison);
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? "Ошибка при сравнении";
+      setCompareError(msg);
+    }
   }
+
+  const selectedScript = scripts.find((s) => s.id === selectedScriptId) ?? null;
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -316,15 +359,11 @@ export default function ScriptsQC() {
         />
       </div>
 
-      {/* Scripts list */}
+      {/* Scripts table + AI analysis panel */}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-bold text-text-main">Скрипты звонков</h2>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowCompare(!showCompare)}>
-              <GitCompare size={13} className="mr-1" />
-              Сравнить с звонком
-            </Button>
             <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
               <Plus size={13} className="mr-1" />
               Загрузить скрипт
@@ -339,44 +378,82 @@ export default function ScriptsQC() {
             Нет загруженных скриптов. Нажмите «Загрузить скрипт» чтобы добавить первый.
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {scripts.map((script) => (
-              <div key={script.id} className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.08)" }}>
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="text-[14px] font-bold text-text-main">{script.name}</div>
-                    {script.category && <span className="text-[11px] text-text-muted">{script.category}</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {analysisResults[script.id] && (
-                      <span className="text-[12px] font-bold" style={{ color: complianceColor(analysisResults[script.id].score) }}>
-                        {analysisResults[script.id].score}%
-                      </span>
-                    )}
-                    <button
-                      onClick={() => handleAnalyze(script.id)}
-                      disabled={analyzingId === script.id}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-accent2 hover:bg-[rgba(91,76,245,0.08)] transition-colors border-none cursor-pointer bg-transparent"
-                    >
-                      {analyzingId === script.id ? <Loader2 size={12} className="animate-spin" /> : <Brain size={12} />}
-                      Анализ
-                    </button>
-                    <button
-                      onClick={() => deleteMutation.mutate(script.id)}
-                      className="p-1 rounded-lg text-text-muted hover:text-[#f44b6e] hover:bg-[rgba(244,75,110,0.08)] transition-colors border-none cursor-pointer bg-transparent"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
+          <div className="flex gap-4">
+            {/* Scripts table */}
+            <div className="flex-1 min-w-0">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left text-[11px] font-bold text-text-muted uppercase tracking-wider pb-2 pr-3">Название</th>
+                    <th className="text-left text-[11px] font-bold text-text-muted uppercase tracking-wider pb-2 pr-3">Категория</th>
+                    <th className="text-left text-[11px] font-bold text-text-muted uppercase tracking-wider pb-2 pr-3">Дата</th>
+                    <th className="text-right text-[11px] font-bold text-text-muted uppercase tracking-wider pb-2">Оценка</th>
+                    <th className="pb-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scripts.map((script) => {
+                    const isSelected = selectedScriptId === script.id;
+                    const score = analysisResults[script.id]?.score;
+                    return (
+                      <tr
+                        key={script.id}
+                        onClick={() => setSelectedScriptId(script.id)}
+                        className="cursor-pointer transition-colors"
+                        style={isSelected ? { background: "rgba(91,76,245,0.06)" } : {}}
+                      >
+                        <td className="py-[10px] pr-3 rounded-l-xl">
+                          <span className="text-[13px] font-semibold text-text-main">{script.name}</span>
+                        </td>
+                        <td className="py-[10px] pr-3">
+                          <span className="text-[12px] text-text-muted">{script.category || "—"}</span>
+                        </td>
+                        <td className="py-[10px] pr-3">
+                          <span className="text-[12px] text-text-muted">{formatScriptDate(script.created_at)}</span>
+                        </td>
+                        <td className="py-[10px] pr-3 text-right">
+                          {score !== undefined ? (
+                            <span className="text-[13px] font-bold" style={{ color: complianceColor(score) }}>{score}%</span>
+                          ) : (
+                            <span className="text-[12px] text-text-muted">—</span>
+                          )}
+                        </td>
+                        <td className="py-[10px] rounded-r-xl">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleAnalyze(script.id); }}
+                              disabled={analyzingId === script.id}
+                              title="Анализ ИИ"
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-accent2 hover:bg-[rgba(91,76,245,0.08)] transition-colors border-none cursor-pointer bg-transparent disabled:opacity-50"
+                            >
+                              {analyzingId === script.id ? <Loader2 size={12} className="animate-spin" /> : <Brain size={12} />}
+                              Анализ
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(script.id); }}
+                              title="Удалить"
+                              className="p-1 rounded-lg text-text-muted hover:text-[#f44b6e] hover:bg-[rgba(244,75,110,0.08)] transition-colors border-none cursor-pointer bg-transparent"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                <pre className="text-[12px] text-text-muted whitespace-pre-wrap max-h-[120px] overflow-y-auto font-mono leading-relaxed">
-                  {script.content.length > 400 ? script.content.slice(0, 400) + "..." : script.content}
-                </pre>
-
-                {analysisResults[script.id] && <AnalysisResult analysis={analysisResults[script.id]} />}
-              </div>
-            ))}
+            {/* AI Analysis panel */}
+            <div className="w-[340px] flex-shrink-0">
+              <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">ИИ-анализ скрипта</div>
+              <AnalysisPanel
+                scriptName={selectedScript?.name ?? ""}
+                analysis={selectedScriptId ? (analysisResults[selectedScriptId] ?? null) : null}
+                error={selectedScriptId ? (analysisErrors[selectedScriptId] ?? null) : null}
+              />
+            </div>
           </div>
         )}
       </Card>
@@ -438,50 +515,54 @@ export default function ScriptsQC() {
         )}
       </Card>
 
-      {/* Compare with call section — always visible */}
-      {true && (
-        <Card>
-          <h2 className="text-[15px] font-bold text-text-main mb-4">
-            <GitCompare size={16} className="inline mr-2 text-accent2" />
-            Сравнение звонка со скриптом
-          </h2>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Скрипт для сравнения</label>
-              <select
-                value={compareScriptId}
-                onChange={(e) => setCompareScriptId(e.target.value)}
-                className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer"
-                style={inputStyle}
-              >
-                <option value="">Выберите скрипт</option>
-                {scripts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Расшифровка звонка</label>
-              <textarea
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                rows={8}
-                className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none resize-none font-mono"
-                style={inputStyle}
-                placeholder="Вставьте расшифровку звонка или нажмите «Расшифровать» у звонка выше..."
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button variant="primary" size="md" onClick={handleCompare} disabled={compareMutation.isPending || !compareScriptId || !transcript.trim()}>
-                {compareMutation.isPending ? <Loader2 size={14} className="mr-1 animate-spin" /> : <GitCompare size={14} className="mr-1" />}
-                {compareMutation.isPending ? "Анализ..." : "Сравнить со скриптом"}
-              </Button>
-            </div>
-
-            {comparisonResult && <ComparisonResult comparison={comparisonResult} />}
+      {/* Compare with call */}
+      <Card>
+        <h2 className="text-[15px] font-bold text-text-main mb-4">
+          <GitCompare size={16} className="inline mr-2 text-accent2" />
+          Сравнение звонка со скриптом
+        </h2>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Скрипт для сравнения</label>
+            <select
+              value={compareScriptId}
+              onChange={(e) => setCompareScriptId(e.target.value)}
+              className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer"
+              style={inputStyle}
+            >
+              <option value="">Выберите скрипт</option>
+              {scripts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
           </div>
-        </Card>
-      )}
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Расшифровка звонка</label>
+            <textarea
+              value={transcript}
+              onChange={(e) => setTranscript(e.target.value)}
+              rows={8}
+              className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none resize-none font-mono"
+              style={inputStyle}
+              placeholder="Вставьте расшифровку звонка или нажмите «Расшифровать» у звонка выше..."
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button variant="primary" size="md" onClick={handleCompare} disabled={compareMutation.isPending || !compareScriptId || !transcript.trim()}>
+              {compareMutation.isPending ? <Loader2 size={14} className="mr-1 animate-spin" /> : <GitCompare size={14} className="mr-1" />}
+              {compareMutation.isPending ? "Анализ..." : "Сравнить со скриптом"}
+            </Button>
+          </div>
 
-      {/* Add script modal */}
+          {compareError && (
+            <div className="px-4 py-3 rounded-xl text-[12px] text-[#c52048] flex items-start gap-2" style={{ background: "rgba(197,32,72,0.07)", border: "1px solid rgba(197,32,72,0.15)" }}>
+              <AlertCircle size={14} className="mt-[1px] flex-shrink-0" />
+              <span>{compareError}</span>
+            </div>
+          )}
+
+          {comparisonResult && <ComparisonResult comparison={comparisonResult} />}
+        </div>
+      </Card>
+
       {showAddModal && <AddScriptModal onClose={() => setShowAddModal(false)} />}
     </div>
   );

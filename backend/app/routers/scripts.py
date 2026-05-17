@@ -139,7 +139,14 @@ async def analyze_script(
         raise HTTPException(status_code=404, detail="Script not found")
 
     ai = AIService()
+    if not ai._api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI API key не настроен. Перейдите в Настройки и добавьте ключ.",
+        )
     analysis = await ai.analyze_script(script.content)
+    if isinstance(analysis, dict) and "error" in analysis:
+        raise HTTPException(status_code=502, detail="Ошибка при обращении к OpenAI. Проверьте API-ключ.")
     return {"script_id": str(script_id), "analysis": analysis}
 
 
@@ -393,8 +400,15 @@ async def compare_call_with_script(
         raise HTTPException(status_code=404, detail="Script not found")
 
     ai = AIService()
+    if not ai._api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI API key не настроен. Перейдите в Настройки и добавьте ключ.",
+        )
     comparison = await ai.compare_call_with_script(
         transcript=body.transcript,
         script_content=script.content,
     )
+    if isinstance(comparison, dict) and "error" in comparison:
+        raise HTTPException(status_code=502, detail="Ошибка при обращении к OpenAI. Проверьте API-ключ.")
     return {"script_id": body.script_id, "comparison": comparison}
