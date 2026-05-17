@@ -27,6 +27,9 @@ from app.services.ai_service import AIService
 from app.services.bot_flow import process as bot_process
 from app.routers.knowledge_base import get_kb_context
 
+# Communication records are created inside bot_flow when user provides contacts,
+# not on every incoming message.
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
@@ -244,24 +247,7 @@ async def telegram_webhook(
     if is_callback:
         await _telegram.answer_callback_query(result.get("callback_query_id", ""))
 
-    # Persist non-empty incoming messages
-    if text or is_callback:
-        comm = Communication(
-            channel=result["channel"],
-            direction=result["direction"],
-            type=result["type"],
-            content=text or f"[кнопка] {callback_data}",
-            status=result["status"],
-            priority=result["priority"],
-            external_id=result.get("external_id"),
-        )
-        db.add(comm)
-        await db.commit()
-        await realtime.publish("new_communication", {
-            "id": str(comm.id), "channel": "telegram",
-            "type": comm.type, "priority": comm.priority,
-        })
-        logger.info("Telegram webhook: comm_id=%s", comm.id)
+    # Communication is created only when user provides contacts (inside bot_flow)
 
     if not chat_id:
         return {"status": "ok"}
@@ -333,26 +319,7 @@ async def max_webhook(
     payload = result.get("callback_id_payload", "") or ""
     text = result.get("content", "") or ""
 
-    # Persist incoming message/event
-    try:
-        comm = Communication(
-            channel=result["channel"],
-            direction=result["direction"],
-            type=result["type"],
-            content=text,
-            status=result["status"],
-            priority=result["priority"],
-            external_id=result.get("external_id"),
-        )
-        db.add(comm)
-        await db.commit()
-        await realtime.publish("new_communication", {
-            "id": str(comm.id), "channel": "max",
-            "type": comm.type, "priority": comm.priority,
-        })
-        logger.warning("Max webhook: comm_id=%s update_type=%s", comm.id, update_type)
-    except Exception:
-        logger.exception("Max webhook: failed to persist comm")
+    # Communication is created only when user provides contacts (inside bot_flow)
 
     if not chat_id:
         logger.warning("Max webhook: no chat_id, skipping reply")

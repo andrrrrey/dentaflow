@@ -155,10 +155,12 @@ def kb_main() -> dict:
         "tg": _tg([
             [_tg_btn("📅 Записаться на приём", "book")],
             [_tg_btn("💬 Задать вопрос", "ask")],
+            [_tg_btn("📞 Связаться с менеджером", "manager")],
         ]),
         "max": [
             [_max_btn("📅 Записаться на приём", "book")],
             [_max_btn("💬 Задать вопрос", "ask")],
+            [_max_btn("📞 Связаться с менеджером", "manager")],
         ],
     }
 
@@ -167,6 +169,13 @@ def kb_back_main() -> dict:
     return {
         "tg": _tg([[_tg_btn("🔙 Главное меню", "menu")]]),
         "max": [[_max_btn("🔙 Главное меню", "menu")]],
+    }
+
+
+def kb_cancel() -> dict:
+    return {
+        "tg": _tg([[_tg_btn("❌ Отмена", "menu")]]),
+        "max": [[_max_btn("❌ Отмена", "menu")]],
     }
 
 
@@ -338,24 +347,71 @@ async def process(
             slot = slots[idx]
         except (IndexError, ValueError):
             return reply("Слот не найден. Выберите снова.", kb_dates())
-        await set_state(channel, uid, {**state, "step": "bk_conf", "slot_idx": idx})
+        await set_state(channel, uid, {**state, "step": "bk_name", "slot_idx": idx})
         return reply(
-            f"✅ Вы выбрали:\n\n"
-            f"🦷 <b>{state.get('service_name', '')}</b>\n"
-            f"📅 {state.get('date', '')}\n"
-            f"🕐 {slot['time']}\n"
+            f"Отлично! Вы выбрали:\n"
+            f"🦷 {state.get('service_name', '')}\n"
+            f"📅 {state.get('date', '')}, {slot['time']}\n"
             f"👨‍⚕️ {slot['doctor']}\n\n"
-            "Подтвердить запись?",
-            kb_confirm(),
+            "Для записи введите ваше имя:",
+            kb_cancel(),
         )
 
+    if payload == "manager":
+        await set_state(channel, uid, {**state, "step": "mgr_name"})
+        return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
+
     if payload == "confirm":
-        return await _do_confirm(state, channel, uid, clinic_name)
+        return await _do_confirm(state, channel, uid, clinic_name, db)
 
     if payload == "back":
         return await _do_back(state, channel, uid)
 
     # ── Text messages ─────────────────────────────────────────────────
+
+    if step == "bk_name":
+        name = text.strip()
+        if not name:
+            return reply("Пожалуйста, введите ваше имя:", kb_cancel())
+        await set_state(channel, uid, {**state, "step": "bk_phone", "contact_name": name})
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+
+    if step == "bk_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+        slots = state.get("slots", [])
+        slot_idx = state.get("slot_idx", 0)
+        slot = slots[slot_idx] if slot_idx < len(slots) else {}
+        await set_state(channel, uid, {**state, "step": "bk_conf", "contact_phone": phone})
+        return reply(
+            f"Подтвердите запись:\n\n"
+            f"👤 {state.get('contact_name', '')}, {phone}\n"
+            f"🦷 {state.get('service_name', '')}\n"
+            f"📅 {state.get('date', '')}, {slot.get('time', '')}\n"
+            f"👨‍⚕️ {slot.get('doctor', '')}",
+            kb_confirm(),
+        )
+
+    if step == "mgr_name":
+        name = text.strip()
+        if not name:
+            return reply("Пожалуйста, введите ваше имя:", kb_cancel())
+        await set_state(channel, uid, {**state, "step": "mgr_phone", "contact_name": name})
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+
+    if step == "mgr_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+        name = state.get("contact_name", "")
+        await clear_state(channel, uid)
+        await _create_lead_comm(db, channel, name, phone)
+        return reply(
+            f"✅ Спасибо, {name}!\n\n"
+            "Менеджер свяжется с вами в ближайшее время.",
+            kb_main(),
+        )
 
     if step == "ai_chat":
         r = await ai_svc.chat_with_patient(text, kb_context=kb_ctx, system_prompt=system_prompt)
@@ -378,14 +434,66 @@ async def process(
 # Internal helpers
 # ------------------------------------------------------------------
 
-async def _do_confirm(state: dict, channel: str, uid, clinic_name: str) -> dict:
+async def _do_confirm(state: dict, channel: str, uid, clinic_name: str, db) -> dict:
     slots: list[dict] = state.get("slots", [])
     slot_idx: int = state.get("slot_idx", 0)
     slot = slots[slot_idx] if slot_idx < len(slots) else {}
     service_id = state.get("service_id", "")
     service_name = state.get("service_name", "")
     date_str = state.get("date", "")
+    name = state.get("contact_name", "")
+    phone = state.get("contact_phone", "")
 
+    # Create or find patient
+    patient_id = None
+    try:
+        from sqlalchemy import select
+        from app.models.patient import Patient
+        if phone:
+            stmt = select(Patient).where(Patient.phone == phone).limit(1)
+            row = (await db.execute(stmt)).scalar_one_or_none()
+            if row:
+                patient_id = row.id
+            else:
+                parts = name.strip().split(None, 2)
+                p = Patient(
+                    first_name=parts[1] if len(parts) > 1 else "",
+                    last_name=parts[0] if parts else name,
+                    middle_name=parts[2] if len(parts) > 2 else "",
+                    phone=phone,
+                )
+                db.add(p)
+                await db.flush()
+                patient_id = p.id
+    except Exception:
+        logger.exception("bot_flow: failed to create patient")
+
+    # Create communication record
+    try:
+        from app.models.communication import Communication
+        comm = Communication(
+            patient_id=patient_id,
+            channel=channel if channel != "tg" else "telegram",
+            direction="inbound",
+            type="message",
+            content=(
+                f"Запись через бот: {service_name}, {date_str} {slot.get('time', '')}, "
+                f"врач: {slot.get('doctor', '')}. Имя: {name}, тел: {phone}"
+            ),
+            status="new",
+            priority="high",
+        )
+        db.add(comm)
+        await db.commit()
+        from app.services.realtime import realtime
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": comm.channel,
+            "type": comm.type, "priority": comm.priority,
+        })
+    except Exception:
+        logger.exception("bot_flow: failed to create communication")
+
+    # Book in 1Denta
     booked = False
     try:
         from datetime import datetime as dt_cls
@@ -395,8 +503,8 @@ async def _do_confirm(state: dict, channel: str, uid, clinic_name: str) -> dict:
         if doctor_id and dt_raw:
             od = OneDentaService()
             await od.create_visit(
-                name="Пациент из бота",
-                phone="",
+                name=name or "Пациент из бота",
+                phone=phone,
                 email="",
                 service_ids=[service_id] if service_id else [],
                 resource_id=doctor_id,
@@ -411,7 +519,7 @@ async def _do_confirm(state: dict, channel: str, uid, clinic_name: str) -> dict:
 
     if booked:
         text = (
-            f"🎉 <b>Запись подтверждена!</b>\n\n"
+            f"Запись подтверждена!\n\n"
             f"🦷 {service_name}\n"
             f"📅 {date_str}, {slot.get('time', '')}\n"
             f"👨‍⚕️ {slot.get('doctor', '')}\n\n"
@@ -419,13 +527,58 @@ async def _do_confirm(state: dict, channel: str, uid, clinic_name: str) -> dict:
         )
     else:
         text = (
-            f"📋 <b>Заявка принята!</b>\n\n"
+            f"Заявка принята!\n\n"
             f"🦷 {service_name}\n"
             f"📅 {date_str}, {slot.get('time', '')}\n"
             f"👨‍⚕️ {slot.get('doctor', '')}\n\n"
             "Администратор клиники свяжется с вами для подтверждения записи."
         )
     return reply(text, kb_main())
+
+
+async def _create_lead_comm(db, channel: str, name: str, phone: str) -> None:
+    """Create patient + communication when user requests manager callback."""
+    try:
+        from sqlalchemy import select
+        from app.models.patient import Patient
+        from app.models.communication import Communication
+        from app.services.realtime import realtime
+
+        patient_id = None
+        if phone:
+            stmt = select(Patient).where(Patient.phone == phone).limit(1)
+            row = (await db.execute(stmt)).scalar_one_or_none()
+            if row:
+                patient_id = row.id
+            else:
+                parts = name.strip().split(None, 2)
+                p = Patient(
+                    first_name=parts[1] if len(parts) > 1 else "",
+                    last_name=parts[0] if parts else name,
+                    middle_name=parts[2] if len(parts) > 2 else "",
+                    phone=phone,
+                )
+                db.add(p)
+                await db.flush()
+                patient_id = p.id
+
+        comm = Communication(
+            patient_id=patient_id,
+            channel=channel if channel != "tg" else "telegram",
+            direction="inbound",
+            type="message",
+            content=f"Запрос обратного звонка через бот. Имя: {name}, тел: {phone}",
+            status="new",
+            priority="high",
+        )
+        db.add(comm)
+        await db.commit()
+        await realtime.publish("new_communication", {
+            "id": str(comm.id), "channel": comm.channel,
+            "type": comm.type, "priority": comm.priority,
+        })
+    except Exception:
+        logger.exception("bot_flow: failed to create lead communication")
 
 
 async def _do_back(state: dict, channel: str, uid) -> dict:
