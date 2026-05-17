@@ -285,13 +285,13 @@ async def transcribe_audio_file(
         raise HTTPException(status_code=400, detail="Файл слишком мал или пустой")
 
     ai = AIService()
-    if not ai.api_key:
+    if not ai._api_key:
         raise HTTPException(status_code=503, detail="OpenAI API key не настроен в системе")
 
     filename = file.filename or "recording.mp3"
     try:
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=ai.api_key)
+        client = AsyncOpenAI(api_key=ai._api_key)
         buf = io.BytesIO(content)
         buf.name = filename
         result = await client.audio.transcriptions.create(
@@ -361,12 +361,12 @@ async def transcribe_call(
         )
 
     ai = AIService()
-    if not ai.api_key:
+    if not ai._api_key:
         raise HTTPException(status_code=503, detail="OpenAI API key не настроен")
 
     try:
         from openai import AsyncOpenAI
-        openai_client = AsyncOpenAI(api_key=ai.api_key)
+        openai_client = AsyncOpenAI(api_key=ai._api_key)
         audio_buffer = io.BytesIO(audio_bytes)
         audio_buffer.name = f"{body.call_id}.mp3"
         result = await openai_client.audio.transcriptions.create(
