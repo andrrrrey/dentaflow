@@ -19,9 +19,10 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Module-level token cache so it survives across service instantiations
+# Module-level caches (survive across service instantiations within one process)
 _cached_token: str | None = None
 _auth_locked_until: float = 0.0  # epoch seconds; don't retry auth before this time
+_resources_cache: dict = {"data": [], "ts": None}  # 10-min in-process cache
 
 
 def _utcnow() -> datetime:
@@ -344,7 +345,10 @@ class OneDentaService:
         return items
 
     async def get_resources(self) -> list[dict]:
-        """Return staff members available for online booking."""
+        """Return staff members available for online booking. Cached in-process for 10 min."""
+        import time
+        if _resources_cache["ts"] and time.time() - _resources_cache["ts"] < 600:
+            return _resources_cache["data"]
         if self._no_credentials():
             return []
         data = await self._request("GET", "/api/v2/resource", params={"page": 1, "peerPage": 200})
@@ -366,6 +370,8 @@ class OneDentaService:
                 page_items = page_data.get("resources", []) or page_data.get("data", [])
                 logger.info("1Denta: /api/v2/resource page %d → %d resources", page, len(page_items))
                 resources.extend(page_items)
+        _resources_cache["data"] = resources
+        _resources_cache["ts"] = time.time()
         return resources
 
     async def get_commodities(self) -> list[dict]:
