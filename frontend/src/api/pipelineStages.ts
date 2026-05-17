@@ -61,3 +61,30 @@ export function useReorderStages() {
     },
   });
 }
+
+export function useDeleteStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stageId: string) => {
+      const { data } = await api.delete(`/pipeline-stages/${stageId}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline-stages"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}
+
+export function useDeleteStageDeals() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stageId: string) => {
+      const { data } = await api.delete(`/pipeline-stages/${stageId}/deals`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}

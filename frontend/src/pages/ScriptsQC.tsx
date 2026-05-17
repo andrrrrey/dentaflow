@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import StatCard from "../components/ui/StatCard";
 import Card from "../components/ui/Card";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
-import { ClipboardList, Plus, X, Brain, GitCompare, Trash2, Loader2, CheckCircle } from "lucide-react";
-import { useScripts, useCreateScript, useDeleteScript, useAnalyzeScript, useCompareCallWithScript } from "../api/scripts";
+import { ClipboardList, Plus, X, Brain, GitCompare, Trash2, Loader2, CheckCircle, Phone, PhoneIncoming, PhoneOutgoing, Upload, FileText, Mic } from "lucide-react";
+import { useScripts, useCreateScript, useDeleteScript, useAnalyzeScript, useCompareCallWithScript, useUploadScript, useTranscribeCall } from "../api/scripts";
 import type { ScriptAnalysis, CallComparison } from "../api/scripts";
+import { useCalls } from "../api/calls";
+import type { CallRecord } from "../api/calls";
 
 /* -- Helpers -- */
 
@@ -24,23 +26,36 @@ const inputStyle = {
 
 function AddScriptModal({ onClose }: { onClose: () => void }) {
   const createMutation = useCreateScript();
+  const uploadMutation = useUploadScript();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<"text" | "file">("text");
   const [error, setError] = useState("");
 
   async function handleSubmit() {
-    if (!name || !content) {
-      setError("Укажите название и текст скрипта");
-      return;
-    }
-    try {
-      await createMutation.mutateAsync({ name, content, category: category || undefined });
-      onClose();
-    } catch {
-      setError("Ошибка при сохранении");
+    if (!name) { setError("Укажите название скрипта"); return; }
+    if (inputMode === "file" && selectedFile) {
+      try {
+        await uploadMutation.mutateAsync({ name, category: category || undefined, file: selectedFile });
+        onClose();
+      } catch {
+        setError("Ошибка при загрузке файла");
+      }
+    } else {
+      if (!content) { setError("Введите текст скрипта или выберите файл"); return; }
+      try {
+        await createMutation.mutateAsync({ name, content, category: category || undefined });
+        onClose();
+      } catch {
+        setError("Ошибка при сохранении");
+      }
     }
   }
+
+  const isPending = createMutation.isPending || uploadMutation.isPending;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -58,17 +73,57 @@ function AddScriptModal({ onClose }: { onClose: () => void }) {
             <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Категория</label>
             <input value={category} onChange={(e) => setCategory(e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Входящий звонок" />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Текст скрипта *</label>
-            <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none resize-none font-mono" style={inputStyle} placeholder="Здравствуйте! Стоматология «Улыбка», меня зовут [имя]. Чем могу помочь?..." />
+
+          {/* Input mode toggle */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setInputMode("text")}
+              className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer"
+              style={inputMode === "text" ? { background: "#5B4CF5", color: "#fff" } : { background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+            >
+              <FileText size={13} />
+              Текст
+            </button>
+            <button
+              onClick={() => setInputMode("file")}
+              className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer"
+              style={inputMode === "file" ? { background: "#5B4CF5", color: "#fff" } : { background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+            >
+              <Upload size={13} />
+              Файл (.txt, .pdf, .docx)
+            </button>
           </div>
+
+          {inputMode === "text" ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Текст скрипта *</label>
+              <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={10} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none resize-none font-mono" style={inputStyle} placeholder="Здравствуйте! Стоматология «Улыбка», меня зовут [имя]. Чем могу помочь?..." />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".txt,.pdf,.docx,.doc"
+                className="hidden"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-medium border-dashed border-2 border-[rgba(91,76,245,0.25)] text-text-muted hover:border-accent2 hover:text-accent2 transition-colors bg-transparent cursor-pointer"
+              >
+                <Upload size={16} />
+                {selectedFile ? selectedFile.name : "Нажмите для выбора файла (.txt, .pdf, .docx)"}
+              </button>
+            </div>
+          )}
         </div>
         {error && <div className="text-[12px] text-[#c52048] font-medium">{error}</div>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="md" onClick={onClose}>Отмена</Button>
-          <Button variant="primary" size="md" onClick={handleSubmit} disabled={createMutation.isPending}>
+          <Button variant="primary" size="md" onClick={handleSubmit} disabled={isPending}>
             <Plus size={14} className="mr-1" />
-            {createMutation.isPending ? "Сохранение..." : "Сохранить скрипт"}
+            {isPending ? "Сохранение..." : "Сохранить скрипт"}
           </Button>
         </div>
       </div>
@@ -164,6 +219,21 @@ function ComparisonResult({ comparison }: { comparison: CallComparison }) {
   );
 }
 
+function formatDuration(sec: number): string {
+  if (!sec) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatCallDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })
+      + " " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch { return "—"; }
+}
+
 /* -- Component -- */
 
 export default function ScriptsQC() {
@@ -171,6 +241,7 @@ export default function ScriptsQC() {
   const deleteMutation = useDeleteScript();
   const analyzeMutation = useAnalyzeScript();
   const compareMutation = useCompareCallWithScript();
+  const transcribeMutation = useTranscribeCall();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<Record<string, ScriptAnalysis>>({});
@@ -180,6 +251,10 @@ export default function ScriptsQC() {
   const [compareScriptId, setCompareScriptId] = useState("");
   const [transcript, setTranscript] = useState("");
   const [comparisonResult, setComparisonResult] = useState<CallComparison | null>(null);
+  const [transcribingCallId, setTranscribingCallId] = useState<string | null>(null);
+
+  const { data: callsData } = useCalls({ days: 30, status: "answered" });
+  const answeredCalls = callsData?.calls ?? [];
 
   const scripts = data?.scripts ?? [];
 
@@ -190,6 +265,16 @@ export default function ScriptsQC() {
       setAnalysisResults((prev) => ({ ...prev, [scriptId]: result.analysis }));
     } catch { /* ignore */ }
     setAnalyzingId(null);
+  }
+
+  async function handleTranscribe(call: CallRecord) {
+    setTranscribingCallId(call.call_id);
+    setShowCompare(true);
+    try {
+      const result = await transcribeMutation.mutateAsync(call.call_id);
+      setTranscript(result.transcript);
+    } catch { /* ignore */ }
+    setTranscribingCallId(null);
   }
 
   async function handleCompare() {
@@ -288,6 +373,53 @@ export default function ScriptsQC() {
         )}
       </Card>
 
+      {/* Answered calls for transcription */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[15px] font-bold text-text-main flex items-center gap-2">
+            <Phone size={16} className="text-accent3" />
+            Отвеченные звонки (Новофон)
+          </h2>
+          <span className="text-[12px] text-text-muted">{answeredCalls.length} за 30 дней</span>
+        </div>
+        {answeredCalls.length === 0 ? (
+          <div className="text-center text-text-muted py-8 text-[13px]">
+            Нет отвеченных звонков за последние 30 дней
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {answeredCalls.slice(0, 20).map((call) => (
+              <div key={call.call_id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.08)" }}>
+                <div className="flex-shrink-0">
+                  {call.direction === "outbound"
+                    ? <PhoneOutgoing size={15} className="text-accent2" />
+                    : <PhoneIncoming size={15} className="text-accent3" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-text-main">
+                    {call.direction === "inbound" ? call.caller_id : call.called_did}
+                  </div>
+                  <div className="text-[11px] text-text-muted">
+                    {formatCallDate(call.started_at)} · {formatDuration(call.duration)}
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleTranscribe(call)}
+                  disabled={transcribingCallId === call.call_id}
+                >
+                  {transcribingCallId === call.call_id
+                    ? <Loader2 size={12} className="animate-spin mr-1" />
+                    : <Mic size={12} className="mr-1" />}
+                  {transcribingCallId === call.call_id ? "Расшифровка..." : "Расшифровать"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {/* Compare with call section */}
       {showCompare && (
         <Card>
@@ -316,13 +448,13 @@ export default function ScriptsQC() {
                 rows={8}
                 className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none resize-none font-mono"
                 style={inputStyle}
-                placeholder="Вставьте расшифровку звонка..."
+                placeholder="Вставьте расшифровку звонка или нажмите «Расшифровать» у звонка выше..."
               />
             </div>
             <div className="flex justify-end">
               <Button variant="primary" size="md" onClick={handleCompare} disabled={compareMutation.isPending || !compareScriptId || !transcript.trim()}>
                 {compareMutation.isPending ? <Loader2 size={14} className="mr-1 animate-spin" /> : <GitCompare size={14} className="mr-1" />}
-                {compareMutation.isPending ? "Анализ..." : "Сравнить"}
+                {compareMutation.isPending ? "Анализ..." : "Сравнить со скриптом"}
               </Button>
             </div>
 

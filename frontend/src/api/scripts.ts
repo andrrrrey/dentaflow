@@ -79,3 +79,31 @@ export function useCompareCallWithScript() {
     },
   });
 }
+
+export function useUploadScript() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name, category, file }: { name: string; category?: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("name", name);
+      if (category) formData.append("category", category);
+      formData.append("file", file);
+      const { data } = await api.post("/scripts/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scripts"] });
+    },
+  });
+}
+
+export function useTranscribeCall() {
+  return useMutation<{ call_id: string; transcript: string }, Error, string>({
+    mutationFn: async (callId: string) => {
+      const { data } = await api.post("/scripts/transcribe-call", { call_id: callId });
+      return data;
+    },
+  });
+}
