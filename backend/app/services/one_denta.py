@@ -260,19 +260,27 @@ class OneDentaService:
         """Create a new visit / appointment."""
         if self._no_credentials():
             raise RuntimeError("1Denta credentials not configured")
+
+        def _to_int(v: str) -> int | str:
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                return v
+
         body: dict[str, Any] = {
             "visit": {
                 "user": {"name": name, "phone": phone},
                 "comment": comment,
                 "appointment": {
-                    "serviceIds": service_ids,
-                    "resourceId": resource_id,
+                    "serviceIds": [_to_int(s) for s in service_ids],
+                    "resourceId": _to_int(resource_id),
                     "datetime": dt,
                 },
             }
         }
         if email:
             body["visit"]["user"]["email"] = email
+        logger.info("1Denta: create_visit payload=%s", body)
         data = await self._request("POST", "/api/v2/visit", json_body=body)
         return data.get("visit", data)
 
@@ -479,6 +487,11 @@ class OneDentaService:
                     method, path, params=params, json_body=json_body, _retry=False
                 )
 
+            if response.status_code >= 400:
+                logger.error(
+                    "1Denta: %s %s → %s | body: %s",
+                    method, path, response.status_code, response.text[:500],
+                )
             response.raise_for_status()
             if response.status_code == 204 or not response.content:
                 return {}
