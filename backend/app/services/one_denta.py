@@ -267,15 +267,18 @@ class OneDentaService:
             except (ValueError, TypeError):
                 return v
 
+        appointment: dict[str, Any] = {
+            "resourceId": _to_int(resource_id),
+            "datetime": dt,
+        }
+        if service_ids:
+            appointment["serviceIds"] = [_to_int(s) for s in service_ids]
+
         body: dict[str, Any] = {
             "visit": {
                 "user": {"name": name, "phone": phone},
                 "comment": comment,
-                "appointment": {
-                    "serviceIds": [_to_int(s) for s in service_ids],
-                    "resourceId": _to_int(resource_id),
-                    "datetime": dt,
-                },
+                "appointment": appointment,
             }
         }
         if email:
