@@ -37,6 +37,15 @@ export function useServices() {
     queryKey: ["directories-services"],
     queryFn: async () => {
       const { data } = await api.get("/directories/services");
+      if (!data.services?.length) {
+        try {
+          await api.post("/directories/sync");
+          const { data: fresh } = await api.get("/directories/services");
+          return fresh;
+        } catch {
+          // ignore sync errors, return empty
+        }
+      }
       return data;
     },
     staleTime: 30 * 60 * 1000,
