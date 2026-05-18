@@ -36,6 +36,7 @@ export default function AddAppointmentModal({
     doctor_id: doctors[0]?.doctor_id ?? "",
     doctor_name: doctors[0]?.doctor_name ?? "",
     service: "",
+    service_ids: [],
     scheduled_at: "",
     duration_min: 30,
     comment: "",
@@ -108,7 +109,15 @@ export default function AddAppointmentModal({
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Услуга</label>
             {services.length > 0 ? (
-              <select value={form.service} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer" style={inputStyle}>
+              <select
+                value={form.service}
+                onChange={(e) => {
+                  const svc = services.find((s) => s.name === e.target.value);
+                  setForm((p) => ({ ...p, service: e.target.value, service_ids: svc ? [String(svc.id)] : [] }));
+                }}
+                className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer"
+                style={inputStyle}
+              >
                 <option value="">— Выбрать услугу —</option>
                 {services.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
