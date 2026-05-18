@@ -258,6 +258,8 @@ class OneDentaService:
         comment: str = "",
     ) -> dict:
         """Create a new visit / appointment."""
+        if self._no_credentials():
+            raise RuntimeError("1Denta credentials not configured")
         body: dict[str, Any] = {
             "visit": {
                 "user": {"name": name, "phone": phone},

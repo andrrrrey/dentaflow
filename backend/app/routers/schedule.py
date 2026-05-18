@@ -7,10 +7,13 @@ Also allows creating new appointments via 1Denta API.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -339,8 +342,9 @@ async def create_appointment(
             comment=body.comment,
         )
         external_id = str(result.get("id", ""))
+        logger.info("1Denta: visit created, external_id=%s", external_id)
     except Exception:
-        pass
+        logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
 
     appt = Appointment(
         external_id=external_id or f"local-{uuid.uuid4().hex[:8]}",
