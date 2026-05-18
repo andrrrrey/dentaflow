@@ -129,13 +129,6 @@ class TelegramBotService:
 
     async def send_reply(self, chat_id: int, text: str, reply_markup: dict | None = None) -> dict:
         """Send a text message to the given *chat_id*."""
-        if settings.APP_ENV == "development":
-            logger.info(
-                "DEV send_reply chat_id=%s text_len=%d markup=%s (mock)",
-                chat_id, len(text), bool(reply_markup),
-            )
-            return {"ok": True, "message_id": 123, "chat_id": chat_id}
-
         payload: dict = {
             "chat_id": chat_id,
             "text": text,
@@ -151,8 +144,6 @@ class TelegramBotService:
 
     async def answer_callback_query(self, callback_query_id: str, text: str = "") -> None:
         """Acknowledge an inline button press (removes the loading spinner)."""
-        if settings.APP_ENV == "development":
-            return
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
                 f"{self.base_url}/answerCallbackQuery",
