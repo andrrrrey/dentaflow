@@ -38,8 +38,7 @@ router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
 
 # Service singletons (stateless, cheap to create)
 _novofon = NovofonService()
-_telegram = TelegramBotService()
-# Max service is created per-request so it picks up the latest db token
+# TelegramBotService and MaxVkService are created per-request to pick up latest db tokens
 _max_vk = MaxVkService()
 
 
@@ -258,7 +257,13 @@ async def telegram_webhook(
     if stored_secret and secret != stored_secret:
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
 
-    result = await _telegram.handle_incoming_message(body)
+    tg_token = await get_raw_value(db, "telegram_bot_token") or settings.TELEGRAM_BOT_TOKEN
+    if not tg_token:
+        logger.error("Telegram webhook: no bot token configured")
+        return {"status": "ok"}
+
+    tg_svc = TelegramBotService(bot_token=tg_token)
+    result = await tg_svc.handle_incoming_message(body)
 
     chat_id = result.get("chat_id")
     is_callback = result.get("is_callback", False)
@@ -268,14 +273,9 @@ async def telegram_webhook(
 
     # Acknowledge button press immediately
     if is_callback:
-        await _telegram.answer_callback_query(result.get("callback_query_id", ""))
+        await tg_svc.answer_callback_query(result.get("callback_query_id", ""))
 
     # Communication is created only when user provides contacts (inside bot_flow)
-
-    # Track bot users for reminders (on /start)
-    is_start_tg = text.strip() == "/start"
-    if is_start_tg and user_id and chat_id:
-        await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
 
     if not chat_id:
         return {"status": "ok"}
@@ -319,7 +319,7 @@ async def telegram_webhook(
         kb_ctx=kb_ctx,
         system_prompt=system_prompt,
     )
-    await _telegram.send_reply(chat_id, resp["text"], reply_markup=resp["kb"]["tg"])
+    await tg_svc.send_reply(chat_id, resp["text"], reply_markup=resp["kb"]["tg"])
     return {"status": "ok"}
 
 
