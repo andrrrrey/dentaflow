@@ -336,7 +336,7 @@ async def create_appointment(
             name=body.patient_name,
             phone=body.patient_phone,
             email=body.patient_email,
-            service_ids=body.service_ids or ["1"],
+            service_ids=body.service_ids,
             resource_id=body.doctor_id,
             dt=body.scheduled_at,
             comment=body.comment,
