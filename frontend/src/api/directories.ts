@@ -7,6 +7,7 @@ export interface ServiceItem {
   categoryName?: string;
   price?: string;
   duration?: number;
+  onlineRecord?: boolean;
   [key: string]: unknown;
 }
 

@@ -37,6 +37,7 @@ def _normalize_service(s: dict) -> dict:
         "price": price_str,
         "duration": duration_sec // 60 if duration_sec else None,
         "description": s.get("description"),
+        "onlineRecord": bool(s.get("onlineRecord") or s.get("online_record") or s.get("isOnline")),
     }
 
 

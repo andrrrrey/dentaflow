@@ -113,7 +113,11 @@ export default function AddAppointmentModal({
                 value={form.service}
                 onChange={(e) => {
                   const svc = services.find((s) => s.name === e.target.value);
-                  setForm((p) => ({ ...p, service: e.target.value, service_ids: svc ? [String(svc.id)] : [] }));
+                  setForm((p) => ({
+                    ...p,
+                    service: e.target.value,
+                    service_ids: svc?.onlineRecord ? [String(svc.id)] : [],
+                  }));
                 }}
                 className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer"
                 style={inputStyle}
