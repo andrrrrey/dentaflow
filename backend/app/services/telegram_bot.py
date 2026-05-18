@@ -40,8 +40,8 @@ _INLINE_KEYBOARD = {
 class TelegramBotService:
     """Service-layer wrapper around the Telegram Bot API."""
 
-    def __init__(self) -> None:
-        self.token = settings.TELEGRAM_BOT_TOKEN
+    def __init__(self, bot_token: str | None = None) -> None:
+        self.token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self.base_url = f"https://api.telegram.org/bot{self.token}" if self.token else ""
 
     # ------------------------------------------------------------------
