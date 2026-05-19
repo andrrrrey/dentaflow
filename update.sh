@@ -29,7 +29,7 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
 
   echo -n "→ Ожидание готовности бэкенда"
   for i in $(seq 1 30); do
-    if $COMPOSE exec -T backend curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+    if $COMPOSE logs backend 2>&1 | grep -q "Application startup complete"; then
       echo " готов!"
       break
     fi
