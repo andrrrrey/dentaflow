@@ -330,21 +330,22 @@ async def create_appointment(
         await db.flush()
 
     external_id = None
-    try:
-        svc = await OneDentaService.from_db(db)
-        result = await svc.create_visit(
-            name=body.patient_name,
-            phone=body.patient_phone,
-            email=body.patient_email,
-            service_ids=body.service_ids,
-            resource_id=body.doctor_id,
-            dt=body.scheduled_at,
-            comment=body.comment,
-        )
-        external_id = str(result.get("id", ""))
-        logger.info("1Denta: visit created, external_id=%s", external_id)
-    except Exception:
-        logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
+    if body.service_ids:
+        try:
+            svc = await OneDentaService.from_db(db)
+            result = await svc.create_visit(
+                name=body.patient_name,
+                phone=body.patient_phone,
+                email=body.patient_email,
+                service_ids=body.service_ids,
+                resource_id=body.doctor_id,
+                dt=body.scheduled_at,
+                comment=body.comment,
+            )
+            external_id = str(result.get("id", ""))
+            logger.info("1Denta: visit created, external_id=%s", external_id)
+        except Exception:
+            logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
 
     appt = Appointment(
         external_id=external_id or f"local-{uuid.uuid4().hex[:8]}",
