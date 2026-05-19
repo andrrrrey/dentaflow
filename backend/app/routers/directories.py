@@ -27,13 +27,21 @@ logger = logging.getLogger(__name__)
 # ── Normalizers ────────────────────────────────────────────────────────────────
 
 def _normalize_service(s: dict) -> dict:
-    price_range = s.get("price", {}).get("range") if isinstance(s.get("price"), dict) else None
-    price_str = str(price_range[0]) if price_range else None
+    raw_price = s.get("price")
+    if isinstance(raw_price, dict):
+        price_range = raw_price.get("range")
+        price_str = str(price_range[0]) if price_range else (str(raw_price.get("min", "")) or None)
+    elif raw_price is not None:
+        price_str = str(raw_price) if raw_price else None
+    else:
+        price_str = None
     duration_sec = s.get("durationSeconds")
+    category = s.get("category")
+    category_name = category if isinstance(category, str) else (category.get("name") if isinstance(category, dict) else None)
     return {
         "id": s.get("id"),
-        "name": s.get("title", ""),
-        "categoryName": s.get("category"),
+        "name": s.get("name") or s.get("title") or "",
+        "categoryName": category_name,
         "price": price_str,
         "duration": duration_sec // 60 if duration_sec else None,
         "description": s.get("description"),

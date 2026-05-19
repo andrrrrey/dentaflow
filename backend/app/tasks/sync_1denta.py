@@ -394,10 +394,21 @@ async def _sync_directories_async() -> dict:
 
         def _item_name(category: str, item: dict) -> str:
             if category == "service":
-                return item.get("title", item.get("name", ""))
+                return item.get("name", item.get("title", ""))
             if category == "resource":
                 return item.get("title", item.get("name", ""))
             return item.get("title", item.get("name", ""))
+
+        def _normalize_for_cache(category: str, item: dict) -> dict:
+            """Normalize raw 1Denta item before storing in directory_cache."""
+            from app.routers.directories import _normalize_service, _normalize_resource, _normalize_commodity
+            if category == "service":
+                return _normalize_service(item)
+            if category == "resource":
+                return _normalize_resource(item)
+            if category == "commodity":
+                return _normalize_commodity(item)
+            return item
 
         for category, fetch_coro in [
             ("service", service.get_services()),
@@ -409,11 +420,12 @@ async def _sync_directories_async() -> dict:
                     delete(DirectoryCache).where(DirectoryCache.category == category)
                 )
                 for item in items:
+                    normalized = _normalize_for_cache(category, item)
                     session.add(DirectoryCache(
                         external_id=str(item.get("id", "")),
                         category=category,
-                        name=_item_name(category, item),
-                        data=item,
+                        name=_item_name(category, normalized),
+                        data=normalized,
                         synced_at=now,
                     ))
                 counts[category] = len(items)
