@@ -24,6 +24,9 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
   echo "→ Запуск бэкенда и celery..."
   $COMPOSE up -d --no-deps backend celery_worker celery_beat
 
+  echo "→ Перезапуск nginx..."
+  $COMPOSE restart nginx
+
   echo -n "→ Ожидание готовности бэкенда"
   for i in $(seq 1 30); do
     if $COMPOSE exec -T backend curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
