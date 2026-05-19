@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus } from "lucide-react";
+import { X, Plus, RefreshCw, WifiOff } from "lucide-react";
 import Button from "../ui/Button";
 import PatientSearchInput from "../ui/PatientSearchInput";
 import { useCreateAppointment, type CreateAppointmentData } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
-import { useServices } from "../../api/directories";
+import { useServices, type ServiceItem } from "../../api/directories";
 
 const inputStyle = {
   border: "1px solid rgba(91,76,245,0.15)",
@@ -29,6 +29,8 @@ export default function AddAppointmentModal({
 
   const doctors = doctorsData?.doctors ?? [];
   const services = servicesData?.services ?? [];
+
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
 
   const [form, setForm] = useState<CreateAppointmentData>({
     patient_name: initialPatientName,
@@ -63,8 +65,13 @@ export default function AddAppointmentModal({
     try {
       await createMutation.mutateAsync(form);
       onClose();
-    } catch {
-      setError("Ошибка при создании записи");
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (detail) {
+        setError(detail);
+      } else {
+        setError("Ошибка при создании записи");
+      }
     }
   }
 
@@ -112,7 +119,8 @@ export default function AddAppointmentModal({
               <select
                 value={form.service}
                 onChange={(e) => {
-                  const svc = services.find((s) => s.name === e.target.value);
+                  const svc = services.find((s) => s.name === e.target.value) ?? null;
+                  setSelectedService(svc);
                   setForm((p) => ({
                     ...p,
                     service: e.target.value,
@@ -127,6 +135,11 @@ export default function AddAppointmentModal({
               </select>
             ) : (
               <input value={form.service} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Консультация" />
+            )}
+            {form.service && (
+              selectedService?.onlineRecord
+                ? <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium mt-0.5"><RefreshCw size={11} />Будет синхронизирована с 1Denta</div>
+                : <div className="flex items-center gap-1 text-[11px] text-text-muted font-medium mt-0.5"><WifiOff size={11} />Только локально — онлайн-запись в 1Denta закрыта</div>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">

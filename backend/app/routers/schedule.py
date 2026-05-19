@@ -315,6 +315,33 @@ async def create_appointment(
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Create a new appointment locally and optionally in 1Denta."""
+    scheduled_dt = datetime.fromisoformat(body.scheduled_at)
+    if scheduled_dt.tzinfo is None:
+        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+    end_dt = scheduled_dt + timedelta(minutes=body.duration_min)
+
+    # Check for overlapping appointments with the same doctor
+    if body.doctor_id:
+        day_start = scheduled_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = scheduled_dt.replace(hour=23, minute=59, second=59, microsecond=0)
+        existing_stmt = select(Appointment).where(
+            Appointment.doctor_id == body.doctor_id,
+            Appointment.status.notin_(["cancelled", "no_show"]),
+            Appointment.scheduled_at >= day_start,
+            Appointment.scheduled_at <= day_end,
+        )
+        existing = (await db.execute(existing_stmt)).scalars().all()
+        for appt in existing:
+            appt_start = appt.scheduled_at
+            if appt_start.tzinfo is None:
+                appt_start = appt_start.replace(tzinfo=timezone.utc)
+            appt_end = appt_start + timedelta(minutes=appt.duration_min or 30)
+            if appt_start < end_dt and appt_end > scheduled_dt:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Время пересекается с другой записью у этого врача ({appt_start.strftime('%H:%M')}–{appt_end.strftime('%H:%M')})",
+                )
+
     patient_stmt = select(Patient).where(Patient.phone == body.patient_phone)
     patient = (await db.execute(patient_stmt)).scalar_one_or_none()
 
