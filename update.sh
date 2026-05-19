@@ -1,6 +1,6 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────
-# DentaFlow — обновление из git и перезапуск
+# DentaFlow — обновление
 #
 # ./update.sh           — всё (бэк + фронт)
 # ./update.sh back      — только бэкенд + celery
@@ -11,7 +11,6 @@ cd "$(dirname "$0")"
 
 COMPOSE="docker compose -f docker-compose.prod.yml"
 PROJECT="dentaflow"
-
 MODE="${1:-all}"
 
 echo "→ git pull..."
@@ -22,11 +21,24 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
   echo "→ Пересборка бэкенда..."
   $COMPOSE build backend
 
-  echo "→ Запуск бэкенда, celery-worker, celery-beat..."
+  echo "→ Запуск бэкенда и celery..."
   $COMPOSE up -d --no-deps backend celery_worker celery_beat
 
-  echo "→ Миграции БД..."
-  $COMPOSE exec backend alembic upgrade head
+  echo -n "→ Ожидание готовности бэкенда"
+  for i in $(seq 1 30); do
+    if $COMPOSE exec -T backend curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+      echo " готов!"
+      break
+    fi
+    echo -n "."
+    sleep 2
+    if [ "$i" = "30" ]; then
+      echo ""
+      echo "⚠ Бэкенд долго стартует. Логи:"
+      $COMPOSE logs backend --tail=20
+      exit 1
+    fi
+  done
 fi
 
 # ── Фронтенд ──────────────────────────────────────
@@ -43,4 +55,4 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "front" ]; then
 fi
 
 echo ""
-echo "✓ Готово! Логи: docker compose -f docker-compose.prod.yml logs -f backend"
+echo "✓ Готово! Система доступна."
