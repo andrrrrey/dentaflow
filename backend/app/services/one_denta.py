@@ -356,7 +356,7 @@ class OneDentaService:
             return []
         items = await self._fetch_all_pages("/api/v2/service")
         if items:
-            logger.info("1Denta: sample service keys: %s", list(items[0].keys()))
+            logger.info("1Denta: sample service raw=%s", items[0])
         return items
 
     async def get_resources(self) -> list[dict]:
