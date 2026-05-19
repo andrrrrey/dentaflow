@@ -188,6 +188,19 @@ export function useUpdateAppointment() {
   });
 }
 
+export function useDeleteAppointment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const { data } = await api.delete(`/schedule/${appointmentId}`);
+      return data as { deleted: boolean; synced_with_1denta: boolean; one_denta_deleted: boolean };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+    },
+  });
+}
+
 export function useUpdateAppointmentPayment() {
   const qc = useQueryClient();
   return useMutation({

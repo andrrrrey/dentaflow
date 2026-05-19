@@ -398,6 +398,41 @@ async def create_appointment(
     }
 
 
+@router.delete("/{appointment_id}", status_code=200)
+async def delete_appointment(
+    appointment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete appointment locally and cancel in 1Denta if synced."""
+    stmt = select(Appointment).where(Appointment.id == appointment_id)
+    appt = (await db.execute(stmt)).scalar_one_or_none()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+
+    external_id = appt.external_id
+    synced_with_1denta = bool(external_id and not external_id.startswith("local-"))
+
+    one_denta_deleted = False
+    if synced_with_1denta:
+        try:
+            svc = await OneDentaService.from_db(db)
+            await svc.delete_visit(external_id)
+            one_denta_deleted = True
+            logger.info("1Denta: visit %s deleted", external_id)
+        except Exception:
+            logger.exception("1Denta: failed to delete visit %s", external_id)
+
+    await db.delete(appt)
+    await db.commit()
+
+    return {
+        "deleted": True,
+        "synced_with_1denta": synced_with_1denta,
+        "one_denta_deleted": one_denta_deleted,
+    }
+
+
 @router.get("/services")
 async def list_services(
     db: AsyncSession = Depends(get_db),

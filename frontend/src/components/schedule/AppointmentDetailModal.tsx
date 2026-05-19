@@ -1,11 +1,11 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, ChevronDown, ExternalLink, UserCheck, Hash, MessageSquare, CreditCard, CheckCircle } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, ChevronDown, ExternalLink, UserCheck, Hash, MessageSquare, CreditCard, CheckCircle, Trash2, AlertTriangle } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Pill from "../ui/Pill";
-import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment, useUpdateAppointmentPayment } from "../../api/schedule";
+import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment, useUpdateAppointmentPayment, useDeleteAppointment } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
 import { useServices } from "../../api/directories";
 
@@ -60,6 +60,9 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const updatePayment = useUpdateAppointmentPayment();
   const { data: doctorsData } = useDoctorsList();
   const { data: servicesData } = useServices();
+
+  const deleteAppt = useDeleteAppointment();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
@@ -177,10 +180,62 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
               </span>
             )}
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-main">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            {appt && (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-1 px-3 py-[6px] rounded-xl text-[12px] font-semibold border-none cursor-pointer transition-all hover:opacity-80"
+                style={{ background: "rgba(244,75,110,0.08)", color: "#c52048" }}
+                title="Удалить запись"
+              >
+                <Trash2 size={13} />
+                Удалить
+              </button>
+            )}
+            <button onClick={onClose} className="text-text-muted hover:text-text-main">
+              <X size={18} />
+            </button>
+          </div>
         </div>
+
+        {/* Delete confirmation dialog */}
+        {confirmDelete && appt && (
+          <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: "rgba(244,75,110,0.06)", border: "1.5px solid rgba(244,75,110,0.2)" }}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={15} className="flex-shrink-0 mt-[1px]" style={{ color: "#c52048" }} />
+              <div className="flex flex-col gap-1">
+                <span className="text-[13px] font-bold" style={{ color: "#c52048" }}>Удалить запись?</span>
+                {appt.external_id && !appt.external_id.startsWith("local-") ? (
+                  <span className="text-[12px] text-text-muted">
+                    Эта запись синхронизирована с 1Denta (визит №&nbsp;{appt.external_id}).
+                    Она будет удалена и из расписания DentaFlow, и из 1Denta.
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-text-muted">
+                    Запись будет удалена из расписания DentaFlow. В 1Denta она не синхронизирована.
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="px-4 py-[6px] rounded-xl text-[12px] font-semibold border-none cursor-pointer"
+                style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => deleteAppt.mutate(appointmentId, { onSuccess: onClose })}
+                disabled={deleteAppt.isPending}
+                className="px-4 py-[6px] rounded-xl text-[12px] font-bold border-none cursor-pointer disabled:opacity-60"
+                style={{ background: "rgba(244,75,110,0.85)", color: "#fff" }}
+              >
+                {deleteAppt.isPending ? "Удаление..." : "Да, удалить"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center text-text-muted py-12 text-[13px]">Загрузка...</div>
