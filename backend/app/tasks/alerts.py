@@ -72,11 +72,6 @@ async def _check_stale_leads_async() -> dict:
             if comm_id_str in already_notified:
                 continue
 
-            # Calculate how long the lead has been waiting
-            age_minutes = int(
-                (datetime.now(timezone.utc) - comm.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
-            ) if comm.created_at else 0
-
             channel_label = {
                 "novofon": "Звонок",
                 "telegram": "Telegram",
@@ -88,7 +83,7 @@ async def _check_stale_leads_async() -> dict:
                 type="stale_lead",
                 title=f"Не обработано: {channel_label}",
                 body=(
-                    f"Обращение ({channel_label}) ожидает ответа уже {age_minutes} мин. "
+                    f"Обращение ({channel_label}) ожидает ответа. "
                     f"Содержание: {(comm.content or '')[:100]}"
                 ),
                 link=comm_id_str,
