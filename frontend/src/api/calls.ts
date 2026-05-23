@@ -36,3 +36,8 @@ export function useCalls(params: { days?: number; status?: string } = {}) {
     refetchIntervalInBackground: false,
   });
 }
+
+export async function syncCallsFromNovofon(days: number = 7): Promise<{ synced: number; skipped: number; total_from_api: number; message?: string }> {
+  const { data } = await api.post("/calls/sync", null, { params: { days } });
+  return data;
+}

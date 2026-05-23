@@ -2,8 +2,9 @@ import { useState } from "react";
 import StatCard from "../components/ui/StatCard";
 import Pill from "../components/ui/Pill";
 import Card from "../components/ui/Card";
-import { Phone, BarChart3, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play } from "lucide-react";
-import { useCalls } from "../api/calls";
+import { Phone, BarChart3, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, RefreshCw } from "lucide-react";
+import { useCalls, syncCallsFromNovofon } from "../api/calls";
+import { useQueryClient } from "@tanstack/react-query";
 import type { CallRecord } from "../api/calls";
 
 /* ---------- helpers ---------- */
@@ -54,6 +55,25 @@ function DirectionIcon({ direction }: { direction: string }) {
 export default function CallsQC() {
   const [days, setDays] = useState(7);
   const [filterStatus, setFilterStatus] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const result = await syncCallsFromNovofon(days);
+      await queryClient.invalidateQueries({ queryKey: ["calls"] });
+      if (result.message) {
+        alert(result.message);
+      } else {
+        alert(`Синхронизировано: ${result.synced} звонков (пропущено дублей: ${result.skipped})`);
+      }
+    } catch {
+      alert("Ошибка синхронизации с Новофоном");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const { data, isLoading } = useCalls({
     days,
@@ -116,6 +136,17 @@ export default function CallsQC() {
             <option value="answered">Отвечено</option>
             <option value="missed">Пропущено</option>
           </select>
+
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-accent2 cursor-pointer transition-opacity disabled:opacity-50"
+            style={{ background: "rgba(91,76,245,0.08)", border: "1px solid rgba(91,76,245,0.15)" }}
+            title="Синхронизировать звонки из Новофона"
+          >
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            Синхронизировать
+          </button>
         </div>
 
         {isLoading ? (
