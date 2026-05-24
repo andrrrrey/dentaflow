@@ -141,11 +141,8 @@ def _max_btn(text: str, payload: str) -> dict:
 
 def kb_main() -> dict:
     return {
-        "tg": _tg([
-            [_tg_btn("📅 Записаться на приём", "book")],
-            [_tg_btn("💬 Задать вопрос", "ask")],
-            [_tg_btn("📞 Связаться с менеджером", "manager")],
-        ]),
+        # Telegram: remove any leftover ReplyKeyboard; commands live in the ≡ menu
+        "tg": {"remove_keyboard": True},
         "max": [
             [_max_btn("📅 Записаться на приём", "book")],
             [_max_btn("💬 Задать вопрос", "ask")],

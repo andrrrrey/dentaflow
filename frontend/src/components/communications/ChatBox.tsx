@@ -43,7 +43,7 @@ export default function ChatBox({ communicationId, channel, botChatId }: Props) 
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -126,7 +126,7 @@ export default function ChatBox({ communicationId, channel, botChatId }: Props) 
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Написать клиенту... (Ctrl+Enter)"
+            placeholder="Написать клиенту... (Enter — отправить, Shift+Enter — новая строка)"
             rows={2}
             className="flex-1 resize-none rounded-[10px] px-[10px] py-[8px] text-[12.5px] border bg-white/60 text-text-main placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-[rgba(91,76,245,0.30)]"
             style={{ borderColor: "rgba(91,76,245,0.18)" }}
