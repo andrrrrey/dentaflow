@@ -40,5 +40,15 @@ class CommunicationUpdate(BaseModel):
 
 
 class ReplyRequest(BaseModel):
-    channel: str
     text: str
+
+
+class BotMessageResponse(BaseModel):
+    id: uuid.UUID
+    communication_id: uuid.UUID
+    direction: str
+    content: str
+    sender_name: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

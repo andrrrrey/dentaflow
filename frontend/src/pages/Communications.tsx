@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCommunications } from "../api/communications";
 import { useCommunicationsStore } from "../store/communicationsStore";
 import FeedFilters from "../components/communications/FeedFilters";
+import ChatBox from "../components/communications/ChatBox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import {
@@ -422,6 +423,11 @@ function DetailPanel({
           </>
         )}
       </button>
+
+      {/* Chat with client */}
+      {(item.channel === "telegram" || item.channel === "max") && (
+        <ChatBox communicationId={item.id} channel={item.channel} />
+      )}
     </div>
   );
 }

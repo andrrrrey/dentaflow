@@ -43,6 +43,8 @@ class Communication(Base):
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    bot_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    bot_channel_uid: Mapped[str | None] = mapped_column(String(100), nullable=True)
     responded_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
