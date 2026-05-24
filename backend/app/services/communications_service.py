@@ -31,6 +31,7 @@ def _row_to_response(comm: Communication, patient_name: str | None, assigned_nam
         ai_next_action=comm.ai_next_action,
         assigned_to=comm.assigned_to,
         assigned_to_name=assigned_name,
+        bot_chat_id=comm.bot_chat_id,
         responded_at=comm.responded_at,
         created_at=comm.created_at,
     )
