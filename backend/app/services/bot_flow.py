@@ -429,11 +429,21 @@ async def process(
 
     # First message or unknown state → welcome
     if not step or not text.strip():
+        # Before showing welcome, check for an active open conversation (DB fallback)
+        if text.strip() and not step:
+            conv_id = await get_active_conv(channel, uid)
+            if not conv_id:
+                conv_id = await _find_comm_for_user(db, channel, uid)
+            if conv_id:
+                await _append_bot_message(db, conv_id, "inbound", text)
+                return reply("✉️ Получено, менеджер ответит вам здесь.", kb_back_main())
         await clear_state(channel, uid)
         return reply(_welcome(welcome_message, clinic_name), kb_main())
 
     # User has an active open conversation (post-lead) → save message, ack without menu spam
     conv_id = await get_active_conv(channel, uid)
+    if not conv_id:
+        conv_id = await _find_comm_for_user(db, channel, uid)
     if conv_id and text.strip():
         await _append_bot_message(db, conv_id, "inbound", text)
         return reply("✉️ Получено, менеджер ответит вам здесь.", kb_back_main())
@@ -566,6 +576,37 @@ async def _append_bot_message(
         await db.commit()
     except Exception:
         logger.exception("bot_flow: failed to append bot message")
+
+
+async def _find_comm_for_user(db, channel: str, uid) -> str | None:
+    """DB fallback: find most recent open communication for this bot user.
+
+    Used when the Redis conv key is absent (e.g. pre-deploy conversations or
+    after Redis restart). Repopulates the Redis cache on success.
+    """
+    try:
+        from sqlalchemy import select
+        from app.models.communication import Communication
+        ch = channel if channel != "tg" else "telegram"
+        stmt = (
+            select(Communication.id)
+            .where(
+                Communication.channel == ch,
+                Communication.bot_channel_uid == str(uid),
+                Communication.status.in_(["new", "in_progress"]),
+            )
+            .order_by(Communication.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row:
+            comm_id = str(row)
+            await set_active_conv(channel, uid, comm_id)
+            return comm_id
+    except Exception:
+        logger.warning("bot_flow: DB lookup for active conv failed")
+    return None
 
 
 def _welcome(welcome_message: str, clinic_name: str) -> str:
