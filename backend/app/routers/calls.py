@@ -119,6 +119,35 @@ def _map_stat_to_comm(stat: dict) -> dict | None:
     }
 
 
+@router.get("/sync/inspect")
+async def inspect_novofon_stats(
+    days: int = Query(7, ge=1, le=30),
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return raw Novofon statistics API response for debugging field names."""
+    api_key = await get_raw_value(db, "novofon_api_key")
+    api_secret = await get_raw_value(db, "novofon_webhook_secret")
+
+    if not api_key:
+        return {"error": "Novofon API key not configured"}
+
+    svc = NovofonService(api_key=api_key, api_secret=api_secret or None)
+    date_from = datetime.now(timezone.utc) - timedelta(days=days)
+
+    from fastapi import HTTPException as _HTTPException
+    try:
+        stats = await svc.get_call_history(date_from=date_from)
+    except Exception as exc:
+        raise _HTTPException(status_code=502, detail=f"Novofon API error: {exc}")
+
+    return {
+        "total": len(stats),
+        "sample": stats[:3] if stats else [],
+        "all_keys": list(stats[0].keys()) if stats else [],
+    }
+
+
 @router.post("/sync")
 async def sync_calls(
     days: int = Query(7, ge=1, le=30),
