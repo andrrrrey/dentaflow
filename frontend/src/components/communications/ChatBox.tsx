@@ -8,9 +8,10 @@ import { useCommunicationMessages, sendCommunicationReply } from "../../api/comm
 interface Props {
   communicationId: string;
   channel: string;
+  botChatId: string | null;
 }
 
-export default function ChatBox({ communicationId, channel }: Props) {
+export default function ChatBox({ communicationId, channel, botChatId }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -48,7 +49,7 @@ export default function ChatBox({ communicationId, channel }: Props) {
     }
   }
 
-  const canReply = channel === "telegram" || channel === "max";
+  const canReply = (channel === "telegram" || channel === "max") && !!botChatId;
 
   return (
     <div
@@ -148,7 +149,9 @@ export default function ChatBox({ communicationId, channel }: Props) {
       {!canReply && (
         <div className="flex-shrink-0 px-[14px] py-[10px] border-t border-[rgba(91,76,245,0.08)]">
           <p className="text-[11.5px] text-text-muted">
-            Ответ доступен только для каналов Telegram и Max
+            {!botChatId
+              ? "Ответ недоступен — это обращение создано до обновления системы. Свяжитесь с клиентом напрямую по телефону."
+              : "Ответ доступен только для каналов Telegram и Max"}
           </p>
         </div>
       )}

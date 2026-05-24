@@ -41,6 +41,9 @@ _novofon = NovofonService()
 # TelegramBotService and MaxVkService are created per-request to pick up latest db tokens
 _max_vk = MaxVkService()
 
+# Set bot commands once per process
+_tg_commands_registered = False
+
 
 # ------------------------------------------------------------------
 # Helpers
@@ -262,6 +265,7 @@ async def telegram_webhook(
         logger.error("Telegram webhook: no bot token configured")
         return {"status": "ok"}
 
+    global _tg_commands_registered
     tg_svc = TelegramBotService(bot_token=tg_token)
     result = await tg_svc.handle_incoming_message(body)
 
@@ -285,6 +289,20 @@ async def telegram_webhook(
         await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
 
     is_start = text.strip() == "/start"
+
+    # Register bot commands menu once per process
+    if not _tg_commands_registered:
+        _tg_commands_registered = True
+        await tg_svc.set_my_commands()
+
+    # Treat /book /ask /manager /menu as button payloads (same as inline keyboard)
+    cmd_payload = ""
+    if not is_callback and text.strip().startswith("/") and not is_start:
+        cmd = text.strip().lstrip("/").split("@")[0].lower()
+        if cmd in ("book", "ask", "manager", "menu"):
+            cmd_payload = cmd
+            text = ""
+
     ai_enabled = await get_raw_value(db, "telegram_bot_ai_enabled")
 
     # Load shared bot config (welcome + booking work without AI)
@@ -296,9 +314,12 @@ async def telegram_webhook(
     )
     welcome_msg = await get_raw_value(db, "bot_welcome_message")
 
-    # If AI disabled: only respond to /start and button presses
-    if ai_enabled != "true" and not is_start and not is_callback:
-        return {"status": "ok"}
+    # If AI disabled: only respond to /start, button presses, and bot commands
+    if ai_enabled != "true" and not is_start and not is_callback and not cmd_payload:
+        # Still allow messages in open conversation mode
+        from app.services.bot_flow import get_active_conv
+        if not await get_active_conv("tg", user_id):
+            return {"status": "ok"}
 
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
     kb_ctx = await get_kb_context(db)
@@ -310,7 +331,7 @@ async def telegram_webhook(
         channel="tg",
         uid=user_id,
         is_start=is_start,
-        payload=callback_data if is_callback else "",
+        payload=callback_data if is_callback else cmd_payload,
         text=text,
         chat_id=str(chat_id) if chat_id else None,
         db=db,

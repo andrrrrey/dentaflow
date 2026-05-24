@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _TTL = 1800  # 30-minute session
 _HISTORY_TTL = 1800  # same as session TTL
 _HISTORY_MAX = 10    # max message pairs to keep
+_CONV_TTL = 7 * 86400  # active conversation link: 7 days
 _redis_client = None
 
 
@@ -91,6 +92,33 @@ async def add_to_history(channel: str, uid, role: str, content: str) -> None:
 async def clear_history(channel: str, uid) -> None:
     try:
         await _rc().delete(f"hist:{channel}:{uid}")
+    except Exception:
+        pass
+
+
+# ------------------------------------------------------------------
+# Active open-conversation helpers (post-lead creation)
+# ------------------------------------------------------------------
+
+async def get_active_conv(channel: str, uid) -> str | None:
+    """Return comm_id if this user has an open conversation."""
+    try:
+        return await _rc().get(f"conv:{channel}:{uid}")
+    except Exception:
+        return None
+
+
+async def set_active_conv(channel: str, uid, comm_id: str) -> None:
+    """Store open conversation link (7-day TTL)."""
+    try:
+        await _rc().setex(f"conv:{channel}:{uid}", _CONV_TTL, comm_id)
+    except Exception:
+        logger.warning("bot_flow: redis unavailable, conv not tracked")
+
+
+async def clear_active_conv(channel: str, uid) -> None:
+    try:
+        await _rc().delete(f"conv:{channel}:{uid}")
     except Exception:
         pass
 
@@ -404,10 +432,16 @@ async def process(
         await clear_state(channel, uid)
         return reply(_welcome(welcome_message, clinic_name), kb_main())
 
+    # User has an active open conversation (post-lead) → save message, ack without menu spam
+    conv_id = await get_active_conv(channel, uid)
+    if conv_id and text.strip():
+        await _append_bot_message(db, conv_id, "inbound", text)
+        return reply("✉️ Получено, менеджер ответит вам здесь.", kb_back_main())
+
     # User typed something while in booking flow → nudge
     return reply(
-        "Пожалуйста, воспользуйтесь кнопками меню 👇\n"
-        "Или нажмите «💬 Задать вопрос» чтобы написать вопрос AI-ассистенту.",
+        "Пожалуйста, воспользуйтесь командами /book, /ask, /manager\n"
+        "Или напишите вопрос и я постараюсь помочь.",
         kb_main(),
     )
 
@@ -425,8 +459,8 @@ async def _create_lead_comm(
     create_patient: bool = True,
     chat_id: str | None = None,
     channel_uid: str | None = None,
-) -> None:
-    """Create communication (and optionally patient) for a bot lead."""
+) -> str | None:
+    """Create communication (and optionally patient) for a bot lead. Returns comm_id."""
     try:
         from sqlalchemy import select
         from app.models.patient import Patient
@@ -476,12 +510,19 @@ async def _create_lead_comm(
         db.add(msg)
 
         await db.commit()
+
+        # Link this user to the created communication for open-chat tracking
+        if channel_uid:
+            await set_active_conv(channel, channel_uid, str(comm.id))
+
         await realtime.publish("new_communication", {
             "id": str(comm.id), "channel": comm.channel,
             "type": comm.type, "priority": comm.priority,
         })
+        return str(comm.id)
     except Exception:
         logger.exception("bot_flow: failed to create lead communication")
+    return None
 
 
 async def _update_bot_user_phone(db, channel: str, user_id: str, phone: str) -> None:
@@ -502,6 +543,29 @@ async def _update_bot_user_phone(db, channel: str, user_id: str, phone: str) -> 
 async def _do_back(state: dict, channel: str, uid) -> dict:
     await clear_state(channel, uid)
     return reply("Главное меню:", kb_main())
+
+
+async def _append_bot_message(
+    db,
+    comm_id: str,
+    direction: str,
+    content: str,
+    sender_name: str | None = None,
+) -> None:
+    """Save a single message to bot_messages for an existing communication."""
+    try:
+        import uuid as _uuid
+        from app.models.bot_message import BotMessage
+        msg = BotMessage(
+            communication_id=_uuid.UUID(comm_id),
+            direction=direction,
+            content=content,
+            sender_name=sender_name,
+        )
+        db.add(msg)
+        await db.commit()
+    except Exception:
+        logger.exception("bot_flow: failed to append bot message")
 
 
 def _welcome(welcome_message: str, clinic_name: str) -> str:

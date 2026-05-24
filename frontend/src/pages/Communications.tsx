@@ -426,7 +426,11 @@ function DetailPanel({
 
       {/* Chat with client */}
       {(item.channel === "telegram" || item.channel === "max") && (
-        <ChatBox communicationId={item.id} channel={item.channel} />
+        <ChatBox
+          communicationId={item.id}
+          channel={item.channel}
+          botChatId={item.bot_chat_id}
+        />
       )}
     </div>
   );
