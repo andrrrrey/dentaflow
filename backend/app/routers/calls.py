@@ -83,38 +83,50 @@ async def list_calls(
     }
 
 
+def _extract_phone(clid: str) -> str:
+    """Extract plain phone number from Novofon clid field.
+
+    clid arrives as '"79270120777" <79270120777>' or just '79270120777'.
+    """
+    import re
+    m = re.search(r"<(\d+)>", clid)
+    digits = m.group(1) if m else re.sub(r"\D", "", clid)
+    return ("+" + digits) if digits else ""
+
+
 def _map_stat_to_comm(stat: dict) -> dict | None:
     """Map a Novofon statistics record to Communication field values."""
     call_id = str(stat.get("call_id") or stat.get("pbx_call_id") or "").strip()
     if not call_id:
         return None
 
-    caller_id = str(stat.get("from") or "").strip()
-    called_did = str(stat.get("to") or "").strip()
+    caller_id = _extract_phone(str(stat.get("clid") or ""))
+    called_did = str(stat.get("destination") or "").strip()
 
-    if caller_id and not caller_id.startswith("+"):
-        caller_id = "+" + caller_id
+    seconds = int(stat.get("seconds") or 0)
+    disposition = str(stat.get("disposition") or "").lower()
+    comm_type = "call" if disposition == "answered" else "missed_call"
 
-    billsec = int(stat.get("billsec") or stat.get("duration") or 0)
-    disposition = str(stat.get("disposition") or "").upper()
-    comm_type = "call" if disposition == "ANSWERED" else "missed_call"
+    direction_raw = str(stat.get("direction") or "in").lower()
+    direction = "inbound" if direction_raw == "in" else "outbound"
 
-    calldate_str = str(stat.get("calldate") or "").strip()
+    callstart_str = str(stat.get("callstart") or "").strip()
     created_at = None
-    if calldate_str:
+    if callstart_str:
         try:
             from zoneinfo import ZoneInfo
             moscow = ZoneInfo("Europe/Moscow")
-            created_at = datetime.strptime(calldate_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=moscow)
+            created_at = datetime.strptime(callstart_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=moscow)
         except Exception:
-            created_at = datetime.now(timezone.utc)
+            pass
 
     return {
         "external_id": call_id,
         "caller_id": caller_id,
         "called_did": called_did,
-        "duration_sec": billsec,
+        "duration_sec": seconds,
         "comm_type": comm_type,
+        "direction": direction,
         "created_at": created_at,
     }
 
@@ -173,53 +185,77 @@ async def sync_calls(
     if not stats:
         return {"synced": 0, "skipped": 0, "total_from_api": 0}
 
-    # Fetch all existing external_ids in one query to avoid N+1
+    # Fetch existing records for these external_ids in one query
     all_ext_ids = [
         str(s.get("call_id") or s.get("pbx_call_id") or "")
         for s in stats if s.get("call_id") or s.get("pbx_call_id")
     ]
-    existing_stmt = select(Communication.external_id).where(
+    existing_stmt = select(Communication).where(
         Communication.channel == "novofon",
         Communication.external_id.in_(all_ext_ids),
     )
     existing_result = await db.execute(existing_stmt)
-    already_stored = {row[0] for row in existing_result.all()}
+    existing_by_ext_id: dict[str, Communication] = {
+        c.external_id: c for c in existing_result.scalars().all()
+    }
+
+    import json as _json
 
     synced = 0
+    updated = 0
     skipped = 0
     for stat in stats:
         mapped = _map_stat_to_comm(stat)
         if not mapped:
             skipped += 1
             continue
-        if mapped["external_id"] in already_stored:
-            skipped += 1
-            continue
 
-        import json as _json
         content = _json.dumps(
             {"caller_id": mapped["caller_id"], "called_did": mapped["called_did"]},
             ensure_ascii=False,
         )
+        ext_id = mapped["external_id"]
+
+        if ext_id in existing_by_ext_id:
+            # Update record if it has empty content (was created with wrong field mapping)
+            comm = existing_by_ext_id[ext_id]
+            existing_content = comm.content or "{}"
+            try:
+                existing_meta = _json.loads(existing_content)
+            except Exception:
+                existing_meta = {}
+            if not existing_meta.get("caller_id") and not existing_meta.get("called_did"):
+                comm.content = content
+                comm.type = mapped["comm_type"]
+                comm.direction = mapped["direction"]
+                comm.duration_sec = mapped["duration_sec"]
+                comm.priority = "high" if mapped["comm_type"] == "missed_call" else "normal"
+                if mapped["created_at"]:
+                    comm.created_at = mapped["created_at"]
+                updated += 1
+            else:
+                skipped += 1
+            continue
+
         comm = Communication(
             channel="novofon",
-            direction="inbound",
+            direction=mapped["direction"],
             type=mapped["comm_type"],
             content=content,
             duration_sec=mapped["duration_sec"],
             status="new",
             priority="high" if mapped["comm_type"] == "missed_call" else "normal",
-            external_id=mapped["external_id"],
+            external_id=ext_id,
         )
         if mapped["created_at"]:
             comm.created_at = mapped["created_at"]
         db.add(comm)
         synced += 1
 
-    if synced:
+    if synced or updated:
         await db.commit()
 
-    return {"synced": synced, "skipped": skipped, "total_from_api": len(stats)}
+    return {"synced": synced, "updated": updated, "skipped": skipped, "total_from_api": len(stats)}
 
 
 @router.get("/recording/{call_id}")
