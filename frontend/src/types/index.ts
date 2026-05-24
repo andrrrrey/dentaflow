@@ -83,6 +83,7 @@ export interface CommunicationItem {
   ai_next_action: string | null;
   assigned_to: string | null;
   assigned_to_name: string | null;
+  bot_chat_id: string | null;
   responded_at: string | null;
   created_at: string;
 }
