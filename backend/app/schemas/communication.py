@@ -21,7 +21,7 @@ class CommunicationResponse(BaseModel):
     ai_next_action: str | None
     assigned_to: uuid.UUID | None
     assigned_to_name: str | None
-    bot_chat_id: str | None
+    bot_chat_id: str | None = None
     responded_at: datetime | None
     created_at: datetime
 
