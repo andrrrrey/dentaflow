@@ -96,6 +96,11 @@ class TelegramBotService:
         message_id = message.get("message_id")
         full_name = f"{first_name} {last_name}".strip() or username or str(telegram_user_id)
 
+        # Handle contact sharing (request_contact button)
+        contact = message.get("contact")
+        if contact and not text:
+            text = contact.get("phone_number", "")
+
         is_command = text.startswith("/")
 
         result: dict = {

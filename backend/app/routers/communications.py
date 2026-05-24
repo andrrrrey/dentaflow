@@ -1,12 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.bot_message import BotMessage
 from app.models.user import User
 from app.schemas.communication import (
+    BotMessageResponse,
     CommunicationListResponse,
     CommunicationResponse,
     CommunicationUpdate,
@@ -96,19 +99,67 @@ async def delete_communication_endpoint(
     await delete_communication(communication_id, db)
 
 
-@router.post("/{communication_id}/reply")
+@router.get("/{communication_id}/messages", response_model=list[BotMessageResponse])
+async def list_communication_messages(
+    communication_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> list[BotMessage]:
+    """Return all bot messages for a communication, ordered by time."""
+    stmt = (
+        select(BotMessage)
+        .where(BotMessage.communication_id == communication_id)
+        .order_by(BotMessage.created_at)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+@router.post("/{communication_id}/reply", response_model=BotMessageResponse)
 async def reply_to_communication(
     communication_id: uuid.UUID,
     body: ReplyRequest,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-) -> dict[str, str]:
-    """Send a reply to a communication (mock in dev mode)."""
-    item = await get_communication_by_id(communication_id, db)
-    if item is None:
+    current_user: User = Depends(get_current_user),
+) -> BotMessage:
+    """Send a reply to a bot communication and store it as an outbound message."""
+    from app.models.communication import Communication
+    from app.services.integrations_service import get_raw_value
+    from app.config import settings
+
+    comm_stmt = select(Communication).where(Communication.id == communication_id)
+    comm_row = (await db.execute(comm_stmt)).scalar_one_or_none()
+    if comm_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Communication not found")
+
+    if not comm_row.bot_chat_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Communication not found",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No bot chat_id stored for this communication — cannot send reply",
         )
-    # In dev mode, just acknowledge
-    return {"status": "sent", "channel": body.channel, "message": body.text}
+
+    # Send via the appropriate bot channel
+    if comm_row.channel == "telegram":
+        from app.services.telegram_bot import TelegramBotService
+        tg_token = await get_raw_value(db, "telegram_bot_token") or settings.TELEGRAM_BOT_TOKEN
+        if tg_token:
+            tg_svc = TelegramBotService(bot_token=tg_token)
+            await tg_svc.send_reply(int(comm_row.bot_chat_id), body.text)
+    elif comm_row.channel == "max":
+        from app.services.max_vk import MaxVkService
+        max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
+        if max_token:
+            max_svc = MaxVkService(bot_token=max_token)
+            await max_svc.send_reply(comm_row.bot_chat_id, body.text, buttons=[])
+
+    sender = current_user.name or current_user.email
+    msg = BotMessage(
+        communication_id=communication_id,
+        direction="outbound",
+        content=body.text,
+        sender_name=sender or None,
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+    return msg

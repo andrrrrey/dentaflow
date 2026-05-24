@@ -140,6 +140,21 @@ def kb_cancel() -> dict:
     }
 
 
+def kb_request_phone() -> dict:
+    """Phone step keyboard: Telegram shows native contact-share button; Max shows inline cancel."""
+    return {
+        "tg": {
+            "keyboard": [
+                [{"text": "📱 Поделиться номером", "request_contact": True}],
+                [{"text": "❌ Отмена"}],
+            ],
+            "one_time_keyboard": True,
+            "resize_keyboard": True,
+        },
+        "max": [[_max_btn("❌ Отмена", "menu")]],
+    }
+
+
 def kb_cancel_skip() -> dict:
     return {
         "tg": _tg([[_tg_btn("⏭ Пропустить", "skip"), _tg_btn("❌ Отмена", "menu")]]),
@@ -201,6 +216,7 @@ async def process(
     is_start: bool = False,
     payload: str = "",
     text: str = "",
+    chat_id: str | None = None,
     db: AsyncSession,
     clinic_name: str,
     welcome_message: str,
@@ -213,6 +229,13 @@ async def process(
     state = await get_state(channel, uid)
     step = state.get("step", "")
 
+    # Text cancel from ReplyKeyboard "❌ Отмена" button
+    _CANCEL_TEXTS = {"❌ Отмена", "отмена"}
+    if text.strip() in _CANCEL_TEXTS and not payload:
+        await clear_state(channel, uid)
+        await clear_history(channel, uid)
+        return reply(_welcome(welcome_message, clinic_name), kb_main())
+
     # /start or bot_started — always reset to main menu
     if is_start or payload == "menu":
         await clear_state(channel, uid)
@@ -222,7 +245,7 @@ async def process(
     # ── Button callbacks ──────────────────────────────────────────────
 
     if payload == "book":
-        await set_state(channel, uid, {**state, "step": "bk_name"})
+        await set_state(channel, uid, {**state, "step": "bk_name", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Оставьте ваши контакты.\n\nВведите ваше имя:", kb_cancel())
 
     if payload == "ask":
@@ -230,15 +253,15 @@ async def process(
         return reply("💬 Задайте ваш вопрос — я постараюсь помочь!", kb_back_main())
 
     if payload == "manager":
-        await set_state(channel, uid, {**state, "step": "mgr_name"})
+        await set_state(channel, uid, {**state, "step": "mgr_name", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
 
     if payload == "ai_book":
-        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book"})
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Для записи мне нужны ваши контакты.\n\nВведите ваше имя:", kb_cancel())
 
     if payload == "ai_manager":
-        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager"})
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Хорошо, передам менеджеру! Введите ваше имя:", kb_cancel())
 
     if payload.startswith("cancel_appt:"):
@@ -269,12 +292,12 @@ async def process(
         if not name:
             return reply("Пожалуйста, введите ваше имя:", kb_cancel())
         await set_state(channel, uid, {**state, "step": "bk_phone", "contact_name": name})
-        return reply("Введите ваш номер телефона:", kb_cancel())
+        return reply("Введите ваш номер телефона:", kb_request_phone())
 
     if step == "bk_phone":
         phone = text.strip()
         if not phone:
-            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+            return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
         await set_state(channel, uid, {**state, "step": "bk_desc", "contact_phone": phone})
         return reply(
             "Опишите по желанию вашу проблему или симптомы (или нажмите «Пропустить»):",
@@ -286,10 +309,12 @@ async def process(
         name = state.get("contact_name", "")
         phone = state.get("contact_phone", "")
         content = f"Запись через бот. Имя: {name}, тел: {phone}. Проблема: {desc or 'не указана'}"
+        saved_chat_id = state.get("chat_id")
         await clear_state(channel, uid)
         await _update_bot_user_phone(db, channel, str(uid), phone)
         await _create_lead_comm(db, channel, name, phone,
-                                comment=content, create_patient=False)
+                                comment=content, create_patient=False,
+                                chat_id=saved_chat_id, channel_uid=str(uid))
         return reply("Спасибо! Наш администратор свяжется с вами для записи.", kb_main())
 
     if step == "mgr_name":
@@ -297,17 +322,19 @@ async def process(
         if not name:
             return reply("Пожалуйста, введите ваше имя:", kb_cancel())
         await set_state(channel, uid, {**state, "step": "mgr_phone", "contact_name": name})
-        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_request_phone())
 
     if step == "mgr_phone":
         phone = text.strip()
         if not phone:
-            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+            return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
         name = state.get("contact_name", "")
         await clear_state(channel, uid)
         await _update_bot_user_phone(db, channel, str(uid), phone)
         await _create_lead_comm(db, channel, name, phone,
-                                comment="просит перезвонить менеджера", create_patient=False)
+                                comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
+                                create_patient=False,
+                                chat_id=state.get("chat_id"), channel_uid=str(uid))
         return reply(
             f"Спасибо, {name}! Менеджер свяжется с вами в ближайшее время.",
             kb_main(),
@@ -318,25 +345,29 @@ async def process(
         if not name:
             return reply("Пожалуйста, введите ваше имя:", kb_cancel())
         await set_state(channel, uid, {**state, "step": "ai_lead_phone", "contact_name": name})
-        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_cancel())
+        return reply(f"Спасибо, {name}! Введите ваш номер телефона:", kb_request_phone())
 
     if step == "ai_lead_phone":
         phone = text.strip()
         if not phone:
-            return reply("Пожалуйста, введите номер телефона:", kb_cancel())
+            return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
         name = state.get("contact_name", "")
         lead_type = state.get("lead_type", "book")
         await clear_state(channel, uid)
         if lead_type == "manager":
             await _create_lead_comm(db, channel, name, phone,
-                                    comment="просит перезвонить менеджера", create_patient=False)
+                                    comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
+                                    create_patient=False,
+                                    chat_id=state.get("chat_id"), channel_uid=str(uid))
             return reply(
                 f"Спасибо, {name}! Менеджер свяжется с вами в ближайшее время.",
                 kb_main(),
             )
         else:
             await _create_lead_comm(db, channel, name, phone,
-                                    comment="перезвонить и записать на прием", create_patient=False)
+                                    comment=f"Имя: {name}, тел: {phone}. Перезвонить и записать на приём",
+                                    create_patient=False,
+                                    chat_id=state.get("chat_id"), channel_uid=str(uid))
             return reply(
                 f"Спасибо, {name}! Администратор свяжется с вами для записи на приём.",
                 kb_main(),
@@ -392,12 +423,15 @@ async def _create_lead_comm(
     phone: str,
     comment: str = "запрос через бот",
     create_patient: bool = True,
+    chat_id: str | None = None,
+    channel_uid: str | None = None,
 ) -> None:
     """Create communication (and optionally patient) for a bot lead."""
     try:
         from sqlalchemy import select
         from app.models.patient import Patient
         from app.models.communication import Communication
+        from app.models.bot_message import BotMessage
         from app.services.realtime import realtime
 
         patient_id = None
@@ -427,8 +461,20 @@ async def _create_lead_comm(
             content=comment,
             status="new",
             priority="high",
+            bot_chat_id=chat_id or None,
+            bot_channel_uid=channel_uid or None,
         )
         db.add(comm)
+        await db.flush()
+
+        msg = BotMessage(
+            communication_id=comm.id,
+            direction="inbound",
+            content=comment,
+            sender_name=name or None,
+        )
+        db.add(msg)
+
         await db.commit()
         await realtime.publish("new_communication", {
             "id": str(comm.id), "channel": comm.channel,

@@ -98,3 +98,12 @@ export interface CommunicationFilters {
   channel?: string;
   priority?: string;
 }
+
+export interface BotMessage {
+  id: string;
+  communication_id: string;
+  direction: "inbound" | "outbound";
+  content: string;
+  sender_name: string | null;
+  created_at: string;
+}
