@@ -155,6 +155,22 @@ class TelegramBotService:
                 json={"callback_query_id": callback_query_id, "text": text},
             )
 
+    async def set_my_commands(self) -> None:
+        """Register bot command menu visible when user types '/' in Telegram."""
+        commands = [
+            {"command": "start",   "description": "Главное меню"},
+            {"command": "book",    "description": "📅 Записаться на приём"},
+            {"command": "ask",     "description": "💬 Задать вопрос"},
+            {"command": "manager", "description": "📞 Связаться с менеджером"},
+        ]
+        if not self.base_url:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(f"{self.base_url}/setMyCommands", json={"commands": commands})
+        except Exception:
+            logger.warning("TelegramBotService: failed to register bot commands")
+
     async def send_daily_report(self, chat_id: int, report: dict) -> None:
         """Format and send an HTML daily report to *chat_id*."""
         html = self._format_report_html(report)
