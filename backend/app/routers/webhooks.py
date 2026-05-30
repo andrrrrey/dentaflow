@@ -177,26 +177,54 @@ async def novofon_webhook(
         if patient:
             patient_id = patient.id
 
-    # Deduplication: if an answered-call notification arrives for a call_id that was
-    # previously stored as missed_call, upgrade that record instead of creating a duplicate.
+    # Deduplication: Novofon sends several notifications per call (incoming /
+    # completed / missed) that all share the same call_session_id. Keep exactly one
+    # Communication per session and merge later notifications into it, so the call
+    # history matches the Novofon report (one row per call session).
     external_id = result.get("external_id")
-    if external_id and result["type"] == "call":
+    if external_id:
         existing_stmt = (
             select(Communication)
             .where(
                 Communication.channel == "novofon",
                 Communication.external_id == external_id,
-                Communication.type == "missed_call",
             )
             .limit(1)
         )
         existing_row = await db.execute(existing_stmt)
         existing_comm = existing_row.scalar_one_or_none()
         if existing_comm:
-            existing_comm.type = "call"
-            existing_comm.duration_sec = result.get("duration_sec") or existing_comm.duration_sec
-            existing_comm.priority = "normal"
-            existing_comm.content = result.get("content") or existing_comm.content
+            new_duration = result.get("duration_sec") or 0
+            # A call counts as answered only when a leg was actually picked up
+            # (an answered notification carrying talk time > 0).
+            new_answered = result["type"] == "call" and new_duration > 0
+            existing_answered = existing_comm.type == "call" and (existing_comm.duration_sec or 0) > 0
+
+            existing_comm.duration_sec = max(existing_comm.duration_sec or 0, new_duration)
+            if new_answered:
+                existing_comm.type = "call"
+                existing_comm.priority = "normal"
+            elif not existing_answered:
+                # Not yet answered — let the latest non-answered signal (e.g. missed) stand.
+                existing_comm.type = result["type"]
+                existing_comm.priority = result["priority"]
+            if result.get("content") and existing_comm.content in (None, "", "{}"):
+                existing_comm.content = result.get("content")
+
+            # Ensure a callback task exists for calls that ended up missed, without
+            # duplicating one across the several notifications of the same session.
+            if existing_comm.type == "missed_call" and result.get("create_callback_task"):
+                task_exists = await db.execute(
+                    select(Task.id).where(Task.comm_id == existing_comm.id).limit(1)
+                )
+                if task_exists.scalar_one_or_none() is None:
+                    db.add(Task(
+                        patient_id=patient_id,
+                        comm_id=existing_comm.id,
+                        type="callback",
+                        title=f"Перезвонить: {phone or 'неизвестный номер'}",
+                    ))
+
             await db.commit()
             await realtime.publish("new_communication", {
                 "id": str(existing_comm.id),
@@ -204,7 +232,7 @@ async def novofon_webhook(
                 "type": existing_comm.type,
                 "priority": existing_comm.priority,
             })
-            logger.info("Novofon: upgraded missed→answered for comm_id=%s call_id=%s", existing_comm.id, external_id)
+            logger.info("Novofon: merged notification into comm_id=%s call_id=%s type=%s", existing_comm.id, external_id, existing_comm.type)
             return {"status": "ok", "communication_id": str(existing_comm.id)}
 
     comm = Communication(

@@ -15,9 +15,12 @@ import {
   Settings,
   Megaphone,
   CheckSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
+import { useUiStore } from "../../store/uiStore";
 
 /* ---------- types ---------- */
 
@@ -95,6 +98,8 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const authUser = useAuthStore((s) => s.user);
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
   const displayName = authUser?.name ?? _currentUser?.name ?? "Пользователь";
   const displayRole = authUser?.role ?? _currentUser?.role ?? "";
@@ -110,9 +115,9 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
 
   return (
     <aside
-      className="hidden md:flex flex-col flex-shrink-0 h-screen z-[100]"
+      className="hidden md:flex flex-col flex-shrink-0 h-screen z-[100] transition-[width] duration-200"
       style={{
-        width: "var(--sidebar-w)",
+        width: collapsed ? "var(--sidebar-w-collapsed)" : "var(--sidebar-w)",
         background: "rgba(255,255,255,0.75)",
         backdropFilter: "blur(24px)",
         borderRight: "1px solid var(--glass-border)",
@@ -121,25 +126,40 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
     >
       {/* Logo */}
       <div
-        className="flex items-center gap-[10px] px-5 pt-[22px] pb-[18px]"
+        className={clsx(
+          "flex items-center pt-[22px] pb-[18px]",
+          collapsed ? "flex-col gap-3 px-2" : "gap-[10px] px-5",
+        )}
         style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}
       >
-        <div
-          className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white text-lg"
-          style={{
-            background: "linear-gradient(135deg, var(--accent2), var(--accent))",
-          }}
+        <div className={clsx("flex items-center", collapsed ? "" : "gap-[10px] flex-1 min-w-0")}>
+          <div
+            className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white text-lg flex-shrink-0"
+            style={{
+              background: "linear-gradient(135deg, var(--accent2), var(--accent))",
+            }}
+          >
+            <LayoutDashboard size={18} />
+          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="text-[17px] font-extrabold tracking-tight">
+                Denta<span className="text-accent2">Flow</span>
+              </div>
+              <div className="text-[10px] text-text-muted font-medium mt-px">
+                Умная система клиники
+              </div>
+            </div>
+          )}
+        </div>
+        <button
+          onClick={toggleSidebar}
+          title={collapsed ? "Развернуть меню" : "Свернуть меню"}
+          aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+          className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer border-none bg-transparent text-text-muted hover:bg-[rgba(91,76,245,0.1)] hover:text-accent2 transition-colors flex-shrink-0"
         >
-          <LayoutDashboard size={18} />
-        </div>
-        <div>
-          <div className="text-[17px] font-extrabold tracking-tight">
-            Denta<span className="text-accent2">Flow</span>
-          </div>
-          <div className="text-[10px] text-text-muted font-medium mt-px">
-            Умная система клиники
-          </div>
-        </div>
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
 
       {/* Nav */}
@@ -163,8 +183,10 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                 <div
                   key={item.path}
                   onClick={() => navigate(item.path)}
+                  title={collapsed ? item.label : undefined}
                   className={clsx(
-                    "flex items-center gap-[10px] px-3 py-[9px] rounded-xl cursor-pointer transition-all duration-150 text-[13px] font-medium relative",
+                    "flex items-center gap-[10px] py-[9px] rounded-xl cursor-pointer transition-all duration-150 text-[13px] font-medium relative",
+                    collapsed ? "justify-center px-0" : "px-3",
                     active
                       ? "font-bold text-accent2"
                       : "text-text-muted hover:text-text-main hover:bg-[rgba(91,76,245,0.07)]",
@@ -178,11 +200,11 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                       : undefined
                   }
                 >
-                  <span className="w-5 flex items-center justify-center">
+                  <span className="w-5 flex items-center justify-center flex-shrink-0">
                     {item.icon}
                   </span>
-                  <span className="truncate">{item.label}</span>
-                  {item.badge && (
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                  {!collapsed && item.badge && (
                     <span
                       className={clsx(
                         "ml-auto text-white text-[10px] font-bold px-[6px] py-[2px] rounded-[10px]",
@@ -191,6 +213,14 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                     >
                       {item.badge}
                     </span>
+                  )}
+                  {collapsed && item.badge && (
+                    <span
+                      className={clsx(
+                        "absolute top-1 right-1 w-2 h-2 rounded-full",
+                        badgeColorMap[item.badgeColor ?? "red"],
+                      )}
+                    />
                   )}
                 </div>
               );
@@ -202,8 +232,9 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
 
       {/* User */}
       <div
-        className="flex items-center gap-[10px] px-[14px] py-3"
+        className={clsx("flex items-center gap-[10px] py-3", collapsed ? "justify-center px-2" : "px-[14px]")}
         style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}
+        title={collapsed ? `${displayName}${displayRole ? ` · ${displayRole}` : ""}` : undefined}
       >
         {avatarUrl ? (
           <img
@@ -219,10 +250,12 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
             {initials}
           </div>
         )}
-        <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-bold truncate">{displayName}</div>
-          <div className="text-[11px] text-text-muted">{displayRole}</div>
-        </div>
+        {!collapsed && (
+          <div className="flex-1 min-w-0">
+            <div className="text-[12.5px] font-bold truncate">{displayName}</div>
+            <div className="text-[11px] text-text-muted">{displayRole}</div>
+          </div>
+        )}
       </div>
     </aside>
   );

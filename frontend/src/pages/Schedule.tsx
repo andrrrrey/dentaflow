@@ -30,7 +30,9 @@ const statusColors: Record<string, { bg: string; text: string; border: string }>
 const CLINIC_START = 9;
 const CLINIC_END = 20;
 const HOURS = Array.from({ length: CLINIC_END - CLINIC_START + 1 }, (_, i) => CLINIC_START + i);
-const SLOT_HEIGHT = 110;
+const SLOT_HEIGHT = 150;
+const DOC_COL_W = 300;
+const TIME_COL_W = 64;
 
 interface AppointmentLayout { appt: Appointment; col: number; totalCols: number; }
 
@@ -124,35 +126,43 @@ function AppointmentBlock({ appt, onClick, col, totalCols }: { appt: Appointment
   const top = ((startMin - clinicStartMin) / 60) * SLOT_HEIGHT;
   const height = Math.max((appt.duration_min / 60) * SLOT_HEIGHT - 3, 32);
   const colors = statusColors[appt.status ?? ""] ?? statusColors.unconfirmed;
-  const GAP = 2;
+  const GAP = 3;
   const colW = 100 / totalCols;
+  // How much room the block has for text — drives how many detail lines we show.
+  const compact = totalCols > 1;
 
   return (
     <div
-      className="absolute rounded-[8px] cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
+      className="absolute rounded-[10px] cursor-pointer overflow-hidden transition-all hover:shadow-lg hover:z-20"
       style={{
         top: `${top}px`,
         height: `${height}px`,
         left: `calc(${col * colW}% + ${GAP}px)`,
         width: `calc(${colW}% - ${GAP * 2}px)`,
         background: colors.bg,
-        borderLeft: `3px solid ${colors.border}`,
+        borderLeft: `4px solid ${colors.border}`,
+        boxShadow: "0 1px 4px rgba(120,140,180,0.12)",
         zIndex: 10,
       }}
       onClick={onClick}
     >
-      <div className="px-2 py-[6px] h-full flex flex-col justify-start overflow-hidden">
-        <div className="text-[10.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
+      <div className="px-[9px] py-[7px] h-full flex flex-col justify-start overflow-hidden">
+        <div className="text-[11.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
           {format(start, "HH:mm")} – {format(new Date(start.getTime() + appt.duration_min * 60000), "HH:mm")}
         </div>
-        <div className="text-[12.5px] font-bold text-text-main leading-tight mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+        <div className="text-[13.5px] font-bold text-text-main leading-snug mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {appt.patient_name}
         </div>
-        {height > 60 && appt.patient_phone && (
-          <div className="text-[11px] text-text-muted truncate mt-[2px]">{appt.patient_phone}</div>
+        {height > 56 && appt.patient_phone && (
+          <div className="text-[12px] text-text-muted truncate mt-[3px] font-medium">{appt.patient_phone}</div>
         )}
-        {height > 80 && appt.service && (
-          <div className="text-[11px] text-text-muted truncate mt-[2px]">{appt.service}</div>
+        {height > 84 && appt.service && (
+          <div
+            className="text-[11.5px] text-text-muted mt-[3px] leading-snug"
+            style={!compact ? { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } : { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {appt.service}
+          </div>
         )}
       </div>
     </div>
@@ -320,6 +330,14 @@ export default function Schedule() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, "ru"));
   }, [doctorsData, appointments]);
 
+  const specialtyByDoctor = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of doctorsData?.doctors ?? []) {
+      if (d.doctor_name && d.specialty) map.set(d.doctor_name, d.specialty);
+    }
+    return map;
+  }, [doctorsData]);
+
   const gridHeight = HOURS.length * SLOT_HEIGHT;
 
   return (
@@ -438,30 +456,44 @@ export default function Schedule() {
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
             <div className="overflow-x-auto">
-              <div style={{ minWidth: Math.max(doctorsWithAppointments.length * 220 + 60, 600) }}>
+              <div style={{ minWidth: Math.max(doctorsWithAppointments.length * DOC_COL_W + TIME_COL_W, 600) }}>
                 {/* Doctor headers */}
-                <div className="flex" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)" }}>
-                  <div className="w-[60px] flex-shrink-0" />
-                  {doctorsWithAppointments.map(([doctorName, appts]) => (
-                    <div
-                      key={doctorName}
-                      className="flex-1 min-w-[220px] text-center py-3 px-2"
-                      style={{ borderLeft: "1px solid rgba(91,76,245,0.08)" }}
-                    >
-                      <div className="text-[13px] font-bold text-text-main truncate">{doctorName}</div>
-                      <div className="text-[10px] text-text-muted mt-[2px]">{appts.length} записей</div>
-                    </div>
-                  ))}
+                <div className="flex sticky top-0 z-30" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)", background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
+                  <div className="flex-shrink-0" style={{ width: TIME_COL_W }} />
+                  {doctorsWithAppointments.map(([doctorName, appts]) => {
+                    const specialty = specialtyByDoctor.get(doctorName);
+                    const initials = doctorName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+                    return (
+                      <div
+                        key={doctorName}
+                        className="flex-1 flex items-center gap-[9px] py-[11px] px-3"
+                        style={{ minWidth: DOC_COL_W, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
+                          style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
+                        >
+                          {initials || "—"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[13.5px] font-bold text-text-main truncate leading-tight">{doctorName}</div>
+                          <div className="text-[11px] text-text-muted truncate mt-[1px]">
+                            {specialty ? `${specialty} · ` : ""}{appts.length} записей
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Time grid */}
                 <div className="flex relative">
                   {/* Time column */}
-                  <div className="w-[60px] flex-shrink-0">
+                  <div className="flex-shrink-0" style={{ width: TIME_COL_W }}>
                     {HOURS.map((h) => (
                       <div
                         key={h}
-                        className="text-[11px] text-text-muted text-right pr-2 font-mono"
+                        className="text-[11.5px] text-text-muted text-right pr-2 font-mono"
                         style={{ height: SLOT_HEIGHT, lineHeight: `${SLOT_HEIGHT}px` }}
                       >
                         {String(h).padStart(2, "0")}:00
@@ -473,8 +505,8 @@ export default function Schedule() {
                   {doctorsWithAppointments.map(([doctorName, doctorAppts]) => (
                     <div
                       key={doctorName}
-                      className="flex-1 min-w-[220px] relative"
-                      style={{ height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
+                      className="flex-1 relative"
+                      style={{ minWidth: DOC_COL_W, height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
                     >
                       {/* Hour lines */}
                       {HOURS.map((h) => (
