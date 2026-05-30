@@ -244,9 +244,9 @@ async def sync_calls(
         Communication.external_id.in_(all_ext_ids),
     )
     existing_result = await db.execute(existing_stmt)
-    existing_by_ext_id: dict[str, Communication] = {
-        c.external_id: c for c in existing_result.scalars().all()
-    }
+    existing_by_ext_id: dict[str, list[Communication]] = {}
+    for c in existing_result.scalars().all():
+        existing_by_ext_id.setdefault(c.external_id, []).append(c)
 
     import json as _json
 
@@ -266,14 +266,13 @@ async def sync_calls(
         ext_id = mapped["external_id"]
 
         if ext_id in existing_by_ext_id:
-            # Update record if it has empty content (was created with wrong field mapping)
-            comm = existing_by_ext_id[ext_id]
-            existing_content = comm.content or "{}"
-            try:
-                existing_meta = _json.loads(existing_content)
-            except Exception:
-                existing_meta = {}
-            if not existing_meta.get("caller_id") and not existing_meta.get("called_did"):
+            # Reconcile every stored row for this call session to Novofon's
+            # authoritative result. Novofon derives the status from the call
+            # `disposition` (АТС outcome), while realtime webhooks guessed it
+            # from talk duration — so short "1 sec" calls were stored as
+            # answered while Novofon reports them missed. Always overwrite so
+            # the history matches the Novofon report.
+            for comm in existing_by_ext_id[ext_id]:
                 comm.content = content
                 comm.type = mapped["comm_type"]
                 comm.direction = mapped["direction"]
@@ -281,9 +280,7 @@ async def sync_calls(
                 comm.priority = "high" if mapped["comm_type"] == "missed_call" else "normal"
                 if mapped["created_at"]:
                     comm.created_at = mapped["created_at"]
-                updated += 1
-            else:
-                skipped += 1
+            updated += 1
             continue
 
         comm = Communication(
