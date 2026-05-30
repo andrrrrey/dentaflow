@@ -37,7 +37,56 @@ def _parse_call_record(comm: Communication) -> dict:
         "duration": comm.duration_sec or 0,
         "status": "missed" if comm.type == "missed_call" else "answered",
         "started_at": comm.created_at.isoformat() if comm.created_at else "",
+        # internal grouping key — present when the call has a Novofon session id
+        "_ext_id": comm.external_id or "",
     }
+
+
+def _dedup_calls(records: list[dict]) -> list[dict]:
+    """Collapse multiple Communication rows that belong to the same Novofon call
+    session into one entry, so the history matches the Novofon report (which shows
+    a single row per call session id).
+
+    Novofon fires several webhook notifications per call (incoming / completed /
+    missed) that all share the same ``call_session_id``. Each used to be stored as
+    a separate Communication, producing 2-3 duplicate rows for a single call.
+
+    Records keep their input order (newest first). When several share an external
+    session id they are merged: the call counts as *answered* only if some leg was
+    actually picked up (an answered leg with talk time > 0); the longest duration
+    and first non-empty phone numbers win.
+    """
+    merged: dict[str, dict] = {}
+    ordered_keys: list[str] = []
+
+    for rec in records:
+        ext_id = rec.get("_ext_id") or ""
+        # No session id → cannot safely dedup, keep as its own row.
+        key = ext_id if ext_id else f"__row_{rec['call_id']}"
+
+        if key not in merged:
+            merged[key] = dict(rec)
+            ordered_keys.append(key)
+            continue
+
+        cur = merged[key]
+        rec_answered = rec["status"] == "answered" and rec["duration"] > 0
+        cur_answered = cur["status"] == "answered" and cur["duration"] > 0
+        if rec_answered and not cur_answered:
+            cur["status"] = "answered"
+        cur["duration"] = max(cur["duration"], rec["duration"])
+        if not cur.get("caller_id") and rec.get("caller_id"):
+            cur["caller_id"] = rec["caller_id"]
+        if not cur.get("called_did") and rec.get("called_did"):
+            cur["called_did"] = rec["called_did"]
+        # keep the earliest start time (the call actually began then)
+        if rec.get("started_at") and (not cur.get("started_at") or rec["started_at"] < cur["started_at"]):
+            cur["started_at"] = rec["started_at"]
+
+    result = [merged[k] for k in ordered_keys]
+    for r in result:
+        r.pop("_ext_id", None)
+    return result
 
 
 @router.get("/")
@@ -61,7 +110,7 @@ async def list_calls(
     result = await db.execute(stmt)
     comms = result.scalars().all()
 
-    calls = [_parse_call_record(c) for c in comms]
+    calls = _dedup_calls([_parse_call_record(c) for c in comms])
 
     if status == "missed":
         calls = [c for c in calls if c["status"] == "missed"]

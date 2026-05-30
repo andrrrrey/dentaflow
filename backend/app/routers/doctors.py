@@ -51,29 +51,64 @@ async def list_doctors(
             "doctor_id": row.doctor_id,
             "doctor_name": row.doctor_name,
             "appointments_today": row.appointments_today,
+            "specialty": None,
         }
         for row in rows
         if row.doctor_name  # skip empty names
     ]
 
-    # Always merge directory_cache doctors so all known doctors appear,
-    # even those without recent appointments
-    from sqlalchemy import text
+    # Pull resource (doctor) reference data from the directory cache so we can
+    # surface each doctor's specialty/position and include doctors without
+    # recent appointments.
+    from sqlalchemy import select as _select
+    from app.models.directory_cache import DirectoryCache
+
+    spec_by_ext_id: dict[str, str] = {}
+    spec_by_name: dict[str, str] = {}
     known_names = {d["doctor_name"].lower() for d in doctors}
     try:
         res_result = await db.execute(
-            text(
-                "SELECT external_id, name FROM directory_cache "
-                "WHERE category = 'resource' AND name IS NOT NULL AND name != '' "
-                "ORDER BY name LIMIT 100"
+            _select(
+                DirectoryCache.external_id,
+                DirectoryCache.name,
+                DirectoryCache.data,
             )
+            .where(
+                DirectoryCache.category == "resource",
+                DirectoryCache.name.isnot(None),
+                DirectoryCache.name != "",
+            )
+            .order_by(DirectoryCache.name)
+            .limit(200)
         )
-        for r in res_result.all():
-            if r[1] and r[1].lower() not in known_names:
-                doctors.append({"doctor_id": r[0], "doctor_name": r[1], "appointments_today": 0})
-                known_names.add(r[1].lower())
+        for ext_id, name, data in res_result.all():
+            specialty = None
+            if isinstance(data, dict):
+                specialty = data.get("description") or data.get("specialty") or None
+            if specialty:
+                specialty = str(specialty).strip() or None
+            if ext_id and specialty:
+                spec_by_ext_id[str(ext_id)] = specialty
+            if name and specialty:
+                spec_by_name[name.lower()] = specialty
+            if name and name.lower() not in known_names:
+                doctors.append({
+                    "doctor_id": ext_id,
+                    "doctor_name": name,
+                    "appointments_today": 0,
+                    "specialty": specialty,
+                })
+                known_names.add(name.lower())
     except Exception:
         pass
+
+    # Backfill specialty for doctors that came from appointments
+    for d in doctors:
+        if not d.get("specialty"):
+            d["specialty"] = (
+                spec_by_ext_id.get(str(d.get("doctor_id") or ""))
+                or spec_by_name.get((d.get("doctor_name") or "").lower())
+            )
 
     return {"doctors": doctors}
 

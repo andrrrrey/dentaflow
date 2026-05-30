@@ -138,6 +138,7 @@ export interface Doctor {
   doctor_id: string;
   doctor_name: string;
   appointments_today: number;
+  specialty?: string | null;
 }
 
 export function useUpdateAppointmentStatus() {
