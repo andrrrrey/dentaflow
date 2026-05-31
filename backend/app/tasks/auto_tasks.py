@@ -39,6 +39,14 @@ async def _deactivate_expired_tasks_async() -> dict:
         return await deactivate_expired_tasks(session)
 
 
+async def _create_yesterday_followup_tasks_async() -> dict:
+    from app.database import async_session_factory
+    from app.services.tasks_service import create_yesterday_followup_tasks
+
+    async with async_session_factory() as session:
+        return await create_yesterday_followup_tasks(session)
+
+
 @celery_app.task(name="app.tasks.auto_tasks.create_daily_call_tasks", bind=True, max_retries=3)
 def create_daily_call_tasks(self):
     """Create call tasks for today's appointments. Runs at 07:00 Moscow."""
@@ -68,3 +76,19 @@ def deactivate_expired_tasks(self):
     except Exception as exc:
         logger.exception("deactivate_expired_tasks failed")
         raise self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(name="app.tasks.auto_tasks.create_yesterday_followup_tasks", bind=True, max_retries=3)
+def create_yesterday_followup_tasks(self):
+    """Create follow-up tasks for yesterday's appointments. Runs at 08:00 Moscow."""
+    try:
+        result = _run_async(_create_yesterday_followup_tasks_async())
+        logger.info(
+            "create_yesterday_followup_tasks complete: created=%d skipped=%d",
+            result.get("created", 0),
+            result.get("skipped", 0),
+        )
+        return result
+    except Exception as exc:
+        logger.exception("create_yesterday_followup_tasks failed")
+        raise self.retry(exc=exc, countdown=120)

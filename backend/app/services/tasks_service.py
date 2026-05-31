@@ -286,6 +286,114 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     return {"created": created, "skipped": skipped}
 
 
+async def create_yesterday_followup_tasks(db: AsyncSession) -> dict:
+    """Create follow-up tasks for yesterday's appointments.
+
+    For every non-cancelled appointment yesterday:
+      1. Task asking whether the patient attended.
+    For appointments that were confirmed before the appointment:
+      2. Task asking whether the service was purchased / result recorded in MIS.
+    """
+    from datetime import date, timedelta
+    from sqlalchemy import and_
+    from app.models.appointment import Appointment
+    from app.models.patient import Patient
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    yesterday_start = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=timezone.utc)
+    yesterday_end = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    end_of_today = yesterday_end + timedelta(days=1) - timedelta(seconds=1)
+
+    appts_result = await db.execute(
+        select(Appointment).where(
+            and_(
+                Appointment.scheduled_at >= yesterday_start,
+                Appointment.scheduled_at < yesterday_end,
+                Appointment.status.notin_(["cancelled"]),
+            )
+        )
+    )
+    appointments = appts_result.scalars().all()
+
+    if not appointments:
+        return {"created": 0, "skipped": 0}
+
+    appt_ids = [a.id for a in appointments]
+
+    # Find existing follow-up auto tasks for these appointments to avoid duplication
+    existing_result = await db.execute(
+        select(Task.appointment_id, Task.title).where(
+            and_(
+                Task.is_auto == True,
+                Task.appointment_id.in_(appt_ids),
+                Task.created_at >= yesterday_end,  # created today (i.e. morning follow-up run)
+            )
+        )
+    )
+    existing_rows = existing_result.all()
+    # Key: (appointment_id, title_prefix) to detect duplicates
+    existing_keys = {(str(r.appointment_id), r.title[:10] if r.title else "") for r in existing_rows}
+
+    patient_ids = [a.patient_id for a in appointments if a.patient_id]
+    patient_names: dict[uuid.UUID, str] = {}
+    if patient_ids:
+        p_result = await db.execute(
+            select(Patient.id, Patient.name).where(Patient.id.in_(patient_ids))
+        )
+        patient_names = {row.id: row.name for row in p_result.all()}
+
+    created = 0
+    skipped = 0
+
+    for appt in appointments:
+        patient_name = patient_names.get(appt.patient_id, "Пациент") if appt.patient_id else "Пациент"
+        time_str = appt.scheduled_at.strftime("%H:%M") if appt.scheduled_at else ""
+        service_str = appt.service or "Услуга"
+
+        # Task 1: Did patient attend?
+        title_attendance = f"Явился ли {patient_name} на приём — {service_str} ({time_str} вчера)?"
+        key_attendance = (str(appt.id), title_attendance[:10])
+        if key_attendance not in existing_keys:
+            db.add(Task(
+                patient_id=appt.patient_id,
+                appointment_id=appt.id,
+                type="followup",
+                title=title_attendance,
+                due_at=end_of_today,
+                is_done=False,
+                is_auto=True,
+                is_active=True,
+            ))
+            existing_keys.add(key_attendance)
+            created += 1
+        else:
+            skipped += 1
+
+        # Task 2 (only for confirmed): Was service purchased / result in MIS?
+        if appt.status == "confirmed":
+            title_payment = f"Куплена ли услуга / записан результат в МИС — {patient_name} — {service_str}?"
+            key_payment = (str(appt.id), title_payment[:10])
+            if key_payment not in existing_keys:
+                db.add(Task(
+                    patient_id=appt.patient_id,
+                    appointment_id=appt.id,
+                    type="followup",
+                    title=title_payment,
+                    due_at=end_of_today,
+                    is_done=False,
+                    is_auto=True,
+                    is_active=True,
+                ))
+                existing_keys.add(key_payment)
+                created += 1
+            else:
+                skipped += 1
+
+    await db.commit()
+    return {"created": created, "skipped": skipped}
+
+
 async def deactivate_expired_tasks(db: AsyncSession) -> dict:
     """Mark uncompleted auto tasks from previous days as inactive."""
     from datetime import date

@@ -90,6 +90,7 @@ export function useToggleTask() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks-count"] });
       qc.invalidateQueries({ queryKey: ["patient"] });
     },
   });
@@ -103,7 +104,20 @@ export function useDeleteTask() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks-count"] });
       qc.invalidateQueries({ queryKey: ["patient"] });
     },
+  });
+}
+
+export function useActiveTaskCount() {
+  return useQuery<{ active: number }>({
+    queryKey: ["tasks-count"],
+    queryFn: async () => {
+      const { data } = await api.get("/tasks/count");
+      return data;
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }

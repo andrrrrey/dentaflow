@@ -68,6 +68,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.auto_tasks.deactivate_expired_tasks",
         "schedule": crontab(hour=0, minute=5),  # 00:05 Moscow
     },
+    "create-yesterday-followup-tasks": {
+        "task": "app.tasks.auto_tasks.create_yesterday_followup_tasks",
+        "schedule": crontab(hour=8, minute=0),  # 08:00 Moscow
+    },
 }
 
 # Explicitly include task modules (autodiscover only finds app/tasks/tasks.py, not submodules)
