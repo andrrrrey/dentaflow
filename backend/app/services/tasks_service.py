@@ -286,13 +286,16 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     return {"created": created, "skipped": skipped}
 
 
-async def create_yesterday_followup_tasks(db: AsyncSession) -> dict:
-    """Create follow-up tasks for yesterday's appointments.
+async def create_yesterday_followup_tasks(
+    db: AsyncSession,
+    one_denta_visits: list,
+) -> dict:
+    """Create tasks for yesterday's patients where 1Denta has no visit records.
 
-    For every non-cancelled appointment yesterday:
-      1. Task asking whether the patient attended.
-    For appointments that were confirmed before the appointment:
-      2. Task asking whether the service was purchased / result recorded in MIS.
+    Logic:
+      - Only for visits where patient arrived (status == "arrived", attendance=1 in 1Denta)
+      - Check if visit has records: payment_amount > 0 OR services with paySum > 0 OR non-empty comment
+      - If patient came but no records exist → create task "Внести записи о приёме в МИС"
     """
     from datetime import date, timedelta
     from sqlalchemy import and_
@@ -300,98 +303,121 @@ async def create_yesterday_followup_tasks(db: AsyncSession) -> dict:
     from app.models.patient import Patient
 
     today = date.today()
-    yesterday = today - timedelta(days=1)
-    yesterday_start = datetime(yesterday.year, yesterday.month, yesterday.day, tzinfo=timezone.utc)
-    yesterday_end = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
-    end_of_today = yesterday_end + timedelta(days=1) - timedelta(seconds=1)
+    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    end_of_today = today_start + timedelta(days=1) - timedelta(seconds=1)
 
-    appts_result = await db.execute(
-        select(Appointment).where(
-            and_(
-                Appointment.scheduled_at >= yesterday_start,
-                Appointment.scheduled_at < yesterday_end,
-                Appointment.status.notin_(["cancelled"]),
+    # Filter: patient arrived (1Denta attendance=1 maps to "arrived")
+    arrived_visits = [v for v in one_denta_visits if v.get("status") == "arrived"]
+
+    if not arrived_visits:
+        return {"created": 0, "skipped": 0, "total_arrived": 0}
+
+    # Keep only visits with no records
+    def _has_records(v: dict) -> bool:
+        if (v.get("payment_amount") or 0) > 0:
+            return True
+        services = v.get("services_data") or []
+        if any(float(s.get("paySum") or 0) > 0 for s in services):
+            return True
+        if (v.get("comment") or "").strip():
+            return True
+        return False
+
+    no_records_visits = [v for v in arrived_visits if not _has_records(v)]
+
+    if not no_records_visits:
+        return {"created": 0, "skipped": len(arrived_visits), "total_arrived": len(arrived_visits)}
+
+    # Map external_ids to local appointment/patient records
+    appt_ext_ids = [v["external_id"] for v in no_records_visits if v.get("external_id")]
+    patient_ext_ids = [v["patient_external_id"] for v in no_records_visits if v.get("patient_external_id")]
+
+    appt_rows: dict[str, uuid.UUID] = {}
+    if appt_ext_ids:
+        result = await db.execute(
+            select(Appointment.external_id, Appointment.id).where(
+                Appointment.external_id.in_(appt_ext_ids)
             )
         )
-    )
-    appointments = appts_result.scalars().all()
+        appt_rows = {row.external_id: row.id for row in result.all()}
 
-    if not appointments:
-        return {"created": 0, "skipped": 0}
-
-    appt_ids = [a.id for a in appointments]
-
-    # Find existing follow-up auto tasks for these appointments to avoid duplication
-    existing_result = await db.execute(
-        select(Task.appointment_id, Task.title).where(
-            and_(
-                Task.is_auto == True,
-                Task.appointment_id.in_(appt_ids),
-                Task.created_at >= yesterday_end,  # created today (i.e. morning follow-up run)
+    patient_rows: dict[str, tuple[uuid.UUID, str]] = {}
+    if patient_ext_ids:
+        result = await db.execute(
+            select(Patient.external_id, Patient.id, Patient.name).where(
+                Patient.external_id.in_(patient_ext_ids)
             )
         )
-    )
-    existing_rows = existing_result.all()
-    # Key: (appointment_id, title_prefix) to detect duplicates
-    existing_keys = {(str(r.appointment_id), r.title[:10] if r.title else "") for r in existing_rows}
+        patient_rows = {row.external_id: (row.id, row.name) for row in result.all()}
 
-    patient_ids = [a.patient_id for a in appointments if a.patient_id]
-    patient_names: dict[uuid.UUID, str] = {}
-    if patient_ids:
-        p_result = await db.execute(
-            select(Patient.id, Patient.name).where(Patient.id.in_(patient_ids))
+    # Find existing tasks created today for these appointments to avoid duplicates
+    local_appt_ids = list(appt_rows.values())
+    existing_appt_ids: set[str] = set()
+    if local_appt_ids:
+        existing_result = await db.execute(
+            select(Task.appointment_id).where(
+                and_(
+                    Task.is_auto == True,
+                    Task.appointment_id.in_(local_appt_ids),
+                    Task.type == "followup",
+                    Task.created_at >= today_start,
+                )
+            )
         )
-        patient_names = {row.id: row.name for row in p_result.all()}
+        existing_appt_ids = {str(r[0]) for r in existing_result.all()}
 
     created = 0
     skipped = 0
 
-    for appt in appointments:
-        patient_name = patient_names.get(appt.patient_id, "Пациент") if appt.patient_id else "Пациент"
-        time_str = appt.scheduled_at.strftime("%H:%M") if appt.scheduled_at else ""
-        service_str = appt.service or "Услуга"
+    for visit in no_records_visits:
+        ext_id = visit.get("external_id")
+        patient_ext_id = visit.get("patient_external_id")
+        local_appt_id = appt_rows.get(ext_id) if ext_id else None
 
-        # Task 1: Did patient attend?
-        title_attendance = f"Явился ли {patient_name} на приём — {service_str} ({time_str} вчера)?"
-        key_attendance = (str(appt.id), title_attendance[:10])
-        if key_attendance not in existing_keys:
-            db.add(Task(
-                patient_id=appt.patient_id,
-                appointment_id=appt.id,
-                type="followup",
-                title=title_attendance,
-                due_at=end_of_today,
-                is_done=False,
-                is_auto=True,
-                is_active=True,
-            ))
-            existing_keys.add(key_attendance)
-            created += 1
-        else:
+        # Skip if task already created today for this appointment
+        if local_appt_id and str(local_appt_id) in existing_appt_ids:
             skipped += 1
+            continue
 
-        # Task 2 (only for confirmed): Was service purchased / result in MIS?
-        if appt.status == "confirmed":
-            title_payment = f"Куплена ли услуга / записан результат в МИС — {patient_name} — {service_str}?"
-            key_payment = (str(appt.id), title_payment[:10])
-            if key_payment not in existing_keys:
-                db.add(Task(
-                    patient_id=appt.patient_id,
-                    appointment_id=appt.id,
-                    type="followup",
-                    title=title_payment,
-                    due_at=end_of_today,
-                    is_done=False,
-                    is_auto=True,
-                    is_active=True,
-                ))
-                existing_keys.add(key_payment)
-                created += 1
-            else:
-                skipped += 1
+        patient_id: uuid.UUID | None = None
+        patient_name = "Пациент"
+        if patient_ext_id and patient_ext_id in patient_rows:
+            patient_id, patient_name = patient_rows[patient_ext_id]
+
+        service_str = visit.get("service") or "Услуга"
+        scheduled_at = visit.get("scheduled_at")
+        time_str = ""
+        if scheduled_at:
+            try:
+                dt = datetime.fromisoformat(scheduled_at)
+                time_str = dt.strftime("%H:%M")
+            except Exception:
+                pass
+
+        title = (
+            f"Внести записи о приёме в МИС — {patient_name} — "
+            f"{service_str} ({time_str} вчера): указать проданные услуги"
+        )
+
+        db.add(Task(
+            patient_id=patient_id,
+            appointment_id=local_appt_id,
+            type="followup",
+            title=title,
+            due_at=end_of_today,
+            is_done=False,
+            is_auto=True,
+            is_active=True,
+        ))
+        created += 1
 
     await db.commit()
-    return {"created": created, "skipped": skipped}
+    return {
+        "created": created,
+        "skipped": skipped,
+        "total_arrived": len(arrived_visits),
+        "no_records": len(no_records_visits),
+    }
 
 
 async def deactivate_expired_tasks(db: AsyncSession) -> dict:
