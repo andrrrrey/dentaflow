@@ -17,10 +17,17 @@ async def get_tasks(
     assigned_to: str | None = Query(None),
     is_done: bool | None = Query(None),
     deal_id: str | None = Query(None),
+    is_active: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> TaskListResponse:
-    return await list_tasks(db=db, assigned_to=assigned_to, is_done=is_done, deal_id=deal_id)
+    return await list_tasks(
+        db=db,
+        assigned_to=assigned_to,
+        is_done=is_done,
+        deal_id=deal_id,
+        is_active=is_active,
+    )
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)
@@ -55,11 +62,12 @@ async def patch_task(
     task_id: uuid.UUID,
     body: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> TaskResponse:
     updated = await update_task(
         db=db,
         task_id=task_id,
+        current_user_id=current_user.id,
         is_done=body.is_done,
         done_at=body.done_at,
         title=body.title,

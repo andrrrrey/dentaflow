@@ -30,6 +30,12 @@ class Task(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    completed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    appointment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True
+    )
     type: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # callback|followup|confirm_appointment|other
@@ -41,6 +47,8 @@ class Task(Base):
         DateTime(timezone=True), nullable=True
     )
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

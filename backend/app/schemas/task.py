@@ -13,11 +13,16 @@ class TaskResponse(BaseModel):
     assigned_to: uuid.UUID | None
     assigned_to_name: str | None
     created_by: uuid.UUID | None
+    completed_by: uuid.UUID | None
+    completed_by_name: str | None
+    appointment_id: uuid.UUID | None
     type: str | None
     title: str | None
     due_at: datetime | None
     done_at: datetime | None
     is_done: bool
+    is_auto: bool
+    is_active: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
