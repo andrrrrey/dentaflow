@@ -3,7 +3,7 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
-  Upload, Trash2, FileText, Info, Bot, Globe,
+  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -15,6 +15,7 @@ import {
   useUploadKbFile,
   useDeleteKbFile,
 } from "../api/integrations";
+import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard } from "../api/rewards";
 
 /* ---------- helpers ---------- */
 
@@ -673,15 +674,146 @@ function IntegrationsTab() {
   );
 }
 
+/* ---------- Motivation tab ---------- */
+
+const ACTION_LABELS: Record<string, string> = {
+  task_completed: "Выполнение задачи звонка",
+  call_made: "Совершение звонка",
+  script_compliance: "Соответствие скрипту (оценка QC)",
+  appointment_confirmed: "Подтверждение записи",
+  patient_reached: "Пациент взял трубку",
+};
+
+function MotivationTab() {
+  const { data: config, isLoading } = useRewardsConfig();
+  const { data: leaderboard } = useLeaderboard();
+  const saveMutation = useSaveRewardsConfig();
+
+  const [values, setValues] = useState<Record<string, number>>({});
+  const [saveSuccess, setSaveSuccess] = useState("");
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (config) setValues(config as unknown as Record<string, number>);
+  }, [config]);
+
+  async function handleSave() {
+    setSaveSuccess("");
+    setSaveError("");
+    try {
+      await saveMutation.mutateAsync(values as Parameters<typeof saveMutation.mutateAsync>[0]);
+      setSaveSuccess("Настройки сохранены");
+    } catch {
+      setSaveError("Ошибка при сохранении");
+    }
+  }
+
+  if (isLoading) {
+    return <div className="text-center text-text-muted py-8 text-[13px]">Загрузка...</div>;
+  }
+
+  const getMedalStyle = (rank: number) => {
+    if (rank === 1) return { color: "#f5a623", label: "🥇" };
+    if (rank === 2) return { color: "#8a98b8", label: "🥈" };
+    if (rank === 3) return { color: "#b07050", label: "🥉" };
+    return { color: "#8a98b8", label: `${rank}` };
+  };
+
+  return (
+    <div className="flex flex-col gap-[14px]">
+      {/* Points configuration card */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <Star size={16} className="text-[#f5a623]" />
+          <h2 className="text-[15px] font-bold text-text-main">Система баллов для администраторов</h2>
+        </div>
+        <div
+          className="mb-4 p-3 rounded-xl text-[12px] leading-relaxed"
+          style={{ background: "rgba(91,76,245,0.06)", color: "#5B4CF5" }}
+        >
+          <Info size={13} className="inline mr-1 mb-0.5" />
+          Настройте количество баллов за каждое действие администратора. Баллы начисляются автоматически и формируют рейтинг сотрудников.
+        </div>
+        <div className="flex flex-col gap-3">
+          {Object.entries(ACTION_LABELS).map(([key, label]) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <label className="text-[13px] text-text-main font-medium flex-1">{label}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={values[key] ?? 0}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+                  className="w-[80px] px-3 py-[7px] rounded-[10px] text-[13px] text-text-main text-center outline-none"
+                  style={{ border: "1px solid rgba(91,76,245,0.18)", background: "rgba(255,255,255,0.7)" }}
+                />
+                <span className="text-[12px] text-text-muted w-[36px]">балл.</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-col gap-3">
+          <StatusBanner success={saveSuccess} error={saveError} />
+          <div className="flex justify-end">
+            <Button variant="primary" size="md" onClick={handleSave} disabled={saveMutation.isPending}>
+              <Save size={14} className="mr-2" />
+              {saveMutation.isPending ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Leaderboard preview */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <Trophy size={16} className="text-[#f5a623]" />
+          <h2 className="text-[15px] font-bold text-text-main">Текущий рейтинг администраторов</h2>
+        </div>
+        {!leaderboard || leaderboard.items.length === 0 ? (
+          <div className="text-[13px] text-text-muted py-4 text-center">
+            Баллы ещё не начислялись. Рейтинг появится после первых выполненных задач.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {leaderboard.items.map((entry) => {
+              const medal = getMedalStyle(entry.rank);
+              return (
+                <div
+                  key={entry.user_id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: entry.rank <= 3 ? "rgba(245,166,35,0.05)" : "rgba(91,76,245,0.04)", border: "1px solid rgba(91,76,245,0.08)" }}
+                >
+                  <span className="text-[18px] w-8 text-center flex-shrink-0">{medal.label}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-text-main truncate">{entry.name}</div>
+                    <div className="text-[11px] text-text-muted">задач выполнено: {entry.tasks_completed}</div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Star size={13} className="text-[#f5a623]" />
+                    <span className="text-[14px] font-bold text-text-main">{entry.total_points}</span>
+                    <span className="text-[11px] text-text-muted">балл.</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 /* ---------- component ---------- */
 
-type Tab = "profile" | "clinic" | "integrations" | "notifications";
+type Tab = "profile" | "clinic" | "integrations" | "notifications" | "motivation";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "profile", label: "Профиль" },
   { key: "clinic", label: "Клиника" },
   { key: "integrations", label: "Интеграции" },
   { key: "notifications", label: "Уведомления" },
+  { key: "motivation", label: "Мотивация" },
 ];
 
 export default function Settings() {
@@ -740,6 +872,8 @@ export default function Settings() {
       )}
 
       {activeTab === "integrations" && <IntegrationsTab />}
+
+      {activeTab === "motivation" && <MotivationTab />}
 
       {activeTab === "notifications" && (
         <Card>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
+import { useActiveTaskCount } from "../../api/tasks";
 
 interface MobileNavItem {
   label: string;
@@ -32,6 +33,8 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const userRole = useAuthStore((s) => s.user?.role ?? "");
   const items = allItems.filter((item) => !item.hideForRoles || !item.hideForRoles.includes(userRole));
+  const { data: taskCountData } = useActiveTaskCount();
+  const activeTaskCount = taskCountData?.active ?? 0;
 
   return (
     <nav
@@ -51,11 +54,18 @@ export default function MobileNav() {
             key={item.path}
             onClick={() => navigate(item.path)}
             className={clsx(
-              "flex flex-col items-center gap-[2px] bg-transparent border-none cursor-pointer transition-colors duration-150 px-2 py-1",
+              "relative flex flex-col items-center gap-[2px] bg-transparent border-none cursor-pointer transition-colors duration-150 px-2 py-1",
               active ? "text-accent2" : "text-text-muted",
             )}
           >
             {item.icon}
+            {item.path === "/tasks" && activeTaskCount > 0 && (
+              <span
+                className="absolute top-0 right-1 min-w-[16px] h-[16px] rounded-full bg-danger text-white text-[9px] font-bold flex items-center justify-center px-[3px]"
+              >
+                {activeTaskCount > 99 ? "99" : activeTaskCount}
+              </span>
+            )}
             <span className="text-[10px] font-semibold">{item.label}</span>
           </button>
         );

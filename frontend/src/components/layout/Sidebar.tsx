@@ -21,6 +21,7 @@ import {
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
+import { useActiveTaskCount } from "../../api/tasks";
 
 /* ---------- types ---------- */
 
@@ -100,6 +101,8 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
   const authUser = useAuthStore((s) => s.user);
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const { data: taskCountData } = useActiveTaskCount();
+  const activeTaskCount = taskCountData?.active ?? 0;
 
   const displayName = authUser?.name ?? _currentUser?.name ?? "Пользователь";
   const displayRole = authUser?.role ?? _currentUser?.role ?? "";
@@ -200,11 +203,21 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                       : undefined
                   }
                 >
-                  <span className="w-5 flex items-center justify-center flex-shrink-0">
+                  <span className="w-5 flex items-center justify-center flex-shrink-0 relative">
                     {item.icon}
+                    {collapsed && item.path === "/tasks" && activeTaskCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full bg-danger flex items-center justify-center text-white text-[8px] font-bold leading-none">
+                        {activeTaskCount > 99 ? "99" : activeTaskCount}
+                      </span>
+                    )}
                   </span>
                   {!collapsed && <span className="truncate">{item.label}</span>}
-                  {!collapsed && item.badge && (
+                  {!collapsed && item.path === "/tasks" && activeTaskCount > 0 && (
+                    <span className="ml-auto text-white text-[10px] font-bold px-[6px] py-[2px] rounded-[10px] bg-danger">
+                      {activeTaskCount > 99 ? "99+" : activeTaskCount}
+                    </span>
+                  )}
+                  {!collapsed && item.path !== "/tasks" && item.badge && (
                     <span
                       className={clsx(
                         "ml-auto text-white text-[10px] font-bold px-[6px] py-[2px] rounded-[10px]",
@@ -213,14 +226,6 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                     >
                       {item.badge}
                     </span>
-                  )}
-                  {collapsed && item.badge && (
-                    <span
-                      className={clsx(
-                        "absolute top-1 right-1 w-2 h-2 rounded-full",
-                        badgeColorMap[item.badgeColor ?? "red"],
-                      )}
-                    />
                   )}
                 </div>
               );

@@ -25,6 +25,7 @@ from app.routers import (
     pipeline_ext,
     pipeline_stages,
     reports,
+    rewards,
     schedule,
     scripts,
     search,
@@ -92,6 +93,7 @@ app.include_router(pipeline_stages.router)
 app.include_router(marketing.router)
 app.include_router(webhooks.router)
 app.include_router(knowledge_base.router)
+app.include_router(rewards.router)
 
 # --- Static files (avatars, uploads) ---
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

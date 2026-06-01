@@ -60,6 +60,18 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.bot_reminders.send_appointment_reminders",
         "schedule": 900.0,  # every 15 minutes
     },
+    "create-daily-call-tasks": {
+        "task": "app.tasks.auto_tasks.create_daily_call_tasks",
+        "schedule": crontab(hour=7, minute=0),  # 07:00 Moscow
+    },
+    "deactivate-expired-tasks": {
+        "task": "app.tasks.auto_tasks.deactivate_expired_tasks",
+        "schedule": crontab(hour=0, minute=5),  # 00:05 Moscow
+    },
+    "create-yesterday-followup-tasks": {
+        "task": "app.tasks.auto_tasks.create_yesterday_followup_tasks",
+        "schedule": crontab(hour=8, minute=0),  # 08:00 Moscow
+    },
 }
 
 # Explicitly include task modules (autodiscover only finds app/tasks/tasks.py, not submodules)
@@ -69,6 +81,7 @@ celery_app.conf.include = [
     "app.tasks.ai_insights",
     "app.tasks.daily_report",
     "app.tasks.bot_reminders",
+    "app.tasks.auto_tasks",
 ]
 
 # Remove legacy patients-only periodic sync (now part of sync_full_daily)

@@ -1,10 +1,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
 from app.services.tasks_service import create_task, delete_task, list_tasks, update_task
@@ -12,15 +14,34 @@ from app.services.tasks_service import create_task, delete_task, list_tasks, upd
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
 
 
+@router.get("/count")
+async def get_task_count(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    result = await db.execute(
+        select(func.count(Task.id)).where(Task.is_done == False, Task.is_active == True)
+    )
+    count = result.scalar_one()
+    return {"active": count}
+
+
 @router.get("/", response_model=TaskListResponse)
 async def get_tasks(
     assigned_to: str | None = Query(None),
     is_done: bool | None = Query(None),
     deal_id: str | None = Query(None),
+    is_active: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> TaskListResponse:
-    return await list_tasks(db=db, assigned_to=assigned_to, is_done=is_done, deal_id=deal_id)
+    return await list_tasks(
+        db=db,
+        assigned_to=assigned_to,
+        is_done=is_done,
+        deal_id=deal_id,
+        is_active=is_active,
+    )
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)
@@ -55,11 +76,12 @@ async def patch_task(
     task_id: uuid.UUID,
     body: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> TaskResponse:
     updated = await update_task(
         db=db,
         task_id=task_id,
+        current_user_id=current_user.id,
         is_done=body.is_done,
         done_at=body.done_at,
         title=body.title,

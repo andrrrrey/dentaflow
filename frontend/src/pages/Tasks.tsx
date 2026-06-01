@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw, AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw,
+  AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight, Zap,
+} from "lucide-react";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
 import PatientSearchInput from "../components/ui/PatientSearchInput";
@@ -24,20 +27,38 @@ const typeLabel: Record<string, string> = {
 
 const PAGE_SIZE = 15;
 
+type Filter = "all" | "active" | "done" | "archive";
+
+function getFilterParams(filter: Filter): { is_done?: boolean; is_active?: boolean } {
+  if (filter === "active") return { is_done: false };
+  if (filter === "done") return { is_done: true };
+  if (filter === "archive") return { is_active: false };
+  return {};
+}
+
 export default function Tasks() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<"all" | "active" | "done">("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [filterAssigned, setFilterAssigned] = useState("");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: "callback", title: "", due_at: "", patient_id: "", patient_name: "", assigned_to: "" });
+  const [form, setForm] = useState({
+    type: "callback",
+    title: "",
+    due_at: "",
+    patient_id: "",
+    patient_name: "",
+    assigned_to: "",
+  });
 
   const { data, isLoading } = useTasks({
-    ...(filter === "active" ? { is_done: false } : filter === "done" ? { is_done: true } : {}),
+    ...getFilterParams(filter),
     ...(filterAssigned ? { assigned_to: filterAssigned } : {}),
   });
   const { data: staffData } = useStaff();
-  const admins = (staffData?.staff ?? []).filter((s) => s.is_active && (s.role === "admin" || s.role === "manager"));
+  const admins = (staffData?.staff ?? []).filter(
+    (s) => s.is_active && (s.role === "admin" || s.role === "manager")
+  );
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
@@ -48,14 +69,14 @@ export default function Tasks() {
   const totalPages = Math.max(1, Math.ceil(allTasks.length / PAGE_SIZE));
   const pageTasks = allTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handleFilterChange = (f: typeof filter) => {
+  const handleFilterChange = (f: Filter) => {
     setFilter(f);
     setPage(1);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.due_at || !form.assigned_to) return;
+    if (!form.title.trim() || !form.due_at) return;
     createTask.mutate(
       {
         type: form.type,
@@ -74,22 +95,29 @@ export default function Tasks() {
     );
   };
 
+  const FILTER_TABS: { key: Filter; label: string }[] = [
+    { key: "all", label: "Все" },
+    { key: "active", label: "Активные" },
+    { key: "done", label: "Выполненные" },
+    { key: "archive", label: "Архив" },
+  ];
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
-          {(["all", "active", "done"] as const).map((f) => (
+          {FILTER_TABS.map(({ key, label }) => (
             <button
-              key={f}
-              onClick={() => handleFilterChange(f)}
+              key={key}
+              onClick={() => handleFilterChange(key)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${
-                filter === f
+                filter === key
                   ? "bg-accent2 text-white"
                   : "bg-[rgba(91,76,245,0.08)] text-text-muted hover:bg-[rgba(91,76,245,0.14)]"
               }`}
             >
-              {f === "all" ? "Все" : f === "active" ? "Активные" : "Выполненные"}
+              {label}
             </button>
           ))}
           {data && data.overdue_count > 0 && (
@@ -172,10 +200,9 @@ export default function Tasks() {
               value={form.assigned_to}
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
               className="rounded-[10px] bg-white px-3 py-2 text-[13px] text-text-main focus:outline-none"
-              style={{ border: form.assigned_to ? "1px solid rgba(91,76,245,0.18)" : "1px solid #f44b6e" }}
-              required
+              style={{ border: "1px solid rgba(91,76,245,0.18)" }}
             >
-              <option value="">Ответственный *</option>
+              <option value="">Ответственный (необязательно)</option>
               {admins.map((a) => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
@@ -184,7 +211,7 @@ export default function Tasks() {
               type="submit"
               variant="primary"
               size="sm"
-              disabled={!form.title.trim() || !form.due_at || !form.assigned_to || createTask.isPending}
+              disabled={!form.title.trim() || !form.due_at || createTask.isPending}
             >
               {createTask.isPending ? "Создаём..." : "Создать"}
             </Button>
@@ -205,13 +232,15 @@ export default function Tasks() {
         {isLoading ? (
           <div className="p-8 text-center text-text-muted text-[13px]">Загрузка...</div>
         ) : allTasks.length === 0 ? (
-          <div className="p-8 text-center text-text-muted text-[13px]">Нет задач</div>
+          <div className="p-8 text-center text-text-muted text-[13px]">
+            {filter === "archive" ? "Архив пуст — истёкших задач нет" : "Нет задач"}
+          </div>
         ) : (
           <>
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
-                  {["", "Задача", "Тип", "Пациент", "Ответственный", "Срок", "Статус", ""].map((h, i) => (
+                  {["", "Задача", "Тип", "Пациент", "Исполнитель", "Срок", "Статус", ""].map((h, i) => (
                     <th
                       key={i}
                       className="px-4 py-3 text-left text-[11px] font-bold text-text-muted uppercase tracking-wider"
@@ -224,31 +253,56 @@ export default function Tasks() {
               <tbody>
                 {pageTasks.map((task, idx) => {
                   const isOverdue = !task.is_done && task.due_at && new Date(task.due_at) < now;
+                  const isInactive = !task.is_active && !task.is_done;
+                  const rowOpacity = task.is_done || isInactive ? 0.55 : 1;
+
+                  const executorName = task.is_done
+                    ? (task.completed_by_name ?? task.assigned_to_name)
+                    : task.assigned_to_name;
+
                   return (
                     <tr
                       key={task.id}
                       style={{
                         borderBottom: idx < pageTasks.length - 1 ? "1px solid rgba(91,76,245,0.06)" : "none",
-                        opacity: task.is_done && filter !== "done" ? 0.65 : 1,
+                        opacity: rowOpacity,
                       }}
                     >
                       <td className="px-4 py-3 w-9">
-                        <button
-                          className="hover:opacity-70 transition-opacity"
-                          onClick={() => toggleTask.mutate({ taskId: task.id, isDone: !task.is_done })}
-                        >
-                          {task.is_done ? (
-                            <CheckCircle2 size={17} className="text-[#00C9A7]" />
-                          ) : (
-                            <Circle size={17} className="text-text-muted" />
-                          )}
-                        </button>
+                        {!isInactive && (
+                          <button
+                            className="hover:opacity-70 transition-opacity"
+                            onClick={() => toggleTask.mutate({ taskId: task.id, isDone: !task.is_done })}
+                          >
+                            {task.is_done ? (
+                              <CheckCircle2 size={17} className="text-[#00C9A7]" />
+                            ) : (
+                              <Circle size={17} className="text-text-muted" />
+                            )}
+                          </button>
+                        )}
                       </td>
                       <td className="px-4 py-3 max-w-[280px]">
-                        <span className={`text-[13px] font-semibold ${task.is_done && filter !== "done" ? "text-text-muted line-through" : "text-text-main"}`}>
-                          {task.title ?? "—"}
-                        </span>
-                        {task.is_done && task.done_at && filter === "done" && (
+                        <div className="flex items-center gap-2">
+                          {task.is_auto && (
+                            <span
+                              className="flex items-center gap-[3px] px-[6px] py-[2px] rounded-full text-[10px] font-bold flex-shrink-0"
+                              style={{ background: "rgba(59,127,237,0.1)", color: "#3B7FED" }}
+                              title="Автоматически создана системой"
+                            >
+                              <Zap size={9} />
+                              Авто
+                            </span>
+                          )}
+                          <span
+                            className={`text-[13px] font-semibold ${
+                              (task.is_done || isInactive) ? "text-text-muted line-through" : "text-text-main"
+                            }`}
+                          >
+                            {task.title ?? "—"}
+                          </span>
+                        </div>
+                        {task.is_done && task.done_at && (
                           <div className="text-[11px] text-[#00C9A7] flex items-center gap-1 mt-[2px]">
                             <CheckCircle2 size={10} />
                             Выполнено {format(new Date(task.done_at), "dd MMM yyyy, HH:mm", { locale: ru })}
@@ -274,15 +328,21 @@ export default function Tasks() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-[12.5px]">
-                        {task.assigned_to_name ? (
-                          <span className="text-text-main font-medium">{task.assigned_to_name}</span>
+                        {executorName ? (
+                          <span className="text-text-main font-medium">{executorName}</span>
+                        ) : task.is_auto && !task.is_done ? (
+                          <span className="text-[11px] text-text-muted italic">Общая задача</span>
                         ) : (
                           <span className="text-text-muted">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {task.due_at ? (
-                          <span className={`flex items-center gap-1 text-[12px] ${isOverdue ? "text-[#f44b6e] font-semibold" : "text-text-muted"}`}>
+                          <span
+                            className={`flex items-center gap-1 text-[12px] ${
+                              isOverdue ? "text-[#f44b6e] font-semibold" : "text-text-muted"
+                            }`}
+                          >
                             <Clock size={11} />
                             {format(new Date(task.due_at), "dd MMM yyyy, HH:mm", { locale: ru })}
                           </span>
@@ -293,6 +353,8 @@ export default function Tasks() {
                       <td className="px-4 py-3">
                         {task.is_done ? (
                           <Pill variant="green">Выполнено</Pill>
+                        ) : isInactive ? (
+                          <Pill variant="gray">Истёк</Pill>
                         ) : isOverdue ? (
                           <Pill variant="red">Просрочено</Pill>
                         ) : (
@@ -316,7 +378,10 @@ export default function Tasks() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}
+              >
                 <span className="text-[12px] text-text-muted">
                   Стр. {page} из {totalPages} · {allTasks.length} задач
                 </span>
@@ -340,7 +405,11 @@ export default function Tasks() {
                         key={p}
                         onClick={() => setPage(p)}
                         className="w-8 h-8 rounded-[9px] text-[12.5px] font-semibold border-none cursor-pointer"
-                        style={p === page ? { background: "linear-gradient(135deg,#5B4CF5,#3B7FED)", color: "#fff" } : { background: "rgba(91,76,245,0.06)", color: "#5B4CF5" }}
+                        style={
+                          p === page
+                            ? { background: "linear-gradient(135deg,#5B4CF5,#3B7FED)", color: "#fff" }
+                            : { background: "rgba(91,76,245,0.06)", color: "#5B4CF5" }
+                        }
                       >
                         {p}
                       </button>
