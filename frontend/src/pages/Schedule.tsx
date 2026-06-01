@@ -227,9 +227,9 @@ export default function Schedule() {
   const gridHeight = HOURS.length * SLOT_HEIGHT;
 
   return (
-    <div className="flex flex-col gap-4 h-full min-h-0">
+    <div className="flex flex-col gap-4">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Всего записей" value={String(stats?.total ?? 0)} icon="📅" />
         <StatCard label="Подтверждено" value={String(stats?.confirmed ?? 0)} delta={stats?.completion_rate ? `${stats.completion_rate}%` : undefined} deltaType="up" icon="✅" />
         <StatCard label="Отменено" value={String(stats?.cancelled ?? 0)} icon="❌" />
@@ -237,11 +237,11 @@ export default function Schedule() {
       </div>
 
       {/* Main layout: sidebar + timetable */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="flex gap-4 items-start">
         {/* Collapsed: slim strip with expand button */}
         {!calendarPanelOpen && (
           <div
-            className="w-12 flex-shrink-0 rounded-[16px] flex flex-col items-center pt-3 self-start"
+            className="w-12 flex-shrink-0 rounded-[16px] flex flex-col items-center pt-3 self-start sticky top-0"
             style={{
               background: "rgba(255,255,255,0.65)",
               backdropFilter: "blur(18px)",
@@ -262,7 +262,7 @@ export default function Schedule() {
         {/* Left sidebar: mini calendar + filters */}
         {calendarPanelOpen && (
         <div
-          className="w-[240px] flex-shrink-0 rounded-[16px] p-4 flex flex-col gap-4 self-stretch overflow-y-auto"
+          className="w-[240px] flex-shrink-0 rounded-[16px] p-4 flex flex-col gap-4 self-start sticky top-0 max-h-[calc(100vh-110px)] overflow-y-auto"
           style={{
             background: "rgba(255,255,255,0.65)",
             backdropFilter: "blur(18px)",
@@ -342,10 +342,11 @@ export default function Schedule() {
         </div>
         )}
 
-        {/* Timetable */}
+        {/* Timetable — sticky, fills the viewport once the stat cards scroll away */}
         <div
-          className="flex-1 min-w-0 rounded-[16px] overflow-hidden flex flex-col"
+          className="flex-1 min-w-0 rounded-[16px] overflow-hidden flex flex-col self-start sticky top-0"
           style={{
+            height: "calc(100vh - 110px)",
             background: "rgba(255,255,255,0.65)",
             backdropFilter: "blur(18px)",
             border: "1px solid rgba(255,255,255,0.85)",
