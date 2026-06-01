@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   ShieldAlert,
@@ -17,6 +17,19 @@ interface AIAnalysisProps {
 export default function AIAnalysis({ analysis, patientId }: AIAnalysisProps) {
   const [liveAnalysis, setLiveAnalysis] = useState<PatientAiAnalysis | null>(null);
   const analyzeMutation = useAnalyzePatient();
+  const autoRunFor = useRef<string | null>(null);
+
+  // Auto-run "ИИ-Анализ пациента" once when the card opens. The backend reuses
+  // the cached result when nothing changed since the last open, so this does
+  // not re-generate the analysis on every visit.
+  useEffect(() => {
+    if (!patientId || autoRunFor.current === patientId) return;
+    autoRunFor.current = patientId;
+    analyzeMutation.mutate(patientId, {
+      onSuccess: (data) => setLiveAnalysis(data),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
 
   const displayed = liveAnalysis ?? analysis;
   const prob = displayed.return_probability;
@@ -50,9 +63,10 @@ export default function AIAnalysis({ analysis, patientId }: AIAnalysisProps) {
           {patientId && (
             <button
               onClick={() =>
-                analyzeMutation.mutate(patientId, {
-                  onSuccess: (data) => setLiveAnalysis(data),
-                })
+                analyzeMutation.mutate(
+                  { patientId, force: true },
+                  { onSuccess: (data) => setLiveAnalysis(data) },
+                )
               }
               disabled={analyzeMutation.isPending}
               className="flex items-center gap-1 px-[8px] py-[3px] rounded-full text-[10px] font-semibold border border-white/30 bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50"

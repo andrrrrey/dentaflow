@@ -54,12 +54,22 @@ export interface PatientAiAnalysis {
   barriers: string[];
   next_action: string;
   ltv_score?: number;
+  cached?: boolean;
+}
+
+export interface AnalyzePatientInput {
+  patientId: string;
+  force?: boolean;
 }
 
 export function useAnalyzePatient() {
-  return useMutation<PatientAiAnalysis, Error, string>({
-    mutationFn: async (patientId: string) => {
-      const { data } = await api.post(`/ai/patient/${patientId}`);
+  return useMutation<PatientAiAnalysis, Error, string | AnalyzePatientInput>({
+    mutationFn: async (input) => {
+      const { patientId, force } =
+        typeof input === "string" ? { patientId: input, force: false } : input;
+      const { data } = await api.post(
+        `/ai/patient/${patientId}${force ? "?force=true" : ""}`,
+      );
       return data;
     },
   });

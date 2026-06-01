@@ -6,7 +6,7 @@ import AIInsightBanner from "../components/dashboard/AIInsightBanner";
 import FunnelChart from "../components/dashboard/FunnelChart";
 import SourcesTable from "../components/dashboard/SourcesTable";
 import DoctorsLoad from "../components/dashboard/DoctorsLoad";
-import AdminsRating from "../components/dashboard/AdminsRating";
+import AdminLeaderboard from "../components/staff/AdminLeaderboard";
 import { useDashboardOverview } from "../api/dashboard";
 import { useAiInsights, useRefreshDashboardInsights } from "../api/ai";
 import { useDoctorsLoad } from "../api/doctors";
@@ -167,7 +167,7 @@ export default function Dashboard() {
       {/* Doctors Load + Admins Rating */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px]">
         <DoctorsLoad doctors={doctorsLoad.length ? doctorsLoad : (overview?.doctors_load ?? [])} />
-        <AdminsRating admins={overview?.admins_rating ?? []} />
+        <AdminLeaderboard />
       </div>
     </div>
   );

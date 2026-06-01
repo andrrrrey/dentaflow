@@ -87,13 +87,38 @@ async def refresh_insights(
     return insights
 
 
+def _analysis_fingerprint(patient_data: dict, history: list) -> str:
+    """Stable hash of the inputs that drive the patient AI analysis.
+
+    Used to skip re-generating (and re-paying for) the analysis when nothing
+    relevant has changed since the patient card was last opened.
+    """
+    import hashlib
+
+    payload = json.dumps(
+        {"patient": patient_data, "history": history},
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 @router.post("/patient/{patient_id}")
 async def analyze_patient(
     patient_id: uuid.UUID,
+    force: bool = False,
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Generate AI analysis for a specific patient."""
+    """Generate (or return cached) AI analysis for a specific patient.
+
+    The analysis is cached on the patient row together with a fingerprint of
+    the data it was derived from. While that data is unchanged the cached
+    result is returned, so re-opening the patient card does not re-run the
+    analysis. Pass ``force=true`` to bypass the cache.
+    """
+    from app.models.patient import Patient
     from app.services.patients_service import get_patient_detail
 
     detail = await get_patient_detail(patient_id, db=db)
@@ -113,8 +138,36 @@ async def analyze_patient(
         for a in (detail.appointments or [])[:20]
     ]
 
+    fingerprint = _analysis_fingerprint(patient_data, history)
+
+    patient = await db.get(Patient, patient_id)
+
+    # Return the cached analysis if the underlying data hasn't changed.
+    if (
+        not force
+        and patient is not None
+        and patient.ai_analysis
+        and patient.ai_analysis_fingerprint == fingerprint
+    ):
+        return {**patient.ai_analysis, "cached": True}
+
     ai = AIService()
-    return await ai.analyze_patient(patient_data=patient_data, history=history)
+    analysis = await ai.analyze_patient(patient_data=patient_data, history=history)
+
+    # Persist the fresh analysis so subsequent opens reuse it.
+    if patient is not None:
+        from datetime import datetime, timezone
+
+        patient.ai_analysis = analysis
+        patient.ai_analysis_fingerprint = fingerprint
+        patient.ai_analysis_at = datetime.now(timezone.utc)
+        if isinstance(analysis, dict):
+            ltv = analysis.get("ltv_score", analysis.get("return_probability"))
+            if isinstance(ltv, (int, float)):
+                patient.ltv_score = int(ltv)
+        await db.commit()
+
+    return {**analysis, "cached": False}
 
 
 @router.get("/reports/advice")

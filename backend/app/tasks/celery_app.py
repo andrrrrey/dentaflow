@@ -39,7 +39,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.sync_1denta.sync_directories",
         "schedule": 3600.0,  # every hour
     },
-    # Nightly: full patient base + 90-day appointment history
+    # Nightly: full sync with 1Denta + Novofon across all sections —
+    # Справочники, Пациенты, Расписание, Контроль звонков, Маркетинг
     "sync-1denta-full-daily": {
         "task": "app.tasks.sync_1denta.sync_full_daily",
         "schedule": crontab(hour=3, minute=0),  # 03:00 Moscow (UTC, Celery uses Moscow tz)
