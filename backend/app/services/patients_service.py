@@ -352,7 +352,18 @@ async def get_patient_detail(
     total_rev = sum(revenues)
     dates = sorted([a.scheduled_at for a in appointments if a.scheduled_at is not None])
 
-    ai_analysis = _build_ai_analysis(patient, appointments, completed, cancelled, no_shows, total_rev, dates)
+    # Prefer the cached "ИИ-Анализ пациента" persisted on the patient row;
+    # fall back to the template-based heuristic when none has been generated yet.
+    if patient.ai_analysis:
+        cached = patient.ai_analysis
+        ai_analysis = AIAnalysis(
+            summary=cached.get("summary", ""),
+            barriers=cached.get("barriers", []) or [],
+            return_probability=int(cached.get("return_probability", 0) or 0),
+            next_action=cached.get("next_action", ""),
+        )
+    else:
+        ai_analysis = _build_ai_analysis(patient, appointments, completed, cancelled, no_shows, total_rev, dates)
     stats = PatientStats(
         total_visits=len(appointments),
         completed_visits=len(completed),

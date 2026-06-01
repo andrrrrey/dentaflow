@@ -42,6 +42,15 @@ class Patient(Base):
         DateTime(timezone=True), nullable=True
     )
     raw_1denta_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Cached "ИИ-Анализ пациента" — regenerated only when the underlying
+    # patient/appointment data changes (tracked via ai_analysis_fingerprint).
+    ai_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ai_analysis_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    ai_analysis_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

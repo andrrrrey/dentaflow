@@ -360,18 +360,219 @@ def sync_appointments(self):
         raise self.retry(exc=exc, countdown=60)
 
 
+async def _sync_calls_async(days: int = 7) -> dict:
+    """Import call history from Novofon into Communications (Контроль звонков)."""
+    import json as _json
+    from sqlalchemy import select
+    from app.database import async_session_factory
+    from app.models.communication import Communication
+    from app.routers.calls import _map_stat_to_comm
+    from app.services.integrations_service import get_raw_value
+    from app.services.novofon import NovofonService
+
+    async with async_session_factory() as session:
+        api_key = await get_raw_value(session, "novofon_api_key")
+        api_secret = await get_raw_value(session, "novofon_webhook_secret")
+
+        if not api_key:
+            return {"synced": 0, "updated": 0, "skipped": 0, "message": "Novofon API key not configured"}
+
+        svc = NovofonService(api_key=api_key, api_secret=api_secret or None)
+        date_from = datetime.now(timezone.utc) - timedelta(days=days)
+
+        try:
+            stats = await svc.get_call_history(date_from=date_from)
+        except Exception:
+            logger.exception("sync_calls: Novofon API error")
+            return {"synced": 0, "updated": 0, "skipped": 0, "error": "novofon_api_error"}
+
+        if not stats:
+            return {"synced": 0, "updated": 0, "skipped": 0, "total_from_api": 0}
+
+        all_ext_ids = [
+            str(s.get("call_id") or s.get("pbx_call_id") or "")
+            for s in stats if s.get("call_id") or s.get("pbx_call_id")
+        ]
+        existing_result = await session.execute(
+            select(Communication).where(
+                Communication.channel == "novofon",
+                Communication.external_id.in_(all_ext_ids),
+            )
+        )
+        existing_by_ext_id: dict[str, list[Communication]] = {}
+        for c in existing_result.scalars().all():
+            existing_by_ext_id.setdefault(c.external_id, []).append(c)
+
+        synced = 0
+        updated = 0
+        skipped = 0
+        for stat in stats:
+            mapped = _map_stat_to_comm(stat)
+            if not mapped:
+                skipped += 1
+                continue
+
+            content = _json.dumps(
+                {"caller_id": mapped["caller_id"], "called_did": mapped["called_did"]},
+                ensure_ascii=False,
+            )
+            ext_id = mapped["external_id"]
+
+            if ext_id in existing_by_ext_id:
+                for comm in existing_by_ext_id[ext_id]:
+                    comm.content = content
+                    comm.type = mapped["comm_type"]
+                    comm.direction = mapped["direction"]
+                    comm.duration_sec = mapped["duration_sec"]
+                    comm.priority = "high" if mapped["comm_type"] == "missed_call" else "normal"
+                    if mapped["created_at"]:
+                        comm.created_at = mapped["created_at"]
+                updated += 1
+                continue
+
+            comm = Communication(
+                channel="novofon",
+                direction=mapped["direction"],
+                type=mapped["comm_type"],
+                content=content,
+                duration_sec=mapped["duration_sec"],
+                status="new",
+                priority="high" if mapped["comm_type"] == "missed_call" else "normal",
+                external_id=ext_id,
+            )
+            if mapped["created_at"]:
+                comm.created_at = mapped["created_at"]
+            session.add(comm)
+            synced += 1
+
+        if synced or updated:
+            await session.commit()
+
+    return {"synced": synced, "updated": updated, "skipped": skipped, "total_from_api": len(stats)}
+
+
+async def _sync_marketing_async() -> dict:
+    """Import discounts and gift certificates from 1Denta (Маркетинг)."""
+    from sqlalchemy import select
+    from app.database import async_session_factory
+    from app.models.discount import Discount
+    from app.models.gift_certificate import GiftCertificate
+    from app.services.one_denta import OneDentaService
+
+    synced_certs = 0
+    synced_discounts = 0
+
+    async with async_session_factory() as session:
+        try:
+            svc = await OneDentaService.from_db(session)
+        except Exception:
+            return {"synced_certificates": 0, "synced_discounts": 0, "message": "1Denta not configured"}
+
+        if svc._no_credentials():
+            return {"synced_certificates": 0, "synced_discounts": 0, "message": "1Denta credentials not configured"}
+
+        now = datetime.now(timezone.utc)
+        existing_codes = {row[0] for row in (await session.execute(select(GiftCertificate.code))).all()}
+        existing_discount_names = {row[0] for row in (await session.execute(select(Discount.name))).all()}
+
+        try:
+            for d in await svc.get_discounts():
+                name = (d.get("name") or d.get("title") or "").strip()
+                if not name or name in existing_discount_names:
+                    continue
+                value_raw = d.get("value") or d.get("percent") or d.get("amount") or d.get("size") or 0
+                try:
+                    value = float(value_raw)
+                except (TypeError, ValueError):
+                    value = 0.0
+                session.add(Discount(
+                    name=name,
+                    type="percent" if value <= 100 else "fixed",
+                    value=value,
+                    is_active=bool(d.get("active", d.get("isActive", True))),
+                    description=f"Импорт из 1Denta (ID: {d.get('id', '')})",
+                ))
+                existing_discount_names.add(name)
+                synced_discounts += 1
+        except Exception as e:
+            logger.warning("sync_marketing: failed to fetch discounts: %s", e)
+
+        try:
+            for c in await svc.get_certificates():
+                cert_id = str(c.get("id", ""))
+                code = f"1D-CERT-{cert_id}" if cert_id else None
+                if not code or code in existing_codes:
+                    continue
+                amount_raw = c.get("amount") or c.get("nominal") or c.get("value") or c.get("sum") or 0
+                try:
+                    amount = float(amount_raw)
+                except (TypeError, ValueError):
+                    amount = 0.0
+                session.add(GiftCertificate(
+                    code=code,
+                    amount=amount,
+                    remaining_amount=float(c.get("remaining") or c.get("remainingAmount") or amount),
+                    recipient_name=c.get("clientName") or c.get("name") or c.get("recipient") or None,
+                    valid_from=now.date(),
+                    valid_to=(now + timedelta(days=365)).date(),
+                    note=f"Импорт из 1Denta (ID: {cert_id})",
+                    status="active",
+                ))
+                existing_codes.add(code)
+                synced_certs += 1
+        except Exception as e:
+            logger.warning("sync_marketing: failed to fetch certificates: %s", e)
+
+        await session.commit()
+
+    return {"synced_certificates": synced_certs, "synced_discounts": synced_discounts}
+
+
+@celery_app.task(name="app.tasks.sync_1denta.sync_calls", bind=True, max_retries=3)
+def sync_calls(self):
+    """Import recent call history from Novofon (Контроль звонков)."""
+    try:
+        result = _run_async(_sync_calls_async(days=7))
+        logger.info("sync_calls complete: %s", result)
+        return result
+    except Exception as exc:
+        logger.exception("sync_calls failed")
+        raise self.retry(exc=exc, countdown=60)
+
+
+@celery_app.task(name="app.tasks.sync_1denta.sync_marketing", bind=True, max_retries=3)
+def sync_marketing(self):
+    """Import discounts and certificates from 1Denta (Маркетинг)."""
+    try:
+        result = _run_async(_sync_marketing_async())
+        logger.info("sync_marketing complete: %s", result)
+        return result
+    except Exception as exc:
+        logger.exception("sync_marketing failed")
+        raise self.retry(exc=exc, countdown=60)
+
+
 @celery_app.task(name="app.tasks.sync_1denta.sync_full_daily", bind=True, max_retries=2)
 def sync_full_daily(self):
-    """Nightly full sync: all patients + wide appointment window (90 days forward)."""
+    """Nightly full sync with 1Denta and Novofon across all sections:
+    Справочники, Пациенты, Расписание, Контроль звонков, Маркетинг."""
     try:
         dir_result = _run_async(_sync_directories_async())
         pat_result = _run_async(_sync_patients_async())
         appt_result = _run_async(_sync_appointments_async(days_back=30, days_forward=90))
+        calls_result = _run_async(_sync_calls_async(days=30))
+        marketing_result = _run_async(_sync_marketing_async())
         logger.info(
-            "sync_full_daily complete: dirs=%s patients=%s appointments=%s",
-            dir_result, pat_result, appt_result,
+            "sync_full_daily complete: dirs=%s patients=%s appointments=%s calls=%s marketing=%s",
+            dir_result, pat_result, appt_result, calls_result, marketing_result,
         )
-        return {"directories": dir_result, "patients": pat_result, "appointments": appt_result}
+        return {
+            "directories": dir_result,
+            "patients": pat_result,
+            "appointments": appt_result,
+            "calls": calls_result,
+            "marketing": marketing_result,
+        }
     except Exception as exc:
         logger.exception("sync_full_daily failed")
         raise self.retry(exc=exc, countdown=300)
