@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWeek, addMonths, subMonths, isSameDay, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import StatCard from "../components/ui/StatCard";
 import Button from "../components/ui/Button";
 import { useSchedule, useDoctorsList, useSyncSchedule } from "../api/schedule";
@@ -176,6 +176,7 @@ export default function Schedule() {
   const [filterStatus, setFilterStatus] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const [calendarPanelOpen, setCalendarPanelOpen] = useState(true);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -226,9 +227,9 @@ export default function Schedule() {
   const gridHeight = HOURS.length * SLOT_HEIGHT;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 h-full min-h-0">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
         <StatCard label="Всего записей" value={String(stats?.total ?? 0)} icon="📅" />
         <StatCard label="Подтверждено" value={String(stats?.confirmed ?? 0)} delta={stats?.completion_rate ? `${stats.completion_rate}%` : undefined} deltaType="up" icon="✅" />
         <StatCard label="Отменено" value={String(stats?.cancelled ?? 0)} icon="❌" />
@@ -236,10 +237,32 @@ export default function Schedule() {
       </div>
 
       {/* Main layout: sidebar + timetable */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-1 min-h-0">
+        {/* Collapsed: slim strip with expand button */}
+        {!calendarPanelOpen && (
+          <div
+            className="w-12 flex-shrink-0 rounded-[16px] flex flex-col items-center pt-3 self-start"
+            style={{
+              background: "rgba(255,255,255,0.65)",
+              backdropFilter: "blur(18px)",
+              border: "1px solid rgba(255,255,255,0.85)",
+              boxShadow: "0 4px 18px rgba(120,140,180,0.18)",
+            }}
+          >
+            <button
+              onClick={() => setCalendarPanelOpen(true)}
+              title="Развернуть календарь"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-accent2 hover:bg-[rgba(91,76,245,0.08)] border-none cursor-pointer bg-transparent"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          </div>
+        )}
+
         {/* Left sidebar: mini calendar + filters */}
+        {calendarPanelOpen && (
         <div
-          className="w-[240px] flex-shrink-0 rounded-[16px] p-4 flex flex-col gap-4 self-start sticky top-4"
+          className="w-[240px] flex-shrink-0 rounded-[16px] p-4 flex flex-col gap-4 self-stretch overflow-y-auto"
           style={{
             background: "rgba(255,255,255,0.65)",
             backdropFilter: "blur(18px)",
@@ -247,6 +270,17 @@ export default function Schedule() {
             boxShadow: "0 4px 18px rgba(120,140,180,0.18)",
           }}
         >
+          <div className="flex items-center justify-between -mb-1">
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Календарь</span>
+            <button
+              onClick={() => setCalendarPanelOpen(false)}
+              title="Свернуть"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-accent2 hover:bg-[rgba(91,76,245,0.08)] border-none cursor-pointer bg-transparent"
+            >
+              <PanelLeftClose size={16} />
+            </button>
+          </div>
+
           <MiniCalendar
             selected={selectedDate}
             onSelect={(d) => { setSelectedDate(d); }}
@@ -306,10 +340,11 @@ export default function Schedule() {
             Визиты: <span className="font-bold text-text-main">{appointments.length}</span>
           </div>
         </div>
+        )}
 
         {/* Timetable */}
         <div
-          className="flex-1 min-w-0 rounded-[16px] overflow-hidden"
+          className="flex-1 min-w-0 rounded-[16px] overflow-hidden flex flex-col"
           style={{
             background: "rgba(255,255,255,0.65)",
             backdropFilter: "blur(18px)",
@@ -318,7 +353,7 @@ export default function Schedule() {
           }}
         >
           {/* Date header */}
-          <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
+          <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
             <button onClick={() => setSelectedDate((d) => subDays(d, 1))} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[rgba(91,76,245,0.08)] border-none cursor-pointer bg-transparent text-text-muted">
               <ChevronLeft size={16} />
             </button>
@@ -330,12 +365,13 @@ export default function Schedule() {
             </button>
           </div>
 
+          <div className="flex-1 min-h-0">
           {isLoading ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Загрузка данных...</div>
           ) : doctorsWithAppointments.length === 0 ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
-            <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 230px)" }}>
+            <div className="h-full overflow-auto">
               <div style={{ minWidth: Math.max(doctorsWithAppointments.length * DOC_COL_W + TIME_COL_W, 600) }}>
                 {/* Doctor headers */}
                 <div className="flex sticky top-0 z-40" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)", background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
@@ -433,6 +469,7 @@ export default function Schedule() {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 
