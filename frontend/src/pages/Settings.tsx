@@ -15,7 +15,7 @@ import {
   useUploadKbFile,
   useDeleteKbFile,
 } from "../api/integrations";
-import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard } from "../api/rewards";
+import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
 
 /* ---------- helpers ---------- */
 
@@ -689,19 +689,25 @@ function MotivationTab() {
   const { data: leaderboard } = useLeaderboard();
   const saveMutation = useSaveRewardsConfig();
 
-  const [values, setValues] = useState<Record<string, number>>({});
+  const [values, setValues] = useState<RewardsConfig>({
+    task_completed: 10,
+    call_made: 5,
+    script_compliance: 15,
+    appointment_confirmed: 20,
+    patient_reached: 8,
+  });
   const [saveSuccess, setSaveSuccess] = useState("");
   const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
-    if (config) setValues(config as unknown as Record<string, number>);
+    if (config) setValues(config);
   }, [config]);
 
   async function handleSave() {
     setSaveSuccess("");
     setSaveError("");
     try {
-      await saveMutation.mutateAsync(values as Parameters<typeof saveMutation.mutateAsync>[0]);
+      await saveMutation.mutateAsync(values);
       setSaveSuccess("Настройки сохранены");
     } catch {
       setSaveError("Ошибка при сохранении");
@@ -743,8 +749,8 @@ function MotivationTab() {
                   type="number"
                   min={0}
                   max={1000}
-                  value={values[key] ?? 0}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+                  value={values[key as keyof RewardsConfig] ?? 0}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [key]: Number(e.target.value) } as RewardsConfig))}
                   className="w-[80px] px-3 py-[7px] rounded-[10px] text-[13px] text-text-main text-center outline-none"
                   style={{ border: "1px solid rgba(91,76,245,0.18)", background: "rgba(255,255,255,0.7)" }}
                 />
