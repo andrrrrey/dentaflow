@@ -335,11 +335,14 @@ export default function Schedule() {
           ) : doctorsWithAppointments.length === 0 ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 230px)" }}>
               <div style={{ minWidth: Math.max(doctorsWithAppointments.length * DOC_COL_W + TIME_COL_W, 600) }}>
                 {/* Doctor headers */}
-                <div className="flex sticky top-0 z-30" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)", background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
-                  <div className="flex-shrink-0" style={{ width: TIME_COL_W }} />
+                <div className="flex sticky top-0 z-40" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)", background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
+                  <div
+                    className="flex-shrink-0 sticky left-0 z-50"
+                    style={{ width: TIME_COL_W, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
+                  />
                   {doctorsWithAppointments.map(([doctorName, appts]) => {
                     const specialty = specialtyByDoctor.get(doctorName);
                     const initials = doctorName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
@@ -368,8 +371,11 @@ export default function Schedule() {
 
                 {/* Time grid */}
                 <div className="flex relative">
-                  {/* Time column */}
-                  <div className="flex-shrink-0" style={{ width: TIME_COL_W }}>
+                  {/* Time column — sticky on horizontal scroll */}
+                  <div
+                    className="flex-shrink-0 sticky left-0 z-30"
+                    style={{ width: TIME_COL_W, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
+                  >
                     {HOURS.map((h) => (
                       <div
                         key={h}
