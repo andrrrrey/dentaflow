@@ -27,7 +27,7 @@ if [ $FRONT_ONLY -eq 0 ]; then
   echo "→ Backend build (образ собирается один раз)..."
   # Собираем образ один раз через backend, остальные сервисы используют тот же image
   $COMPOSE build backend
-  $COMPOSE up -d backend celery_worker celery_beat telegram_bot
+  $COMPOSE up -d --remove-orphans backend celery_worker celery_beat telegram_bot
 fi
 
 # ── Frontend ───────────────────────────────────────────
