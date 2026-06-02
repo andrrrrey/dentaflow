@@ -22,7 +22,7 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
   $COMPOSE build backend
 
   echo "→ Запуск бэкенда и celery..."
-  $COMPOSE up -d --no-deps backend celery_worker celery_beat
+  $COMPOSE up -d --no-deps --remove-orphans backend celery_worker celery_beat
 
   echo "→ Перезапуск nginx..."
   $COMPOSE restart nginx
