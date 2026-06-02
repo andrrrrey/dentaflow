@@ -9,9 +9,29 @@ from app.dependencies import get_current_user
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
-from app.services.tasks_service import create_task, delete_task, list_tasks, update_task
+from app.services.tasks_service import (
+    create_auto_tasks_for_today,
+    create_task,
+    delete_task,
+    list_tasks,
+    update_task,
+)
 
 router = APIRouter(prefix="/api/v1/tasks", tags=["tasks"])
+
+
+@router.post("/generate-auto")
+async def generate_auto_tasks(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate today's confirmation-call tasks on demand.
+
+    Mirrors the nightly/morning Celery job (create_daily_call_tasks) so admins
+    can populate the task list immediately instead of waiting for 07:00. It is
+    idempotent — appointments that already have an auto task today are skipped.
+    """
+    return await create_auto_tasks_for_today(db)
 
 
 @router.get("/count")
