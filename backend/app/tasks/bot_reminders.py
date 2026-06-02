@@ -23,7 +23,7 @@ def send_appointment_reminders() -> None:
 
 async def _async_send_reminders() -> None:
     from sqlalchemy import select
-    from app.database import AsyncSessionLocal
+    from app.database import async_session_factory
     from app.models.appointment import Appointment
     from app.models.patient import Patient
     from app.models.bot_user import BotUser
@@ -37,7 +37,7 @@ async def _async_send_reminders() -> None:
     rc = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
     try:
-        async with AsyncSessionLocal() as db:
+        async with async_session_factory() as db:
             # Find appointments in 23-25h window
             stmt = (
                 select(Appointment, Patient)
