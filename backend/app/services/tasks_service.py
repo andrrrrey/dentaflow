@@ -217,13 +217,18 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
     today_end = today_start + timedelta(days=1)
 
-    # Fetch today's appointments
+    # Fetch today's appointments that still need a confirmation call.
+    # 1Denta maps attendance -> status as: 0=unconfirmed (default for new
+    # bookings), 2=confirmed, 1=arrived, -1=cancelled. "scheduled" is a legacy
+    # value kept for manually created local appointments. We must include
+    # "unconfirmed" here — it's the status of almost every synced appointment,
+    # and omitting it meant no call tasks were ever created.
     appts_result = await db.execute(
         select(Appointment).where(
             and_(
                 Appointment.scheduled_at >= today_start,
                 Appointment.scheduled_at < today_end,
-                Appointment.status.in_(["scheduled", "confirmed"]),
+                Appointment.status.in_(["unconfirmed", "scheduled", "confirmed"]),
             )
         )
     )

@@ -81,6 +81,20 @@ export function useCreateTask() {
   });
 }
 
+export function useGenerateAutoTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post("/tasks/generate-auto");
+      return data as { created: number; skipped: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks-count"] });
+    },
+  });
+}
+
 export function useToggleTask() {
   const qc = useQueryClient();
   return useMutation({

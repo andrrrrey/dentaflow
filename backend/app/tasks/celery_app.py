@@ -43,7 +43,7 @@ celery_app.conf.beat_schedule = {
     # Справочники, Пациенты, Расписание, Контроль звонков, Маркетинг
     "sync-1denta-full-daily": {
         "task": "app.tasks.sync_1denta.sync_full_daily",
-        "schedule": crontab(hour=3, minute=0),  # 03:00 Moscow (UTC, Celery uses Moscow tz)
+        "schedule": crontab(hour=2, minute=30),  # 02:30 Moscow — before 03:00 task generation
     },
     "check-stale-leads": {
         "task": "app.tasks.alerts.check_stale_leads",
@@ -61,17 +61,19 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.bot_reminders.send_appointment_reminders",
         "schedule": 900.0,  # every 15 minutes
     },
+    # Clinic is in Ulan-Ude (MSK+5): 03:00 Moscow = 08:00 local, i.e. tasks are
+    # ready right when the clinic opens.
     "create-daily-call-tasks": {
         "task": "app.tasks.auto_tasks.create_daily_call_tasks",
-        "schedule": crontab(hour=7, minute=0),  # 07:00 Moscow
-    },
-    "deactivate-expired-tasks": {
-        "task": "app.tasks.auto_tasks.deactivate_expired_tasks",
-        "schedule": crontab(hour=0, minute=5),  # 00:05 Moscow
+        "schedule": crontab(hour=3, minute=0),  # 03:00 Moscow = 08:00 Улан-Удэ
     },
     "create-yesterday-followup-tasks": {
         "task": "app.tasks.auto_tasks.create_yesterday_followup_tasks",
-        "schedule": crontab(hour=8, minute=0),  # 08:00 Moscow
+        "schedule": crontab(hour=3, minute=5),  # 03:05 Moscow = 08:05 Улан-Удэ
+    },
+    "deactivate-expired-tasks": {
+        "task": "app.tasks.auto_tasks.deactivate_expired_tasks",
+        "schedule": crontab(hour=0, minute=5),  # 00:05 Moscow — before task generation
     },
 }
 

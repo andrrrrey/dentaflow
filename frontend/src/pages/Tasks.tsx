@@ -9,7 +9,7 @@ import {
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
 import PatientSearchInput from "../components/ui/PatientSearchInput";
-import { useTasks, useCreateTask, useToggleTask, useDeleteTask } from "../api/tasks";
+import { useTasks, useCreateTask, useToggleTask, useDeleteTask, useGenerateAutoTasks } from "../api/tasks";
 import { useStaff } from "../api/staff";
 
 const typeIcon: Record<string, React.ReactNode> = {
@@ -62,6 +62,7 @@ export default function Tasks() {
   const createTask = useCreateTask();
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
+  const generateTasks = useGenerateAutoTasks();
 
   const allTasks = data?.items ?? [];
   const now = new Date();
@@ -136,11 +137,39 @@ export default function Tasks() {
             {admins.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
-          <Plus size={14} className="mr-1.5" />
-          Новая задача
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              generateTasks.mutate(undefined, {
+                onSuccess: () => { setFilter("all"); setPage(1); },
+              })
+            }
+            disabled={generateTasks.isPending}
+            title="Создать задачи-обзвон по записям на сегодня"
+          >
+            <Zap size={14} className={`mr-1.5 ${generateTasks.isPending ? "animate-pulse" : ""}`} />
+            {generateTasks.isPending ? "Генерация..." : "Сгенерировать на сегодня"}
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setShowForm((v) => !v)}>
+            <Plus size={14} className="mr-1.5" />
+            Новая задача
+          </Button>
+        </div>
       </div>
+
+      {generateTasks.isSuccess && generateTasks.data && (
+        <div className="text-[12px] text-text-muted -mt-2">
+          {generateTasks.data.created > 0 ? (
+            <span className="text-green-600 font-medium">
+              ✓ Создано задач: {generateTasks.data.created}
+            </span>
+          ) : (
+            <span>Новых задач нет — на сегодня уже всё создано (пропущено: {generateTasks.data.skipped}).</span>
+          )}
+        </div>
+      )}
 
       {/* Create form */}
       {showForm && (
