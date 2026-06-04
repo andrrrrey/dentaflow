@@ -124,6 +124,21 @@ export function useDeleteTask() {
   });
 }
 
+export function useBulkDeleteTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskIds: string[]) => {
+      const { data } = await api.post("/tasks/bulk-delete", { ids: taskIds });
+      return data as { deleted: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks-count"] });
+      qc.invalidateQueries({ queryKey: ["patient"] });
+    },
+  });
+}
+
 export function useActiveTaskCount() {
   return useQuery<{ active: number }>({
     queryKey: ["tasks-count"],

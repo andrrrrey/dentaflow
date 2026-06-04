@@ -48,3 +48,7 @@ class TaskListResponse(BaseModel):
     items: list[TaskResponse]
     total: int
     overdue_count: int
+
+
+class TaskBulkDelete(BaseModel):
+    ids: list[uuid.UUID]

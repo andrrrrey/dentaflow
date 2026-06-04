@@ -207,17 +207,24 @@ async def delete_task(db: AsyncSession, task_id: uuid.UUID) -> None:
 
 
 async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
-    """Create call tasks for today's scheduled/confirmed appointments."""
+    """Create confirmation-call tasks for *tomorrow's* appointments.
+
+    A confirmation call must happen a day in advance: a patient scheduled for
+    tomorrow has to be called today so the administrator can confirm the visit
+    in the morning. The job therefore targets tomorrow's appointments and the
+    resulting task is due by the end of today.
+    """
     from datetime import date, timedelta
-    from sqlalchemy import and_, cast, Date, func as sqlfunc
+    from sqlalchemy import and_
     from app.models.appointment import Appointment
     from app.models.patient import Patient
 
     today = date.today()
     today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
-    today_end = today_start + timedelta(days=1)
+    tomorrow_start = today_start + timedelta(days=1)
+    tomorrow_end = tomorrow_start + timedelta(days=1)
 
-    # Fetch today's appointments that still need a confirmation call.
+    # Fetch tomorrow's appointments that still need a confirmation call.
     # 1Denta maps attendance -> status as: 0=unconfirmed (default for new
     # bookings), 2=confirmed, 1=arrived, -1=cancelled. "scheduled" is a legacy
     # value kept for manually created local appointments. We must include
@@ -226,8 +233,8 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     appts_result = await db.execute(
         select(Appointment).where(
             and_(
-                Appointment.scheduled_at >= today_start,
-                Appointment.scheduled_at < today_end,
+                Appointment.scheduled_at >= tomorrow_start,
+                Appointment.scheduled_at < tomorrow_end,
                 Appointment.status.in_(["unconfirmed", "scheduled", "confirmed"]),
             )
         )
@@ -237,15 +244,19 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     if not appointments:
         return {"created": 0, "skipped": 0}
 
-    # Fetch existing auto tasks for today to avoid duplicates
+    # Dedup: skip appointments that already have a live (active) confirmation
+    # task, regardless of when it was created. An already-completed task keeps
+    # is_active == True, so re-running never produces a second reminder for a
+    # patient who is already covered. Only expired/archived tasks (is_active ==
+    # False) free an appointment up for a fresh task.
     appt_ids = [a.id for a in appointments]
     existing_result = await db.execute(
         select(Task.appointment_id).where(
             and_(
                 Task.is_auto == True,
+                Task.type == "confirm_appointment",
                 Task.appointment_id.in_(appt_ids),
-                Task.created_at >= today_start,
-                Task.created_at < today_end,
+                Task.is_active == True,
             )
         )
     )
@@ -260,7 +271,8 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
         )
         patient_names = {row.id: row.name for row in p_result.all()}
 
-    end_of_day = today_end - timedelta(seconds=1)
+    # Due by the end of today — the call has to be made today for tomorrow's visit.
+    end_of_day = tomorrow_start - timedelta(seconds=1)
 
     created = 0
     skipped = 0
@@ -272,7 +284,7 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
         patient_name = patient_names.get(appt.patient_id, "Пациент") if appt.patient_id else "Пациент"
         time_str = appt.scheduled_at.strftime("%H:%M") if appt.scheduled_at else ""
         service_str = appt.service or "Услуга"
-        title = f"Позвонить: {patient_name} — {service_str} — {time_str}"
+        title = f"Подтвердить визит: {patient_name} — {service_str} — завтра {time_str}"
 
         task = Task(
             patient_id=appt.patient_id,
@@ -289,6 +301,18 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
 
     await db.commit()
     return {"created": created, "skipped": skipped}
+
+
+async def delete_tasks_bulk(db: AsyncSession, task_ids: list[uuid.UUID]) -> int:
+    """Delete multiple tasks at once. Returns the number of rows removed."""
+    if not task_ids:
+        return 0
+
+    from sqlalchemy import delete as sql_delete
+
+    result = await db.execute(sql_delete(Task).where(Task.id.in_(task_ids)))
+    await db.commit()
+    return result.rowcount or 0
 
 
 async def create_yesterday_followup_tasks(

@@ -77,7 +77,11 @@ async def _create_yesterday_followup_tasks_async() -> dict:
 
 @celery_app.task(name="app.tasks.auto_tasks.create_daily_call_tasks", bind=True, max_retries=3)
 def create_daily_call_tasks(self):
-    """Create call tasks for today's appointments. Runs at 07:00 Moscow."""
+    """Create confirmation-call tasks for tomorrow's appointments.
+
+    Runs at 03:00 Moscow (08:00 Ulan-Ude) so the admin gets the call list for
+    tomorrow's visits first thing in the morning.
+    """
     try:
         result = _run_async(_create_daily_call_tasks_async())
         logger.info(

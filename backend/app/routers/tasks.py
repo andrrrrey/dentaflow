@@ -8,11 +8,18 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
+from app.schemas.task import (
+    TaskBulkDelete,
+    TaskCreate,
+    TaskListResponse,
+    TaskResponse,
+    TaskUpdate,
+)
 from app.services.tasks_service import (
     create_auto_tasks_for_today,
     create_task,
     delete_task,
+    delete_tasks_bulk,
     list_tasks,
     update_task,
 )
@@ -79,6 +86,17 @@ async def create_new_task(
         deal_id=body.deal_id,
         assigned_to=body.assigned_to,
     )
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_tasks(
+    body: TaskBulkDelete,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Delete several tasks in one request (e.g. "select all → delete")."""
+    deleted = await delete_tasks_bulk(db=db, task_ids=body.ids)
+    return {"deleted": deleted}
 
 
 @router.delete("/{task_id}", status_code=204)

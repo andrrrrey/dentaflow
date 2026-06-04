@@ -5,11 +5,12 @@ import { ru } from "date-fns/locale";
 import {
   CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw,
   AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight, Zap,
+  CheckSquare, Square,
 } from "lucide-react";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
 import PatientSearchInput from "../components/ui/PatientSearchInput";
-import { useTasks, useCreateTask, useToggleTask, useDeleteTask, useGenerateAutoTasks } from "../api/tasks";
+import { useTasks, useCreateTask, useToggleTask, useDeleteTask, useGenerateAutoTasks, useBulkDeleteTasks } from "../api/tasks";
 import { useStaff } from "../api/staff";
 
 const typeIcon: Record<string, React.ReactNode> = {
@@ -41,6 +42,7 @@ export default function Tasks() {
   const [filter, setFilter] = useState<Filter>("all");
   const [filterAssigned, setFilterAssigned] = useState("");
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     type: "callback",
@@ -63,6 +65,7 @@ export default function Tasks() {
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
   const generateTasks = useGenerateAutoTasks();
+  const bulkDeleteTasks = useBulkDeleteTasks();
 
   const allTasks = data?.items ?? [];
   const now = new Date();
@@ -70,9 +73,34 @@ export default function Tasks() {
   const totalPages = Math.max(1, Math.ceil(allTasks.length / PAGE_SIZE));
   const pageTasks = allTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  const allSelected = allTasks.length > 0 && allTasks.every((t) => selectedIds.has(t.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(allTasks.map((t) => t.id)));
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Удалить выбранные задачи (${selectedIds.size})? Это действие необратимо.`)) return;
+    bulkDeleteTasks.mutate(Array.from(selectedIds), {
+      onSuccess: () => { setSelectedIds(new Set()); setPage(1); },
+    });
+  };
+
   const handleFilterChange = (f: Filter) => {
     setFilter(f);
     setPage(1);
+    setSelectedIds(new Set());
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -138,6 +166,31 @@ export default function Tasks() {
           </select>
         </div>
         <div className="flex items-center gap-2">
+          {allTasks.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={toggleSelectAll}
+              title={allSelected ? "Снять выделение со всех задач" : "Выделить все задачи"}
+            >
+              {allSelected ? <CheckSquare size={14} className="mr-1.5" /> : <Square size={14} className="mr-1.5" />}
+              {allSelected ? "Снять выделение" : "Выделить все"}
+            </Button>
+          )}
+          {someSelected && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteTasks.isPending}
+              className="!text-[#f44b6e]"
+              style={{ background: "rgba(244,75,110,0.08)", borderColor: "rgba(244,75,110,0.25)" }}
+              title="Удалить выбранные задачи"
+            >
+              <Trash2 size={14} className="mr-1.5" />
+              {bulkDeleteTasks.isPending ? "Удаление..." : `Удалить выбранные (${selectedIds.size})`}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -147,7 +200,7 @@ export default function Tasks() {
               })
             }
             disabled={generateTasks.isPending}
-            title="Создать задачи-обзвон по записям на сегодня"
+            title="Создать задачи-обзвон для подтверждения визитов на завтра (звонить сегодня)"
           >
             <Zap size={14} className={`mr-1.5 ${generateTasks.isPending ? "animate-pulse" : ""}`} />
             {generateTasks.isPending ? "Генерация..." : "Сгенерировать на сегодня"}
@@ -269,6 +322,19 @@ export default function Tasks() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(91,76,245,0.08)" }}>
+                  <th className="px-4 py-3 w-9 text-left">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="hover:opacity-70 transition-opacity align-middle"
+                      title={allSelected ? "Снять выделение" : "Выделить все"}
+                    >
+                      {allSelected ? (
+                        <CheckSquare size={16} className="text-accent2" />
+                      ) : (
+                        <Square size={16} className="text-text-muted" />
+                      )}
+                    </button>
+                  </th>
                   {["", "Задача", "Тип", "Пациент", "Исполнитель", "Срок", "Статус", ""].map((h, i) => (
                     <th
                       key={i}
@@ -297,6 +363,19 @@ export default function Tasks() {
                         opacity: rowOpacity,
                       }}
                     >
+                      <td className="px-4 py-3 w-9">
+                        <button
+                          className="hover:opacity-70 transition-opacity align-middle"
+                          onClick={() => toggleSelectOne(task.id)}
+                          title="Выделить задачу"
+                        >
+                          {selectedIds.has(task.id) ? (
+                            <CheckSquare size={16} className="text-accent2" />
+                          ) : (
+                            <Square size={16} className="text-text-muted" />
+                          )}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 w-9">
                         {!isInactive && (
                           <button

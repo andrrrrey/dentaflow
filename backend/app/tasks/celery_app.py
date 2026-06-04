@@ -61,8 +61,9 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.bot_reminders.send_appointment_reminders",
         "schedule": 900.0,  # every 15 minutes
     },
-    # Clinic is in Ulan-Ude (MSK+5): 03:00 Moscow = 08:00 local, i.e. tasks are
-    # ready right when the clinic opens.
+    # Clinic is in Ulan-Ude (MSK+5): 03:00 Moscow = 08:00 local, i.e. the
+    # confirmation-call tasks for tomorrow's appointments are ready right when
+    # the clinic opens, leaving the admin the whole day to call patients.
     "create-daily-call-tasks": {
         "task": "app.tasks.auto_tasks.create_daily_call_tasks",
         "schedule": crontab(hour=3, minute=0),  # 03:00 Moscow = 08:00 Улан-Удэ
