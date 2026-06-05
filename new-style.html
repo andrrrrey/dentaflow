@@ -1,0 +1,733 @@
+<html lang="en" class="dark"><head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AuraOS Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:'Inter',sans-serif}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.3)}
+/* Apple-inspired Glass Effects */
+.glass-container {
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0.02) 100%);
+backdrop-filter: blur(80px) saturate(180%) brightness(110%);
+-webkit-backdrop-filter: blur(80px) saturate(180%) brightness(110%);
+border: 0.5px solid rgba(255, 255, 255, 0.2);
+box-shadow:
+0 0 0 0.5px rgba(255, 255, 255, 0.05) inset,
+0 40px 80px -20px rgba(0, 0, 0, 0.8),
+0 0 120px rgba(99, 102, 241, 0.1);
+position: relative;
+}
+.glass-sidebar {
+background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+backdrop-filter: blur(60px) saturate(160%);
+-webkit-backdrop-filter: blur(60px) saturate(160%);
+border-right: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.glass-chrome {
+background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+backdrop-filter: blur(60px) saturate(160%) brightness(105%);
+-webkit-backdrop-filter: blur(60px) saturate(160%) brightness(105%);
+border-bottom: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.glass-card {
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+backdrop-filter: blur(40px) saturate(180%);
+-webkit-backdrop-filter: blur(40px) saturate(180%);
+border: 0.5px solid rgba(255, 255, 255, 0.1);
+box-shadow:
+0 0 0 0.5px rgba(255, 255, 255, 0.03) inset,
+0 20px 40px rgba(0, 0, 0, 0.6);
+transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.glass-card:hover {
+transform: translateY(-8px) scale(1.02);
+box-shadow:
+0 0 0 0.5px rgba(255, 255, 255, 0.08) inset,
+0 30px 80px rgba(0, 0, 0, 0.7),
+0 0 100px rgba(99, 102, 241, 0.15);
+border-color: rgba(255, 255, 255, 0.15);
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
+}
+.glass-input {
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+backdrop-filter: blur(40px) saturate(180%);
+-webkit-backdrop-filter: blur(40px) saturate(180%);
+border: 0.5px solid rgba(255, 255, 255, 0.15);
+transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.glass-input:focus-within {
+border-color: rgba(99, 102, 241, 0.5);
+box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
+}
+.icon-container {
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
+backdrop-filter: blur(30px) saturate(180%);
+-webkit-backdrop-filter: blur(30px) saturate(180%);
+border: 0.5px solid rgba(255, 255, 255, 0.2);
+transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.icon-container:hover {
+background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.12) 100%);
+transform: scale(1.05);
+}
+/* Enhanced Animations */
+@keyframes fade-in {
+0% { opacity: 0; }
+100% { opacity: 1; }
+}
+@keyframes slide-up {
+0% {
+opacity: 0;
+transform: translateY(30px) scale(0.96);
+}
+100% {
+opacity: 1;
+transform: translateY(0) scale(1);
+}
+}
+@keyframes blur-in {
+0% {
+opacity: 0;
+filter: blur(10px);
+transform: scale(0.94);
+}
+100% {
+opacity: 1;
+filter: blur(0);
+transform: scale(1);
+}
+}
+@keyframes slide-in-left {
+0% {
+opacity: 0;
+transform: translateX(-40px);
+}
+100% {
+opacity: 1;
+transform: translateX(0);
+}
+}
+@keyframes slide-in-right {
+0% {
+opacity: 0;
+transform: translateX(40px);
+}
+100% {
+opacity: 1;
+transform: translateX(0);
+}
+}
+.animate-fade-in {
+animation: fade-in 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+opacity: 0;
+}
+.animate-slide-up {
+animation: slide-up 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+opacity: 0;
+}
+.animate-blur-in {
+animation: blur-in 1s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+opacity: 0;
+}
+.animate-slide-left {
+animation: slide-in-left 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+opacity: 0;
+}
+.animate-slide-right {
+animation: slide-in-right 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+opacity: 0;
+}
+/* Floating ambient elements */
+.ambient-orbs::before,
+.ambient-orbs::after {
+content: '';
+position: absolute;
+border-radius: 50%;
+filter: blur(80px);
+opacity: 0.4;
+animation: float-ambient 25s ease-in-out infinite;
+pointer-events: none;
+}
+.ambient-orbs::before {
+top: 15%;
+right: 20%;
+width: 400px;
+height: 400px;
+background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, transparent 70%);
+animation-delay: -8s;
+}
+.ambient-orbs::after {
+bottom: 25%;
+left: 15%;
+width: 350px;
+height: 350px;
+background: radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, transparent 70%);
+animation-delay: -15s;
+}
+@keyframes float-ambient {
+0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 0.4; }
+25% { transform: translateY(-40px) rotate(90deg); opacity: 0.6; }
+50% { transform: translateY(20px) rotate(180deg); opacity: 0.3; }
+75% { transform: translateY(-20px) rotate(270deg); opacity: 0.5; }
+}
+</style></head>
+
+<body class="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-gray-800 text-white relative overflow-x-hidden">
+
+<!-- Spline Background -->
+<div class="fixed inset-0 -z-20">
+  <div class="absolute inset-0 bg-gradient-to-br from-gray-900/50 via-slate-900/60 to-gray-800/70"></div>
+  <div class="w-full h-full opacity-30 blur-sm">
+    <iframe src="https://my.spline.design/animatedbackgroundgradientforweb-jvJDeBWjMvShkjPKxPRUswLq" frameborder="0" width="100%" height="100%"></iframe>
+  </div>
+</div>
+
+<!-- Ambient floating elements -->
+<div class="fixed inset-0 -z-10 ambient-orbs pointer-events-none"></div>
+
+<!-- Top Navigation Tags -->
+<div class="flex flex-wrap justify-center gap-3 pt-8 px-4 text-sm font-medium animate-fade-in" style="animation-delay: 0.1s; animation-play-state: running;">
+  <span class="px-5 py-2.5 rounded-full glass-card font-medium hover:scale-105 transition-transform duration-300">CREATIVE SUITE</span>
+  <span class="px-5 py-2.5 rounded-full backdrop-blur-sm border border-blue-500/30 bg-blue-600/20 text-blue-200 font-medium hover:scale-105 hover:bg-blue-600/30 transition-all duration-300">AI POWERED</span>
+  <span class="px-5 py-2.5 rounded-full glass-card font-medium hover:scale-105 transition-transform duration-300">CLOUD SYNC</span>
+  <span class="px-5 py-2.5 rounded-full backdrop-blur-sm border border-purple-500/30 bg-purple-600/20 text-purple-200 font-medium hover:scale-105 hover:bg-purple-600/30 transition-all duration-300">COLLABORATIVE</span>
+  <span class="px-5 py-2.5 rounded-full glass-card font-medium hover:scale-105 transition-transform duration-300">REAL-TIME</span>
+</div>
+
+<!-- Main Application Window -->
+<div class="flex-1 flex animate-blur-in px-4 sm:px-6 pb-16 pt-12 items-start justify-center relative" style="animation-delay: 0.3s; animation-play-state: running;">
+  <div class="relative w-full max-w-7xl mt-8 glass-container rounded-3xl flex flex-col overflow-hidden shadow-2xl">
+    
+    <!-- Enhanced Browser Chrome -->
+    <div class="glass-chrome flex items-center justify-between h-16 px-6 relative z-10">
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2.5">
+          <span class="w-4 h-4 rounded-full bg-red-500/90 shadow-md hover:bg-red-400 transition-colors cursor-pointer hover:scale-110 transform duration-200"></span>
+          <span class="w-4 h-4 rounded-full bg-yellow-400/90 shadow-md hover:bg-yellow-300 transition-colors cursor-pointer hover:scale-110 transform duration-200"></span>
+          <span class="w-4 h-4 rounded-full bg-green-500/90 shadow-md hover:bg-green-400 transition-colors cursor-pointer hover:scale-110 transform duration-200"></span>
+        </div>
+
+        <div class="flex items-center gap-1 ml-6">
+          <button class="rounded-lg p-2.5 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/10 hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-left" class="lucide lucide-arrow-left w-5 h-5"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+          </button>
+          <button class="rounded-lg p-2.5 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/10 hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" class="lucide lucide-arrow-right w-5 h-5"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+          </button>
+          <button class="rounded-lg p-2.5 transition-all duration-200 text-gray-400 hover:text-white hover:bg-white/10 hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="rotate-cw" class="lucide lucide-rotate-cw w-5 h-5"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 mx-8 max-w-lg">
+        <div class="glass-input flex items-center gap-3 rounded-xl px-4 py-3 text-sm group">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lock" class="lucide lucide-lock w-4 h-4 text-green-400 group-hover:text-green-300 transition-colors"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span class="flex-1 truncate font-medium text-white">auraos.design</span>
+          <div class="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" style="animation-play-state: running;"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 text-gray-400">
+        <button class="rounded-lg p-2.5 transition-all duration-200 hover:text-white hover:bg-white/10 hover:scale-105">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bookmark" class="lucide lucide-bookmark w-5 h-5"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path></svg>
+        </button>
+        <button class="rounded-lg p-2.5 transition-all duration-200 hover:text-white hover:bg-white/10 hover:scale-105">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="share" class="lucide lucide-share w-5 h-5"><path d="M12 2v13"></path><path d="m16 6-4-4-4 4"></path><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path></svg>
+        </button>
+        <button class="rounded-lg p-2.5 transition-all duration-200 hover:text-white hover:bg-white/10 hover:scale-105">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="more-horizontal" class="lucide lucide-more-horizontal w-5 h-5"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Workspace Content -->
+    <div class="flex flex-1 min-h-0 relative">
+      <!-- Enhanced Sidebar -->
+      <div class="glass-sidebar w-80 lg:w-96 flex flex-col relative z-10 animate-slide-left" style="animation-delay: 0.5s; animation-play-state: running;">
+        <!-- Sidebar Header -->
+        <div class="p-6 border-b border-white/5">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-4">
+              <div class="icon-container p-3 rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sparkles" class="lucide lucide-sparkles w-7 h-7 text-blue-300"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path></svg>
+              </div>
+              <div>
+                <h1 class="text-xl font-bold text-white">AuraOS Studio</h1>
+                <p class="text-sm text-gray-400">Creative Workspace</p>
+              </div>
+            </div>
+            <button class="icon-container p-2.5 rounded-lg transition-all duration-200 hover:scale-105">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bell" class="lucide lucide-bell w-4 h-4 text-gray-300"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>
+            </button>
+          </div>
+          
+          <!-- Enhanced Search -->
+          <div class="glass-input flex items-center gap-3 rounded-xl px-4 py-3 text-sm group">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="search" class="lucide lucide-search w-4 h-4 text-gray-400 group-focus-within:text-blue-300 transition-colors"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>
+            <input type="text" placeholder="Search projects, files, team..." class="flex-1 bg-transparent border-none outline-none text-white placeholder-gray-400">
+            <span class="text-xs text-gray-500 font-mono">⌘K</span>
+          </div>
+        </div>
+
+        <!-- Enhanced Navigation -->
+        <div class="flex-1 p-4 space-y-3 overflow-y-auto">
+          <div class="mb-8">
+            <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-4 px-3">Dashboard</h3>
+            <nav class="space-y-1.5">
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl bg-blue-500/15 border border-blue-500/20 text-blue-200 transition-all duration-200 hover:bg-blue-500/25 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="home" class="lucide lucide-home w-5 h-5"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+                <span class="font-medium">Overview</span>
+                <div class="ml-auto w-2 h-2 rounded-full bg-blue-400"></div>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder" class="lucide lucide-folder w-5 h-5"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                <span class="font-medium">Projects</span>
+                <span class="ml-auto text-xs bg-gray-600/50 text-gray-300 px-2 py-1 rounded-md font-mono">24</span>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="users" class="lucide lucide-users w-5 h-5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                <span class="font-medium">Team</span>
+                <div class="ml-auto flex -space-x-1.5">
+                  <div class="w-5 h-5 rounded-full bg-blue-500 border-2 border-gray-800"></div>
+                  <div class="w-5 h-5 rounded-full bg-purple-500 border-2 border-gray-800"></div>
+                  <div class="w-5 h-5 rounded-full bg-pink-500 border-2 border-gray-800"></div>
+                </div>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="calendar" class="lucide lucide-calendar w-5 h-5"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path></svg>
+                <span class="font-medium">Schedule</span>
+                <span class="ml-auto w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" style="animation-play-state: running;"></span>
+              </a>
+            </nav>
+          </div>
+
+          <div class="mb-8">
+            <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-4 px-3">Tools</h3>
+            <nav class="space-y-1.5">
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="message-circle" class="lucide lucide-message-circle w-5 h-5"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path></svg>
+                <span class="font-medium">Messages</span>
+                <span class="ml-auto text-xs bg-blue-500 text-white px-2 py-1 rounded-full font-mono">8</span>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="file-text" class="lucide lucide-file-text w-5 h-5"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+                <span class="font-medium">Documents</span>
+                <span class="ml-auto text-xs text-gray-500 font-mono">156</span>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="brain" class="lucide lucide-brain w-5 h-5"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path><path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path><path d="M19.938 10.5a4 4 0 0 1 .585.396"></path><path d="M6 18a4 4 0 0 1-1.967-.516"></path><path d="M19.967 17.484A4 4 0 0 1 18 18"></path></svg>
+                <span class="font-medium">AI Assistant</span>
+                <div class="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" style="animation-play-state: running;"></div>
+              </a>
+              
+              <a href="#" class="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-white/8 transition-all duration-200 group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="settings" class="lucide lucide-settings w-5 h-5"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <span class="font-medium">Settings</span>
+              </a>
+            </nav>
+          </div>
+
+          <!-- Enhanced Activity Feed -->
+          <div class="mb-6">
+            <h3 class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-4 px-3">Recent Activity</h3>
+            <div class="space-y-3">
+              <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer">
+                <div class="w-2 h-2 rounded-full bg-green-400 mt-2"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-200 truncate">Zenith Mobile App design completed</p>
+                  <p class="text-xs text-gray-500 mt-0.5">3 minutes ago</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer">
+                <div class="w-2 h-2 rounded-full bg-blue-400 mt-2"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-200 truncate">Emma Chen joined Quantum Project</p>
+                  <p class="text-xs text-gray-500 mt-0.5">18 minutes ago</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors cursor-pointer">
+                <div class="w-2 h-2 rounded-full bg-purple-400 mt-2"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-200 truncate">Brand guidelines document shared</p>
+                  <p class="text-xs text-gray-500 mt-0.5">1 hour ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Enhanced User Profile -->
+        <div class="p-4 border-t border-white/5">
+          <div class="flex items-center gap-4 p-4 rounded-xl glass-card hover:bg-white/8 transition-all duration-200 cursor-pointer group">
+            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+              <span class="text-white font-semibold text-lg">AC</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-base font-semibold text-white">Alexandra Chen</p>
+              <p class="text-sm text-gray-400 truncate">alexandra@auraos.design</p>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" class="lucide lucide-chevron-down w-4 h-4 text-gray-400 group-hover:text-white transition-colors"><path d="m6 9 6 6 6-6"></path></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content Area -->
+      <div class="flex-1 flex flex-col min-h-0 relative animate-slide-right" style="animation-delay: 0.7s; animation-play-state: running;">
+        <!-- Content Header -->
+        <div class="p-8 border-b border-white/5">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <h2 class="text-3xl font-bold text-white mb-2 tracking-tight">Welcome back, Alexandra</h2>
+              <p class="text-gray-400 text-lg">Here's what's happening with your creative projects today.</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <button class="glass-card px-6 py-3 rounded-xl font-medium text-gray-200 hover:text-white hover:scale-105 transition-all duration-200 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="download" class="lucide lucide-download w-4 h-4"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+                Export
+              </button>
+              <button class="bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-3 rounded-xl font-medium text-white hover:scale-105 transition-all duration-200 shadow-lg flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="plus" class="lucide lucide-plus w-4 h-4"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                New Project
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div class="flex-1 p-8 overflow-y-auto">
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10 animate-slide-up" style="animation-delay: 0.9s; animation-play-state: running;">
+            <div class="glass-card p-6 rounded-2xl group">
+              <div class="flex items-center justify-between mb-4">
+                <div class="icon-container p-3 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="folder" class="lucide lucide-folder w-6 h-6 text-blue-400"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                </div>
+                <span class="text-sm text-green-400 font-semibold">+18.2%</span>
+              </div>
+              <h3 class="text-3xl font-bold text-white mb-1">32</h3>
+              <p class="text-gray-400">Active Projects</p>
+            </div>
+
+            <div class="glass-card p-6 rounded-2xl group">
+              <div class="flex items-center justify-between mb-4">
+                <div class="icon-container p-3 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="users" class="lucide lucide-users w-6 h-6 text-purple-400"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                </div>
+                <span class="text-sm text-green-400 font-semibold">+7.4%</span>
+              </div>
+              <h3 class="text-3xl font-bold text-white mb-1">847</h3>
+              <p class="text-gray-400">Team Members</p>
+            </div>
+
+            <div class="glass-card p-6 rounded-2xl group">
+              <div class="flex items-center justify-between mb-4">
+                <div class="icon-container p-3 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="trending-up" class="lucide lucide-trending-up w-6 h-6 text-green-400"><path d="M16 7h6v6"></path><path d="m22 7-8.5 8.5-5-5L2 17"></path></svg>
+                </div>
+                <span class="text-sm text-green-400 font-semibold">+12.8%</span>
+              </div>
+              <h3 class="text-3xl font-bold text-white mb-1">94.7%</h3>
+              <p class="text-gray-400">Success Rate</p>
+            </div>
+
+            <div class="glass-card p-6 rounded-2xl group">
+              <div class="flex items-center justify-between mb-4">
+                <div class="icon-container p-3 rounded-xl group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clock" class="lucide lucide-clock w-6 h-6 text-orange-400"><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="10"></circle></svg>
+                </div>
+                <span class="text-sm text-red-400 font-semibold">-3.2%</span>
+              </div>
+              <h3 class="text-3xl font-bold text-white mb-1">2.4h</h3>
+              <p class="text-gray-400">Avg. Response</p>
+            </div>
+          </div>
+
+          <!-- Project Grid -->
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-8 animate-slide-up" style="animation-delay: 1.1s; animation-play-state: running;">
+            <!-- Recent Projects -->
+            <div class="glass-card p-8 rounded-2xl" style="transform: translateY(-8px) scale(1.02);">
+              <div class="flex items-center justify-between mb-8">
+                <h3 class="text-2xl font-bold text-white">Featured Projects</h3>
+                <button class="text-blue-400 hover:text-blue-300 font-medium flex items-center gap-2 hover:scale-105 transition-all duration-200">
+                  View All
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="arrow-right" class="lucide lucide-arrow-right w-4 h-4"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                </button>
+              </div><div class="space-y-6">
+                <div class="glass-card p-6 rounded-xl group cursor-pointer" style="transform: translateY(-8px) scale(1.02);">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="smartphone" class="lucide lucide-smartphone w-6 h-6 text-white"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path></svg>
+                      </div>
+                      <div class="">
+                        <h4 class="text-lg font-semibold text-white group-hover:text-blue-300 transition-colors">Zenith Mobile App</h4>
+                        <p class="text-sm text-gray-400">Mobile Design • iOS &amp; Android</p>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded-full font-medium">Completed</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div class="flex -space-x-2">
+                      <div class="w-7 h-7 rounded-full bg-blue-500 border-2 border-gray-800"></div>
+                      <div class="w-7 h-7 rounded-full bg-purple-500 border-2 border-gray-800"></div>
+                      <div class="w-7 h-7 rounded-full bg-pink-500 border-2 border-gray-800"></div>
+                    </div>
+                    <span class="text-sm text-gray-400">Due: Nov 28</span>
+                  </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl group cursor-pointer" style="transform: translateY(0px) scale(1);">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="globe" class="lucide lucide-globe w-6 h-6 text-white"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+                      </div>
+                      <div class="">
+                        <h4 class="text-lg font-semibold text-white group-hover:text-orange-300 transition-colors">Quantum Web Portal</h4>
+                        <p class="text-sm text-gray-400">Web Application • React</p>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full font-medium">In Progress</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div class="w-full bg-gray-700/50 rounded-full h-2 mr-4">
+                      <div class="bg-gradient-to-r from-orange-500 to-red-600 h-2 rounded-full" style="width: 68%"></div>
+                    </div>
+                    <span class="text-sm text-gray-400 whitespace-nowrap">68%</span>
+                  </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl group cursor-pointer" style="transform: translateY(0px) scale(1);">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                      <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="palette" class="lucide lucide-palette w-6 h-6 text-white"><path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"></path><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>
+                      </div>
+                      <div class="">
+                        <h4 class="text-lg font-semibold text-white group-hover:text-emerald-300 transition-colors">Brand Identity Redesign</h4>
+                        <p class="text-sm text-gray-400">Branding • Visual Identity</p>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full font-medium">Review</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <div class="flex -space-x-2">
+                      <div class="w-7 h-7 bg-emerald-500 border-gray-50 border-2 rounded-full"></div>
+                      <div class="w-7 h-7 bg-teal-500 border-gray-50 border-2 rounded-full"></div>
+                    </div>
+                    <span class="text-sm text-gray-400">Dec 15</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team Activity & Analytics -->
+            <div class="glass-card p-8 rounded-2xl">
+              <div class="flex items-center justify-between mb-8">
+                <h3 class="text-2xl font-bold text-white">Team Activity</h3>
+                <button class="glass-card px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:scale-105 transition-all duration-200">
+                  View Analytics
+                </button>
+              </div>
+
+              <div class="space-y-6">
+                <div class="flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                      <span class="text-white font-semibold text-sm">EC</span>
+                    </div>
+                    <div>
+                      <p class="text-white font-medium">Emma Chen</p>
+                      <p class="text-sm text-gray-400">Updated Quantum Portal wireframes</p>
+                    </div>
+                  </div>
+                  <span class="text-xs text-gray-500">2 min ago</span>
+                </div>
+
+                <div class="flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center">
+                      <span class="text-white font-semibold text-sm">MJ</span>
+                    </div>
+                    <div>
+                      <p class="text-white font-medium">Michael Johnson</p>
+                      <p class="text-sm text-gray-400">Completed code review for mobile app</p>
+                    </div>
+                  </div>
+                  <span class="text-xs text-gray-500">15 min ago</span>
+                </div>
+
+                <div class="flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center">
+                      <span class="text-white font-semibold text-sm">SL</span>
+                    </div>
+                    <div>
+                      <p class="text-white font-medium">Sarah Liu</p>
+                      <p class="text-sm text-gray-400">Published new brand guidelines</p>
+                    </div>
+                  </div>
+                  <span class="text-xs text-gray-500">1 hr ago</span>
+                </div>
+
+                <div class="flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+                      <span class="text-white font-semibold text-sm">DW</span>
+                    </div>
+                    <div>
+                      <p class="text-white font-medium">David Wilson</p>
+                      <p class="text-sm text-gray-400">Added new team members to Zenith project</p>
+                    </div>
+                  </div>
+                  <span class="text-xs text-gray-500">3 hr ago</span>
+                </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="mt-8 pt-6 border-t border-white/5">
+                <h4 class="text-lg font-semibold text-white mb-4">Quick Actions</h4>
+                <div class="grid grid-cols-2 gap-3">
+                  <button class="glass-card p-4 rounded-xl hover:scale-105 transition-all duration-200 text-center group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="video" class="lucide lucide-video w-6 h-6 text-blue-400 mx-auto mb-2 group-hover:scale-110 transition-transform"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"></path><rect x="2" y="6" width="14" height="12" rx="2"></rect></svg>
+                    <span class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">Start Meeting</span>
+                  </button>
+                  <button class="glass-card p-4 rounded-xl hover:scale-105 transition-all duration-200 text-center group">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="share-2" class="lucide lucide-share-2 w-6 h-6 text-purple-400 mx-auto mb-2 group-hover:scale-110 transition-transform"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"></line><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"></line></svg>
+                    <span class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">Share Files</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Assistant Section -->
+          <div class="mt-8 glass-card p-8 rounded-2xl animate-slide-up" style="animation-delay: 1.3s; animation-play-state: running;">
+            <div class="flex items-center gap-4 mb-6">
+              <div class="icon-container p-3 rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="brain" class="lucide lucide-brain w-8 h-8 text-blue-400"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"></path><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"></path><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"></path><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path><path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path><path d="M19.938 10.5a4 4 0 0 1 .585.396"></path><path d="M6 18a4 4 0 0 1-1.967-.516"></path><path d="M19.967 17.484A4 4 0 0 1 18 18"></path></svg>
+              </div>
+              <div>
+                <h3 class="text-2xl font-bold text-white">AI Creative Assistant</h3>
+                <p class="text-gray-400">Get intelligent suggestions and automate your workflow</p>
+              </div>
+              <div class="ml-auto flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse" style="animation-play-state: running;"></div>
+                <span class="text-sm text-green-400 font-medium">Online</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="glass-card p-6 rounded-xl hover:scale-105 transition-all duration-200 cursor-pointer group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lightbulb" class="lucide lucide-lightbulb w-8 h-8 text-yellow-400 mb-4 group-hover:scale-110 transition-transform"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></svg>
+                <h4 class="text-lg font-semibold text-white mb-2">Design Suggestions</h4>
+                <p class="text-gray-400 text-sm">Get AI-powered design recommendations based on current trends</p>
+              </div>
+              
+              <div class="glass-card p-6 rounded-xl hover:scale-105 transition-all duration-200 cursor-pointer group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="zap" class="lucide lucide-zap w-8 h-8 text-purple-400 mb-4 group-hover:scale-110 transition-transform"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+                <h4 class="text-lg font-semibold text-white mb-2">Auto-Generate</h4>
+                <p class="text-gray-400 text-sm">Automatically create mockups and prototypes from sketches</p>
+              </div>
+              
+              <div class="glass-card p-6 rounded-xl hover:scale-105 transition-all duration-200 cursor-pointer group">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="target" class="lucide lucide-target w-8 h-8 text-red-400 mb-4 group-hover:scale-110 transition-transform"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                <h4 class="text-lg font-semibold text-white mb-2">Smart Analysis</h4>
+                <p class="text-gray-400 text-sm">Analyze user engagement and optimize your designs</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Initialize Lucide icons
+  lucide.createIcons();
+  
+  // Add smooth scrolling and enhanced interactions
+  document.addEventListener('DOMContentLoaded', function() {
+    // Smooth reveal animations on scroll
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0px 0px -10% 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.style.animationPlayState = 'running';
+        }
+      });
+    }, observerOptions);
+
+    // Observe all animated elements
+    document.querySelectorAll('[class*="animate-"]').forEach(el => {
+      observer.observe(el);
+    });
+
+    // Enhanced hover effects for glass cards
+    document.querySelectorAll('.glass-card').forEach(card => {
+      card.addEventListener('mouseenter', function() {
+        this.style.transform = 'translateY(-8px) scale(1.02)';
+      });
+      
+      card.addEventListener('mouseleave', function() {
+        this.style.transform = 'translateY(0) scale(1)';
+      });
+    });
+
+    // Add dynamic typing effect for search placeholder
+    const searchInput = document.querySelector('input[placeholder*="Search"]');
+    if (searchInput) {
+      const originalPlaceholder = searchInput.placeholder;
+      const phrases = [
+        'Search projects, files, team...',
+        'Find your creative work...',
+        'Search across all workspaces...',
+        'Discover team activities...'
+      ];
+      let currentPhrase = 0;
+      
+      setInterval(() => {
+        currentPhrase = (currentPhrase + 1) % phrases.length;
+        searchInput.placeholder = phrases[currentPhrase];
+      }, 3000);
+    }
+
+    // Add pulse effect to active indicators
+    document.querySelectorAll('[class*="animate-pulse"]').forEach(el => {
+      setInterval(() => {
+        el.style.opacity = '0.4';
+        setTimeout(() => el.style.opacity = '1', 500);
+      }, 2000);
+    });
+  });
+</script>
+
+
+</body></html>
