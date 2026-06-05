@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
+import DashboardNew from "./pages/DashboardNew";
 import PipelinePage from "./pages/Pipeline";
 import Communications from "./pages/Communications";
 import Login from "./pages/Login";
@@ -34,6 +35,17 @@ function App() {
               <AppLayout title="Главная">
                 <Dashboard />
               </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        {/* Закрытая превью-версия главного дашборда (new-style).
+            Доступна только по прямой ссылке, не выводится в навигации.
+            Требует авторизации, но рендерится без AppLayout (полноэкранная). */}
+        <Route
+          path="/dashboard-preview"
+          element={
+            <ProtectedRoute>
+              <DashboardNew />
             </ProtectedRoute>
           }
         />
