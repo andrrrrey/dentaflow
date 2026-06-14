@@ -86,6 +86,7 @@ celery_app.conf.include = [
     "app.tasks.daily_report",
     "app.tasks.bot_reminders",
     "app.tasks.auto_tasks",
+    "app.tasks.segments",
 ]
 
 # Remove legacy patients-only periodic sync (now part of sync_full_daily)

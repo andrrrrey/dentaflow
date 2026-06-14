@@ -95,6 +95,128 @@ class AIService:
         return result
 
     # ------------------------------------------------------------------
+    # Treatment-plan / consultation analysis (for patient segments)
+    # ------------------------------------------------------------------
+
+    async def analyze_treatment_history(
+        self, patient_data: dict, history: list | None = None
+    ) -> dict:
+        """Analyse a patient's 1Denta visit/service history.
+
+        Decides whether the patient completed their treatment plan and
+        whether their first consultation visit actually took place. Returns
+        JSON with keys: treatment_plan_completed (bool), had_first_consultation
+        (bool), missed_first_consultation (bool), confidence (int 0-100),
+        reasoning (str).
+        """
+        if not self._api_key:
+            return self._template_treatment_analysis(patient_data, history or [])
+
+        prompt = (
+            "Проанализируй историю визитов и услуг пациента стоматологической клиники "
+            "из его карточки в 1Denta. Определи статус лечения.\n"
+            "Верни JSON строго с этими ключами:\n"
+            "- treatment_plan_completed (bool): завершил ли пациент план лечения. "
+            "false, если были лечебные услуги (не консультация и не гигиена), "
+            "но нет завершающих/последующих визитов и нет будущих записей на продолжение.\n"
+            "- had_first_consultation (bool): состоялась ли первичная консультация (пациент пришёл на приём).\n"
+            "- missed_first_consultation (bool): был ли пациент записан на первичную консультацию, но НЕ посетил её (отмена/неявка).\n"
+            "- confidence (целое число 0-100): уверенность вывода.\n"
+            "- reasoning (строка): краткое обоснование на русском (1-2 предложения).\n\n"
+            "Статусы визитов: arrived/completed = пациент пришёл; "
+            "cancelled/unconfirmed/no_show у прошедшего визита = не состоялся.\n\n"
+            f"Пациент: {json.dumps(patient_data, ensure_ascii=False, default=str)}\n"
+            f"История визитов: {json.dumps(history or [], ensure_ascii=False, default=str)}"
+        )
+
+        result = await self._chat(
+            system="Ты — AI-аналитик стоматологических услуг. Анализируй план лечения и историю визитов. Отвечай только JSON.",
+            user=prompt,
+            parse_json=True,
+        )
+
+        required = {"treatment_plan_completed", "had_first_consultation", "missed_first_consultation"}
+        if not isinstance(result, dict) or "error" in result or not required.issubset(result.keys()):
+            return self._template_treatment_analysis(patient_data, history or [])
+
+        # Normalise types defensively
+        return {
+            "treatment_plan_completed": bool(result.get("treatment_plan_completed")),
+            "had_first_consultation": bool(result.get("had_first_consultation")),
+            "missed_first_consultation": bool(result.get("missed_first_consultation")),
+            "confidence": int(result.get("confidence", 0) or 0),
+            "reasoning": str(result.get("reasoning", "") or ""),
+        }
+
+    @staticmethod
+    def _template_treatment_analysis(patient_data: dict, history: list) -> dict:
+        """Heuristic fallback used when no OpenAI key is configured.
+
+        Mirrors the AI verdict using the visit statuses/services available
+        locally so segments still populate without a key.
+        """
+        attended = {"arrived", "completed", "confirmed"}
+        missed = {"cancelled", "unconfirmed", "no_show"}
+        hygiene_kw = ("гигиен", "чистк", "проф")
+        consult_kw = ("консультац", "первичн", "осмотр")
+
+        now = datetime.now(timezone.utc)
+
+        def _parse(dt):
+            if not dt:
+                return None
+            try:
+                d = datetime.fromisoformat(str(dt))
+                return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                return None
+
+        had_first_consultation = False
+        missed_first_consultation = False
+        has_treatment_attended = False
+        has_future_visit = False
+
+        for h in history:
+            service = (h.get("service") or "").lower()
+            status = (h.get("status") or "").lower()
+            dt = _parse(h.get("date"))
+            is_past = dt is not None and dt <= now
+            is_future = dt is not None and dt > now
+            is_consult = any(k in service for k in consult_kw)
+            is_hygiene = any(k in service for k in hygiene_kw)
+
+            if is_future and status not in missed:
+                has_future_visit = True
+            if is_consult and is_past:
+                if status in attended:
+                    had_first_consultation = True
+                elif status in missed:
+                    missed_first_consultation = True
+            if (not is_consult and not is_hygiene) and is_past and status in attended:
+                has_treatment_attended = True
+
+        # If they later actually attended a consultation, it's not "missed".
+        if had_first_consultation:
+            missed_first_consultation = False
+
+        treatment_plan_completed = not (has_treatment_attended and not has_future_visit)
+
+        reasoning_parts = []
+        if has_treatment_attended and not has_future_visit:
+            reasoning_parts.append("Были лечебные визиты без записей на продолжение")
+        if missed_first_consultation:
+            reasoning_parts.append("Консультация была запланирована, но не состоялась")
+        reasoning = "; ".join(reasoning_parts) or "Эвристическая оценка по статусам визитов"
+
+        return {
+            "treatment_plan_completed": treatment_plan_completed,
+            "had_first_consultation": had_first_consultation,
+            "missed_first_consultation": missed_first_consultation,
+            "confidence": 50,
+            "reasoning": reasoning,
+        }
+
+    # ------------------------------------------------------------------
     # Reply suggestions
     # ------------------------------------------------------------------
 

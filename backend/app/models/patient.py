@@ -51,6 +51,16 @@ class Patient(Base):
     ai_analysis_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Cached AI verdict for segment analysis (treatment plan completion +
+    # first-consultation attendance). Regenerated only when the patient's
+    # visit history changes (tracked via treatment_ai_fingerprint).
+    treatment_ai: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    treatment_ai_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    treatment_ai_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
