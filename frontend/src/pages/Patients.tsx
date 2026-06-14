@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X, Plus } from "lucide-react";
+import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X, Plus, ListChecks } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import Pill from "../components/ui/Pill";
 import { usePatients, type PatientFilters } from "../api/patients";
 import { useSyncSchedule } from "../api/schedule";
 import CreatePatientModal from "../components/patient/CreatePatientModal";
+import SegmentsPanel from "../components/patient/SegmentsPanel";
+import SegmentMembersView from "../components/patient/SegmentMembersView";
 
 const PAGE_SIZE = 20;
 
@@ -42,6 +44,8 @@ export default function Patients() {
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showSegments, setShowSegments] = useState(false);
+  const [activeSegment, setActiveSegment] = useState<string | null>(null);
   const navigate = useNavigate();
   const syncMutation = useSyncSchedule();
 
@@ -65,6 +69,10 @@ export default function Patients() {
     setDraft((prev) => ({ ...prev, [key]: val === "" ? undefined : val }));
   }
 
+  if (activeSegment) {
+    return <SegmentMembersView segmentKey={activeSegment} onBack={() => setActiveSegment(null)} />;
+  }
+
   return (
     <div className="flex flex-col gap-[14px]">
       {/* Search + toolbar */}
@@ -86,6 +94,14 @@ export default function Patients() {
           Фильтр{appliedCount > 0 ? ` (${appliedCount})` : ""}
         </button>
 
+        {/* Lists / analytics button */}
+        <button onClick={() => setShowSegments((v) => !v)}
+          className="flex items-center gap-[6px] px-4 py-[10px] rounded-[14px] border-none cursor-pointer transition-colors flex-shrink-0 text-[12px] font-semibold"
+          style={{ background: showSegments ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+          <ListChecks size={14} />
+          Списки
+        </button>
+
         {/* Sync */}
         <button onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}
           className="flex items-center gap-[6px] px-3 py-[10px] rounded-[14px] border-none cursor-pointer transition-colors flex-shrink-0 text-[11px] font-semibold disabled:opacity-50"
@@ -104,6 +120,16 @@ export default function Patients() {
       </div>
 
       {showCreate && <CreatePatientModal onClose={() => setShowCreate(false)} />}
+
+      {/* Lists / analytics panel */}
+      {showSegments && (
+        <SegmentsPanel
+          onOpen={(key) => {
+            setActiveSegment(key);
+            setShowSegments(false);
+          }}
+        />
+      )}
 
       {/* Filter panel */}
       {showFilters && (

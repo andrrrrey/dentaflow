@@ -360,6 +360,31 @@ def sync_appointments(self):
         raise self.retry(exc=exc, countdown=60)
 
 
+@celery_app.task(name="app.tasks.sync_1denta.backfill_appointments", bind=True, max_retries=2)
+def backfill_appointments(self, years_back: int = 5):
+    """One-off deep history backfill of appointments from 1Denta.
+
+    The regular syncs only cover a ±30/+90 day window, so before the first
+    AI segment run we need the full visit history per patient for the
+    treatment-completion analysis to be accurate. Run manually:
+        celery -A app.tasks.celery_app call app.tasks.sync_1denta.backfill_appointments
+    """
+    try:
+        result = _run_async(
+            _sync_appointments_async(days_back=years_back * 365, days_forward=90)
+        )
+        logger.info(
+            "backfill_appointments complete: created=%d updated=%d total=%d",
+            result["created"],
+            result["updated"],
+            result["total"],
+        )
+        return result
+    except Exception as exc:
+        logger.exception("backfill_appointments failed")
+        raise self.retry(exc=exc, countdown=300)
+
+
 async def _sync_calls_async(days: int = 7) -> dict:
     """Import call history from Novofon into Communications (Контроль звонков)."""
     import json as _json

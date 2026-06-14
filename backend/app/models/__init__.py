@@ -12,6 +12,7 @@ from app.models.script import Script
 from app.models.pipeline_stage import PipelineStage
 from app.models.directory_cache import DirectoryCache
 from app.models.bot_message import BotMessage
+from app.models.patient_segment import PatientSegment, PatientSegmentMember
 
 __all__ = [
     "Base",
@@ -29,4 +30,6 @@ __all__ = [
     "PipelineStage",
     "DirectoryCache",
     "BotMessage",
+    "PatientSegment",
+    "PatientSegmentMember",
 ]

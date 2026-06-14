@@ -21,6 +21,7 @@ from app.routers import (
     knowledge_base,
     marketing,
     notifications,
+    patient_segments,
     patients,
     pipeline_ext,
     pipeline_stages,
@@ -75,6 +76,7 @@ app.include_router(dashboard.router)
 app.include_router(deals.router)
 app.include_router(communications.router)
 app.include_router(patients.router)
+app.include_router(patient_segments.router)
 app.include_router(ws.router)
 app.include_router(tasks.router)
 app.include_router(notifications.router)
