@@ -16,10 +16,11 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import async_session_factory
 from app.models.appointment import Appointment
 from app.models.patient import Patient
 from app.models.patient_segment import PatientSegment, PatientSegmentMember
@@ -161,131 +162,145 @@ async def store_members(
 # Recompute: AI segments (unfinished treatment + missed consultation)
 # ---------------------------------------------------------------------------
 
-async def recompute_ai_segments(db: AsyncSession) -> dict:
-    """One pass over all patients producing BOTH AI-driven segments.
+async def recompute_ai_segments(db: AsyncSession | None = None) -> dict:
+    """One pass over all patients producing all three AI-driven segments.
 
-    A single AI verdict per patient feeds both `unfinished_treatment` and
-    `missed_consultation`, so we only call OpenAI once per (changed) patient.
+    A single AI verdict per patient feeds `unfinished_treatment`,
+    `missed_consultation` and `hygiene_due`, so we only call OpenAI once per
+    (changed) patient.
+
+    Uses short-lived DB sessions (one per batch + one for the final write) so a
+    long cold run (30-45 min) never holds a single connection long enough to hit
+    `pool_recycle` and get stuck. The `db` argument is ignored (kept for
+    backwards compatibility).
     """
     from app.services.ai_service import AIService
     from app.services.integrations_service import get_raw_value
 
-    # Read OpenAI key / bulk-analysis model / parallelism from the UI settings
-    # (DB), falling back to env defaults.
-    api_key = (await get_raw_value(db, "openai_api_key")) or settings.OPENAI_API_KEY
-    model = (await get_raw_value(db, "segment_ai_model")) or settings.SEGMENT_AI_MODEL
-    try:
-        concurrency = int((await get_raw_value(db, "segment_ai_concurrency")) or 0)
-    except ValueError:
-        concurrency = 0
-    if concurrency <= 0:
-        concurrency = settings.SEGMENT_AI_CONCURRENCY
+    # --- Read settings + init segment rows (short session) ---
+    async with async_session_factory() as s:
+        api_key = (await get_raw_value(s, "openai_api_key")) or settings.OPENAI_API_KEY
+        model = (await get_raw_value(s, "segment_ai_model")) or settings.SEGMENT_AI_MODEL
+        try:
+            concurrency = int((await get_raw_value(s, "segment_ai_concurrency")) or 0)
+        except ValueError:
+            concurrency = 0
+        if concurrency <= 0:
+            concurrency = settings.SEGMENT_AI_CONCURRENCY
+
+        seg_ids: dict[str, uuid.UUID] = {}
+        for key in AI_SEGMENT_KEYS:
+            seg = await get_segment_by_key(s, key)
+            if seg is None:
+                raise RuntimeError("AI segments are not seeded")
+            seg_ids[key] = seg.id
+
+        exclude = await _do_not_touch_ids(s)
+        total = (await s.execute(select(func.count()).select_from(Patient))).scalar() or 0
+        await s.execute(
+            update(PatientSegment)
+            .where(PatientSegment.id.in_(list(seg_ids.values())))
+            .values(status="running", total=total, processed=0, progress=0, error=None)
+        )
+        await s.commit()
 
     ai = AIService(api_key=api_key or None, model=model)
     sem = asyncio.Semaphore(max(1, concurrency))
     now = datetime.now(timezone.utc)
 
-    unfinished_seg = await get_segment_by_key(db, "unfinished_treatment")
-    missed_seg = await get_segment_by_key(db, "missed_consultation")
-    hygiene_seg = await get_segment_by_key(db, "hygiene_due")
-    if unfinished_seg is None or missed_seg is None or hygiene_seg is None:
-        raise RuntimeError("AI segments are not seeded")
-
-    exclude = await _do_not_touch_ids(db)
-
-    total = (await db.execute(select(func.count()).select_from(Patient))).scalar() or 0
-    for seg in (unfinished_seg, missed_seg, hygiene_seg):
-        seg.status = "running"
-        seg.total = total
-        seg.processed = 0
-        seg.progress = 0
-        seg.error = None
-    await db.commit()
-
-    unfinished_rows: list[tuple[uuid.UUID, str | None]] = []
-    missed_rows: list[tuple[uuid.UUID, str | None]] = []
-    hygiene_rows: list[tuple[uuid.UUID, str | None]] = []
+    rows: dict[str, list[tuple[uuid.UUID, str | None]]] = {
+        "unfinished_treatment": [],
+        "missed_consultation": [],
+        "hygiene_due": [],
+    }
     processed = 0
     offset = 0
 
+    # --- Analysis loop: one fresh session per batch ---
     while True:
-        patients = list(
-            (
-                await db.execute(
-                    select(Patient).order_by(Patient.created_at.asc())
-                    .offset(offset)
-                    .limit(_BATCH_SIZE)
+        async with async_session_factory() as s:
+            patients = list(
+                (
+                    await s.execute(
+                        select(Patient).order_by(Patient.created_at.asc())
+                        .offset(offset)
+                        .limit(_BATCH_SIZE)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not patients:
+                break
+            offset += len(patients)
+
+            patient_ids = [p.id for p in patients]
+            appts = list(
+                (
+                    await s.execute(
+                        select(Appointment).where(Appointment.patient_id.in_(patient_ids))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            by_patient: dict[uuid.UUID, list[Appointment]] = {}
+            for a in appts:
+                by_patient.setdefault(a.patient_id, []).append(a)
+
+            async def _verdict(patient: Patient) -> tuple[Patient, dict]:
+                history = _build_history(by_patient.get(patient.id, []))
+                fp = _fingerprint(history)
+                if patient.treatment_ai and patient.treatment_ai_fingerprint == fp:
+                    return patient, patient.treatment_ai
+                async with sem:
+                    verdict = await ai.analyze_treatment_history(
+                        _patient_brief(patient), history
+                    )
+                patient.treatment_ai = verdict
+                patient.treatment_ai_fingerprint = fp
+                patient.treatment_ai_at = now
+                return patient, verdict
+
+            results = await asyncio.gather(*[_verdict(p) for p in patients])
+
+            for patient, verdict in results:
+                if patient.id in exclude:
+                    continue
+                reasoning = verdict.get("reasoning") or ""
+                if verdict.get("treatment_plan_completed") is False:
+                    rows["unfinished_treatment"].append(
+                        (patient.id, reasoning or "План лечения не завершён")
+                    )
+                if verdict.get("missed_first_consultation") is True:
+                    rows["missed_consultation"].append(
+                        (patient.id, reasoning or "Консультация не состоялась")
+                    )
+                if verdict.get("hygiene_due") is True:
+                    rows["hygiene_due"].append(
+                        (patient.id, reasoning or "Нужна профессиональная гигиена")
+                    )
+
+            processed += len(patients)
+            await s.execute(
+                update(PatientSegment)
+                .where(PatientSegment.id.in_(list(seg_ids.values())))
+                .values(
+                    processed=processed,
+                    progress=int(processed / total * 100) if total else 100,
                 )
             )
-            .scalars()
-            .all()
-        )
-        if not patients:
-            break
-        offset += len(patients)
+            await s.commit()
 
-        patient_ids = [p.id for p in patients]
-        appts = list(
-            (
-                await db.execute(
-                    select(Appointment).where(Appointment.patient_id.in_(patient_ids))
-                )
-            )
-            .scalars()
-            .all()
-        )
-        by_patient: dict[uuid.UUID, list[Appointment]] = {}
-        for a in appts:
-            by_patient.setdefault(a.patient_id, []).append(a)
+    # --- Final write: fresh session, store members + mark done ---
+    async with async_session_factory() as s:
+        for key in AI_SEGMENT_KEYS:
+            seg = await get_segment_by_key(s, key)
+            if seg is not None:
+                await store_members(s, seg, rows[key])
+        await s.commit()
 
-        async def _verdict(patient: Patient) -> tuple[Patient, dict]:
-            history = _build_history(by_patient.get(patient.id, []))
-            fp = _fingerprint(history)
-            if patient.treatment_ai and patient.treatment_ai_fingerprint == fp:
-                return patient, patient.treatment_ai
-            async with sem:
-                verdict = await ai.analyze_treatment_history(
-                    _patient_brief(patient), history
-                )
-            patient.treatment_ai = verdict
-            patient.treatment_ai_fingerprint = fp
-            patient.treatment_ai_at = now
-            return patient, verdict
-
-        results = await asyncio.gather(*[_verdict(p) for p in patients])
-
-        for patient, verdict in results:
-            if patient.id in exclude:
-                continue
-            reasoning = verdict.get("reasoning") or ""
-            if verdict.get("treatment_plan_completed") is False:
-                unfinished_rows.append(
-                    (patient.id, reasoning or "План лечения не завершён")
-                )
-            if verdict.get("missed_first_consultation") is True:
-                missed_rows.append(
-                    (patient.id, reasoning or "Консультация не состоялась")
-                )
-            if verdict.get("hygiene_due") is True:
-                hygiene_rows.append(
-                    (patient.id, reasoning or "Нужна профессиональная гигиена")
-                )
-
-        processed += len(patients)
-        for seg in (unfinished_seg, missed_seg, hygiene_seg):
-            seg.processed = processed
-            seg.progress = int(processed / total * 100) if total else 100
-        await db.commit()
-
-    await store_members(db, unfinished_seg, unfinished_rows)
-    await store_members(db, missed_seg, missed_rows)
-    await store_members(db, hygiene_seg, hygiene_rows)
-    await db.commit()
-    return {
-        "unfinished_treatment": len(unfinished_rows),
-        "missed_consultation": len(missed_rows),
-        "hygiene_due": len(hygiene_rows),
-    }
+    return {key: len(rows[key]) for key in AI_SEGMENT_KEYS}
 
 
 # ---------------------------------------------------------------------------
