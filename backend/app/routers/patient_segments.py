@@ -83,6 +83,20 @@ async def recompute(
     return SegmentResponse.model_validate(seg)
 
 
+@router.post("/{key}/reset", response_model=SegmentResponse)
+async def reset(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> SegmentResponse:
+    seg = await svc.get_segment_by_key(db, key)
+    if seg is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Segment not found")
+    await svc.reset_segment(db, key)
+    seg = await svc.get_segment_by_key(db, key)
+    return SegmentResponse.model_validate(seg)
+
+
 @router.get("/{key}/export")
 async def export_xlsx(
     key: str,

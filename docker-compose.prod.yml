@@ -44,7 +44,20 @@ services:
       - postgres
       - redis
     restart: always
-    command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,ai,sync
+    # concurrency=4 so the nightly full sync (~150s) and the every-5-min
+    # appointment sync don't block each other or the on-demand tasks.
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,ai,sync --concurrency=4
+
+  # Dedicated worker for the heavy base-analysis (patient segments) recompute.
+  # Isolated on its own queue so the 1Denta syncs can never starve it.
+  celery_worker_segments:
+    image: dentaflow-backend:latest
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q segments --concurrency=1
 
   celery_beat:
     image: dentaflow-backend:latest

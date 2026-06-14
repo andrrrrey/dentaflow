@@ -1,9 +1,10 @@
-import { RefreshCw, Download, ChevronRight, Loader2, Lock, AlertTriangle } from "lucide-react";
+import { RefreshCw, Download, ChevronRight, Loader2, Lock, AlertTriangle, RotateCcw } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   useSegments,
   useRecomputeSegment,
+  useResetSegment,
   downloadSegmentExcel,
   type Segment,
 } from "../../api/segments";
@@ -24,10 +25,12 @@ function SegmentCard({
   seg,
   onOpen,
   onRecompute,
+  onReset,
 }: {
   seg: Segment;
   onOpen: (key: string) => void;
   onRecompute: (key: string) => void;
+  onReset: (key: string) => void;
 }) {
   const busy = seg.status === "queued" || seg.status === "running";
   const isManual = seg.kind === "manual";
@@ -106,6 +109,17 @@ function SegmentCard({
             Обновить
           </button>
         )}
+        {!isManual && busy && (
+          <button
+            onClick={() => onReset(seg.key)}
+            title="Сбросить зависший расчёт и разблокировать кнопку «Обновить»"
+            className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] border-none cursor-pointer text-[12px] font-semibold"
+            style={{ background: "rgba(239,68,68,0.10)", color: "#ef4444" }}
+          >
+            <RotateCcw size={12} />
+            Сбросить
+          </button>
+        )}
         <button
           onClick={() => onOpen(seg.key)}
           className="flex items-center gap-1 px-3 py-[7px] rounded-[10px] border-none cursor-pointer text-[12px] font-semibold"
@@ -130,6 +144,7 @@ function SegmentCard({
 export default function SegmentsPanel({ onOpen }: Props) {
   const { data, isLoading } = useSegments();
   const recompute = useRecomputeSegment();
+  const reset = useResetSegment();
   const segments = data?.items ?? [];
 
   return (
@@ -159,6 +174,7 @@ export default function SegmentsPanel({ onOpen }: Props) {
               seg={seg}
               onOpen={onOpen}
               onRecompute={(k) => recompute.mutate(k)}
+              onReset={(k) => reset.mutate(k)}
             />
           ))}
         </div>

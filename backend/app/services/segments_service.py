@@ -50,6 +50,25 @@ async def list_segments(db: AsyncSession) -> list[PatientSegment]:
     return list(result.scalars().all())
 
 
+async def reset_segment(db: AsyncSession, key: str) -> None:
+    """Force a stuck segment back to ``idle`` so it can be re-run.
+
+    The AI lists share one pass, so resetting any of them resets the whole
+    AI group. This lets the UI recover a recompute that got wedged (worker
+    restart, lost task) without a manual SQL update.
+    """
+    seg = await get_segment_by_key(db, key)
+    if seg is None:
+        return
+    keys = list(AI_SEGMENT_KEYS) if seg.kind == "dynamic_ai" else [key]
+    await db.execute(
+        update(PatientSegment)
+        .where(PatientSegment.key.in_(keys))
+        .values(status="idle", progress=0, processed=0, error=None)
+    )
+    await db.commit()
+
+
 async def _do_not_touch_ids(db: AsyncSession) -> set[uuid.UUID]:
     seg = await get_segment_by_key(db, "do_not_touch")
     if seg is None:
