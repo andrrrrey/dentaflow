@@ -80,6 +80,9 @@ function SegmentCard({
             </span>
           )}
         </div>
+        {seg.status === "error" && seg.error && (
+          <span className="text-[11px] text-red-500 leading-snug">{seg.error}</span>
+        )}
         {busy && (
           <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "rgba(91,76,245,0.1)" }}>
             <div

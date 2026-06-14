@@ -16,9 +16,28 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+class OpenAIQuotaError(Exception):
+    """Raised when the OpenAI account is out of balance / quota."""
+
+
 def _make_openai_client(api_key: str):
     from openai import AsyncOpenAI
     return AsyncOpenAI(api_key=api_key)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    """Detect OpenAI out-of-balance / insufficient_quota errors."""
+    code = getattr(exc, "code", None)
+    if code == "insufficient_quota":
+        return True
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if "insufficient_quota" in text or "exceeded your current quota" in text:
+        return True
+    if status == 429 and ("billing" in text or "quota" in text):
+        return True
+    return False
 
 
 class AIService:
@@ -138,6 +157,11 @@ class AIService:
             user=prompt,
             parse_json=True,
         )
+
+        # Out of balance — do NOT silently fall back to the heuristic, or we'd
+        # mark thousands of patients as analysed with wrong verdicts. Abort.
+        if isinstance(result, dict) and result.get("error") == "quota_exceeded":
+            raise OpenAIQuotaError(result.get("message") or "Недостаточно средств на счёте OpenAI")
 
         required = {"treatment_plan_completed", "had_first_consultation", "missed_first_consultation"}
         if not isinstance(result, dict) or "error" in result or not required.issubset(result.keys()):
@@ -512,7 +536,13 @@ class AIService:
 
             return text
 
-        except Exception:
+        except Exception as exc:
+            if _is_quota_error(exc):
+                logger.warning("OpenAI quota/billing error: %s", exc)
+                msg = "Недостаточно средств на счёте OpenAI. Пополните баланс."
+                if parse_json:
+                    return {"error": "quota_exceeded", "message": msg}
+                return msg
             logger.exception("OpenAI API call failed")
             if parse_json:
                 return {"error": "AI service unavailable"}

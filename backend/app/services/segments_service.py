@@ -168,9 +168,21 @@ async def recompute_ai_segments(db: AsyncSession) -> dict:
     `missed_consultation`, so we only call OpenAI once per (changed) patient.
     """
     from app.services.ai_service import AIService
+    from app.services.integrations_service import get_raw_value
 
-    ai = AIService(model=settings.SEGMENT_AI_MODEL)
-    sem = asyncio.Semaphore(max(1, settings.SEGMENT_AI_CONCURRENCY))
+    # Read OpenAI key / bulk-analysis model / parallelism from the UI settings
+    # (DB), falling back to env defaults.
+    api_key = (await get_raw_value(db, "openai_api_key")) or settings.OPENAI_API_KEY
+    model = (await get_raw_value(db, "segment_ai_model")) or settings.SEGMENT_AI_MODEL
+    try:
+        concurrency = int((await get_raw_value(db, "segment_ai_concurrency")) or 0)
+    except ValueError:
+        concurrency = 0
+    if concurrency <= 0:
+        concurrency = settings.SEGMENT_AI_CONCURRENCY
+
+    ai = AIService(api_key=api_key or None, model=model)
+    sem = asyncio.Semaphore(max(1, concurrency))
     now = datetime.now(timezone.utc)
 
     unfinished_seg = await get_segment_by_key(db, "unfinished_treatment")
