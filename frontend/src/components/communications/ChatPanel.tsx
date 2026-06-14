@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import {
   MessageCircle,
@@ -20,7 +19,6 @@ import { ru } from "date-fns/locale";
 import type { CommunicationItem } from "../../types";
 import Button from "../ui/Button";
 import { getAiSuggestion } from "../../api/ai";
-import { api } from "../../api/client";
 
 interface Props {
   item: CommunicationItem;
@@ -55,18 +53,6 @@ export default function ChatPanel({ item, onClose }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState(false);
-  const queryClient = useQueryClient();
-
-  const statusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
-      await api.patch(`/communications/${item.id}`, { status: newStatus });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["communications"] });
-      queryClient.invalidateQueries({ queryKey: ["pipeline"] });
-    },
-  });
-
   function getDisplayName(): string {
     if (item.patient_name) return item.patient_name;
     if (item.channel === "site" && item.content) {
@@ -318,23 +304,13 @@ export default function ChatPanel({ item, onClose }: Props) {
           <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[rgba(0,0,0,0.06)]">
             <span className="text-[10px] text-text-muted mr-1">Статус:</span>
             {item.status === "new" && (
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={statusMutation.isPending}
-                onClick={() => statusMutation.mutate("in_progress")}
-              >
+              <Button size="sm" variant="secondary">
                 Взять в работу
               </Button>
             )}
             {(item.status === "new" || item.status === "in_progress") && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={statusMutation.isPending}
-                onClick={() => statusMutation.mutate("done")}
-              >
-                {statusMutation.isPending ? "Закрываем..." : "Закрыть"}
+              <Button size="sm" variant="ghost">
+                Закрыть
               </Button>
             )}
           </div>
