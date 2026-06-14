@@ -24,8 +24,8 @@ def _make_openai_client(api_key: str):
 class AIService:
     """High-level AI helpers for DentaFlow."""
 
-    def __init__(self, api_key: str | None = None) -> None:
-        self.model = settings.OPENAI_MODEL
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+        self.model = model or settings.OPENAI_MODEL
         self._api_key = api_key or settings.OPENAI_API_KEY
         self._client = _make_openai_client(self._api_key) if self._api_key else None
 

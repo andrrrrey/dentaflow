@@ -66,8 +66,8 @@ function SegmentCard({
           {seg.status === "error" && <AlertTriangle size={12} className="text-red-500" />}
           <span className={seg.status === "error" ? "text-red-500" : ""}>
             {statusLabel[seg.status] ?? seg.status}
-            {seg.status === "running" && seg.total > 0
-              ? ` — ${seg.processed} из ${seg.total}`
+            {busy && seg.total > 0
+              ? ` — обработано ${seg.processed} из ${seg.total} (${seg.progress}%)`
               : ""}
           </span>
           {!busy && seg.computed_at && (
@@ -80,7 +80,7 @@ function SegmentCard({
             </span>
           )}
         </div>
-        {seg.status === "running" && (
+        {busy && (
           <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "rgba(91,76,245,0.1)" }}>
             <div
               className="h-full rounded-full transition-all"

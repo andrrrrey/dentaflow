@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.appointment import Appointment
 from app.models.patient import Patient
 from app.models.patient_segment import PatientSegment, PatientSegmentMember
@@ -29,7 +30,6 @@ logger = logging.getLogger(__name__)
 # patient's 1Denta visit/service history.
 AI_SEGMENT_KEYS = ("unfinished_treatment", "missed_consultation", "hygiene_due")
 _BATCH_SIZE = 200
-_AI_CONCURRENCY = 5
 _MAX_HISTORY = 40
 
 
@@ -169,8 +169,8 @@ async def recompute_ai_segments(db: AsyncSession) -> dict:
     """
     from app.services.ai_service import AIService
 
-    ai = AIService()
-    sem = asyncio.Semaphore(_AI_CONCURRENCY)
+    ai = AIService(model=settings.SEGMENT_AI_MODEL)
+    sem = asyncio.Semaphore(max(1, settings.SEGMENT_AI_CONCURRENCY))
     now = datetime.now(timezone.utc)
 
     unfinished_seg = await get_segment_by_key(db, "unfinished_treatment")

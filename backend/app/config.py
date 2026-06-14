@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
+    # Bulk segment analysis (17k patients) — cheaper/faster model + parallelism.
+    SEGMENT_AI_MODEL: str = "gpt-4o-mini"
+    SEGMENT_AI_CONCURRENCY: int = 15
 
     MAX_API_KEY: str = ""
     MAX_CONFIRMATION_TOKEN: str = ""
