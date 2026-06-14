@@ -110,6 +110,7 @@ def _build_history(appts: list[Appointment]) -> list[dict]:
     )[-_MAX_HISTORY:]
     return [
         {
+            "external_id": a.external_id,
             "service": a.service,
             "services_data": a.services_data,
             "status": a.status,
@@ -132,7 +133,26 @@ def _patient_brief(patient: Patient) -> dict:
 
 
 def _fingerprint(history: list[dict]) -> str:
-    payload = json.dumps(history, ensure_ascii=False, sort_keys=True, default=str)
+    """Stable hash of only the clinically meaningful, non-volatile fields.
+
+    Background 1Denta syncs keep rewriting `doctor`, `comment`, `services_data`
+    money fields and `synced_at`, which must NOT invalidate the cached AI
+    verdict — otherwise every run re-analyses (and re-pays for) every patient.
+    We hash only: visit id, service name, status and date.
+    """
+    stable = sorted(
+        [
+            [
+                h.get("external_id"),
+                (h.get("service") or "").strip().lower(),
+                (h.get("status") or "").strip().lower(),
+                h.get("date"),
+            ]
+            for h in history
+        ],
+        key=lambda x: (str(x[0]), str(x[3])),
+    )
+    payload = json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
