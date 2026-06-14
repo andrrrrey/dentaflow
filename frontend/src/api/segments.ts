@@ -64,6 +64,15 @@ export function useRecomputeSegment() {
   });
 }
 
+export function useResetSegment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (key: string) =>
+      (await api.post(`/patient-segments/${key}/reset`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["segments"] }),
+  });
+}
+
 export function useAddSegmentMembers() {
   const qc = useQueryClient();
   return useMutation({

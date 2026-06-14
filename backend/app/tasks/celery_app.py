@@ -18,6 +18,14 @@ celery_app.conf.result_backend = settings.REDIS_URL
 # Queue routing — worker listens on default,ai,sync; use "default" as the base queue
 celery_app.conf.task_default_queue = "default"
 
+# Route the long-running base-analysis recompute onto its own queue so a
+# dedicated worker handles it. Otherwise the single prefork worker is saturated
+# by the nightly full sync (~150s) and the every-5-min appointment sync, which
+# starves the segment recompute and leaves lists stuck "queued".
+celery_app.conf.task_routes = {
+    "app.tasks.segments.*": {"queue": "segments"},
+}
+
 # Serialisation
 celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"

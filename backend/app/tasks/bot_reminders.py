@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(name="app.tasks.bot_reminders.send_appointment_reminders")
 def send_appointment_reminders() -> None:
-    import asyncio
-    asyncio.run(_async_send_reminders())
+    from app.tasks.loop import run_async
+    run_async(_async_send_reminders())
 
 
 async def _async_send_reminders() -> None:
