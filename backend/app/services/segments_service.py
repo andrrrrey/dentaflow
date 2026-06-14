@@ -14,9 +14,9 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.appointment import Appointment
@@ -25,11 +25,9 @@ from app.models.patient_segment import PatientSegment, PatientSegmentMember
 
 logger = logging.getLogger(__name__)
 
-HYGIENE_KEYWORDS = ("гигиен", "чистк", "проф")
-ATTENDED_STATUSES = ("arrived", "completed", "confirmed")
-HYGIENE_DAYS = 6 * 30  # ~6 months
-
-AI_SEGMENT_KEYS = ("unfinished_treatment", "missed_consultation")
+# All three dynamic lists are produced by a single AI pass over each
+# patient's 1Denta visit/service history.
+AI_SEGMENT_KEYS = ("unfinished_treatment", "missed_consultation", "hygiene_due")
 _BATCH_SIZE = 200
 _AI_CONCURRENCY = 5
 _MAX_HISTORY = 40
@@ -177,13 +175,14 @@ async def recompute_ai_segments(db: AsyncSession) -> dict:
 
     unfinished_seg = await get_segment_by_key(db, "unfinished_treatment")
     missed_seg = await get_segment_by_key(db, "missed_consultation")
-    if unfinished_seg is None or missed_seg is None:
+    hygiene_seg = await get_segment_by_key(db, "hygiene_due")
+    if unfinished_seg is None or missed_seg is None or hygiene_seg is None:
         raise RuntimeError("AI segments are not seeded")
 
     exclude = await _do_not_touch_ids(db)
 
     total = (await db.execute(select(func.count()).select_from(Patient))).scalar() or 0
-    for seg in (unfinished_seg, missed_seg):
+    for seg in (unfinished_seg, missed_seg, hygiene_seg):
         seg.status = "running"
         seg.total = total
         seg.processed = 0
@@ -193,6 +192,7 @@ async def recompute_ai_segments(db: AsyncSession) -> dict:
 
     unfinished_rows: list[tuple[uuid.UUID, str | None]] = []
     missed_rows: list[tuple[uuid.UUID, str | None]] = []
+    hygiene_rows: list[tuple[uuid.UUID, str | None]] = []
     processed = 0
     offset = 0
 
@@ -245,77 +245,35 @@ async def recompute_ai_segments(db: AsyncSession) -> dict:
         for patient, verdict in results:
             if patient.id in exclude:
                 continue
+            reasoning = verdict.get("reasoning") or ""
             if verdict.get("treatment_plan_completed") is False:
                 unfinished_rows.append(
-                    (patient.id, verdict.get("reasoning") or "План лечения не завершён")
+                    (patient.id, reasoning or "План лечения не завершён")
                 )
             if verdict.get("missed_first_consultation") is True:
                 missed_rows.append(
-                    (patient.id, verdict.get("reasoning") or "Консультация не состоялась")
+                    (patient.id, reasoning or "Консультация не состоялась")
+                )
+            if verdict.get("hygiene_due") is True:
+                hygiene_rows.append(
+                    (patient.id, reasoning or "Нужна профессиональная гигиена")
                 )
 
         processed += len(patients)
-        for seg in (unfinished_seg, missed_seg):
+        for seg in (unfinished_seg, missed_seg, hygiene_seg):
             seg.processed = processed
             seg.progress = int(processed / total * 100) if total else 100
         await db.commit()
 
     await store_members(db, unfinished_seg, unfinished_rows)
     await store_members(db, missed_seg, missed_rows)
+    await store_members(db, hygiene_seg, hygiene_rows)
     await db.commit()
     return {
         "unfinished_treatment": len(unfinished_rows),
         "missed_consultation": len(missed_rows),
+        "hygiene_due": len(hygiene_rows),
     }
-
-
-# ---------------------------------------------------------------------------
-# Recompute: hygiene due (plain SQL, no AI)
-# ---------------------------------------------------------------------------
-
-async def recompute_hygiene(db: AsyncSession) -> dict:
-    seg = await get_segment_by_key(db, "hygiene_due")
-    if seg is None:
-        raise RuntimeError("hygiene_due segment is not seeded")
-
-    seg.status = "running"
-    seg.progress = 0
-    seg.error = None
-    await db.commit()
-
-    exclude = await _do_not_touch_ids(db)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=HYGIENE_DAYS)
-
-    hygiene_filter = or_(
-        *[Appointment.service.ilike(f"%{kw}%") for kw in HYGIENE_KEYWORDS]
-    )
-    last_hygiene = (
-        select(
-            Appointment.patient_id.label("patient_id"),
-            func.max(Appointment.scheduled_at).label("last_hyg"),
-        )
-        .where(Appointment.patient_id.isnot(None))
-        .where(Appointment.scheduled_at.isnot(None))
-        .where(Appointment.status.in_(ATTENDED_STATUSES))
-        .where(hygiene_filter)
-        .group_by(Appointment.patient_id)
-        .subquery()
-    )
-    stmt = select(last_hygiene.c.patient_id, last_hygiene.c.last_hyg).where(
-        last_hygiene.c.last_hyg <= cutoff
-    )
-    rows = (await db.execute(stmt)).all()
-
-    members: list[tuple[uuid.UUID, str | None]] = []
-    for patient_id, last_hyg in rows:
-        if patient_id in exclude:
-            continue
-        months = max(0, int((datetime.now(timezone.utc) - last_hyg).days / 30)) if last_hyg else 0
-        members.append((patient_id, f"Последняя гигиена ~{months} мес назад"))
-
-    await store_members(db, seg, members)
-    await db.commit()
-    return {"hygiene_due": len(members)}
 
 
 # ---------------------------------------------------------------------------

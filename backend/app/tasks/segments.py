@@ -41,14 +41,12 @@ async def _recompute_async(key: str) -> dict:
             return {"status": "skipped", "detail": "manual segment", "key": key}
 
         try:
-            if seg.kind == "dynamic_ai":
-                return await svc.recompute_ai_segments(db)
-            return await svc.recompute_hygiene(db)
+            # All dynamic lists share one AI analysis pass.
+            return await svc.recompute_ai_segments(db)
         except Exception as exc:  # noqa: BLE001
             logger.exception("recompute_segment failed for %s", key)
-            # Mark the segment(s) as errored so the UI stops spinning.
-            keys = svc.AI_SEGMENT_KEYS if seg.kind == "dynamic_ai" else (key,)
-            for k in keys:
+            # Mark all AI segments as errored so the UI stops spinning.
+            for k in svc.AI_SEGMENT_KEYS:
                 s = await svc.get_segment_by_key(db, k)
                 if s is not None:
                     s.status = "error"

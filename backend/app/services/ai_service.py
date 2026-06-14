@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 
@@ -103,24 +103,28 @@ class AIService:
     ) -> dict:
         """Analyse a patient's 1Denta visit/service history.
 
-        Decides whether the patient completed their treatment plan and
-        whether their first consultation visit actually took place. Returns
-        JSON with keys: treatment_plan_completed (bool), had_first_consultation
-        (bool), missed_first_consultation (bool), confidence (int 0-100),
-        reasoning (str).
+        Decides whether the patient completed their treatment plan, whether
+        their first consultation visit actually took place, and whether they
+        are due for professional hygiene (6+ months since the last one).
+        Returns JSON with keys: treatment_plan_completed (bool),
+        had_first_consultation (bool), missed_first_consultation (bool),
+        hygiene_due (bool), confidence (int 0-100), reasoning (str).
         """
         if not self._api_key:
             return self._template_treatment_analysis(patient_data, history or [])
 
         prompt = (
             "Проанализируй историю визитов и услуг пациента стоматологической клиники "
-            "из его карточки в 1Denta. Определи статус лечения.\n"
+            "из его карточки в 1Denta. Определи статус лечения и профилактики.\n"
             "Верни JSON строго с этими ключами:\n"
             "- treatment_plan_completed (bool): завершил ли пациент план лечения. "
             "false, если были лечебные услуги (не консультация и не гигиена), "
             "но нет завершающих/последующих визитов и нет будущих записей на продолжение.\n"
             "- had_first_consultation (bool): состоялась ли первичная консультация (пациент пришёл на приём).\n"
             "- missed_first_consultation (bool): был ли пациент записан на первичную консультацию, но НЕ посетил её (отмена/неявка).\n"
+            "- hygiene_due (bool): нужна ли профессиональная гигиена. true, если последняя "
+            "состоявшаяся гигиена/чистка/профилактика была более 6 месяцев назад "
+            "(или гигиена ни разу не проводилась, хотя пациент посещал клинику).\n"
             "- confidence (целое число 0-100): уверенность вывода.\n"
             "- reasoning (строка): краткое обоснование на русском (1-2 предложения).\n\n"
             "Статусы визитов: arrived/completed = пациент пришёл; "
@@ -130,7 +134,7 @@ class AIService:
         )
 
         result = await self._chat(
-            system="Ты — AI-аналитик стоматологических услуг. Анализируй план лечения и историю визитов. Отвечай только JSON.",
+            system="Ты — AI-аналитик стоматологических услуг. Анализируй план лечения, историю визитов и профилактику. Отвечай только JSON.",
             user=prompt,
             parse_json=True,
         )
@@ -144,6 +148,7 @@ class AIService:
             "treatment_plan_completed": bool(result.get("treatment_plan_completed")),
             "had_first_consultation": bool(result.get("had_first_consultation")),
             "missed_first_consultation": bool(result.get("missed_first_consultation")),
+            "hygiene_due": bool(result.get("hygiene_due")),
             "confidence": int(result.get("confidence", 0) or 0),
             "reasoning": str(result.get("reasoning", "") or ""),
         }
@@ -175,6 +180,8 @@ class AIService:
         missed_first_consultation = False
         has_treatment_attended = False
         has_future_visit = False
+        has_any_attended = False
+        last_hygiene_at = None
 
         for h in history:
             service = (h.get("service") or "").lower()
@@ -194,6 +201,11 @@ class AIService:
                     missed_first_consultation = True
             if (not is_consult and not is_hygiene) and is_past and status in attended:
                 has_treatment_attended = True
+            if is_past and status in attended:
+                has_any_attended = True
+            if is_hygiene and is_past and status in attended and dt is not None:
+                if last_hygiene_at is None or dt > last_hygiene_at:
+                    last_hygiene_at = dt
 
         # If they later actually attended a consultation, it's not "missed".
         if had_first_consultation:
@@ -201,17 +213,32 @@ class AIService:
 
         treatment_plan_completed = not (has_treatment_attended and not has_future_visit)
 
+        # Hygiene due: last professional hygiene was 6+ months ago, or the
+        # patient has been to the clinic but never had hygiene.
+        six_months = now - timedelta(days=6 * 30)
+        if last_hygiene_at is not None:
+            hygiene_due = last_hygiene_at <= six_months
+        else:
+            hygiene_due = has_any_attended
+
         reasoning_parts = []
         if has_treatment_attended and not has_future_visit:
             reasoning_parts.append("Были лечебные визиты без записей на продолжение")
         if missed_first_consultation:
             reasoning_parts.append("Консультация была запланирована, но не состоялась")
+        if hygiene_due:
+            if last_hygiene_at is not None:
+                months = max(0, int((now - last_hygiene_at).days / 30))
+                reasoning_parts.append(f"Последняя гигиена ~{months} мес назад")
+            else:
+                reasoning_parts.append("Гигиена ни разу не проводилась")
         reasoning = "; ".join(reasoning_parts) or "Эвристическая оценка по статусам визитов"
 
         return {
             "treatment_plan_completed": treatment_plan_completed,
             "had_first_consultation": had_first_consultation,
             "missed_first_consultation": missed_first_consultation,
+            "hygiene_due": hygiene_due,
             "confidence": 50,
             "reasoning": reasoning,
         }
