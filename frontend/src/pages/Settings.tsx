@@ -408,7 +408,9 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     description: "ИИ-аналитика, подсказки, анализ скриптов, AI-бот",
     fields: [
       { key: "openai_api_key", label: "API Key", type: "password", placeholder: "sk-..." },
-      { key: "openai_model", label: "Модель", placeholder: "gpt-4o" },
+      { key: "openai_model", label: "Модель (чат, подсказки, инсайты)", placeholder: "gpt-4o" },
+      { key: "segment_ai_model", label: "Модель для анализа базы (списки пациентов)", placeholder: "gpt-4o-mini" },
+      { key: "segment_ai_concurrency", label: "Параллелизм анализа базы", type: "number", placeholder: "15" },
     ],
   },
   {

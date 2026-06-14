@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 INTEGRATION_KEYS: dict[str, list[str]] = {
     "novofon": ["novofon_api_key", "novofon_webhook_secret"],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
-    "openai": ["openai_api_key", "openai_model"],
+    "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
     "bots": ["bot_welcome_message", "bot_clinic_name"],
     "telegram": [
         "telegram_bot_token",
@@ -203,16 +203,45 @@ async def _check_openai(db: AsyncSession) -> dict:
     if not api_key:
         return {"ok": False, "message": "API-ключ не указан"}
 
+    model = (
+        await get_raw_value(db, "segment_ai_model")
+        or await get_raw_value(db, "openai_model")
+        or "gpt-4o-mini"
+    )
+    headers = {"Authorization": f"Bearer {api_key}"}
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            "https://api.openai.com/v1/models",
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        if resp.status_code == 200:
-            return {"ok": True, "message": "Подключено"}
+        resp = await client.get("https://api.openai.com/v1/models", headers=headers)
         if resp.status_code == 401:
             return {"ok": False, "message": "Неверный API-ключ (401)"}
-        return {"ok": False, "message": f"Ошибка API: {resp.status_code}"}
+        if resp.status_code != 200:
+            return {"ok": False, "message": f"Ошибка API: {resp.status_code}"}
+
+        # The key is valid; a minimal completion verifies there is balance —
+        # /v1/models returns 200 even when the account is out of quota.
+        try:
+            chat = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                },
+            )
+        except httpx.HTTPError:
+            # Key proven valid above; treat transient completion errors as OK.
+            return {"ok": True, "message": "Подключено"}
+
+        if chat.status_code == 200:
+            return {"ok": True, "message": "Подключено"}
+        body = chat.text.lower()
+        if chat.status_code == 429 and "insufficient_quota" in body:
+            return {"ok": False, "message": "Недостаточно средств на счёте OpenAI"}
+        if chat.status_code == 429:
+            return {"ok": True, "message": "Подключено (достигнут лимит запросов)"}
+        if "model" in body and ("does not exist" in body or "not found" in body):
+            return {"ok": False, "message": f"Модель «{model}» недоступна для аккаунта"}
+        return {"ok": True, "message": "Подключено"}
 
 
 async def _check_telegram(db: AsyncSession) -> dict:

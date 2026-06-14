@@ -8,7 +8,7 @@ import { api } from "../api/client";
 import {
   MessageCircle, Phone, PhoneMissed, Globe, Send,
   ArrowDownLeft, ArrowUpRight, Sparkles, Tag, GitBranch,
-  CheckCircle2, Trash2,
+  CheckCircle2, Trash2, XCircle,
 } from "lucide-react";
 import { formatDistanceToNow, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -324,6 +324,16 @@ function DetailPanel({
     },
   });
 
+  const closeMutation = useMutation({
+    mutationFn: async () => {
+      await api.patch(`/communications/${item.id}`, { status: "done" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["communications"] });
+      queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+
   return (
     <div className="flex flex-col gap-4 h-full overflow-y-auto">
       {/* header */}
@@ -423,6 +433,27 @@ function DetailPanel({
           </>
         )}
       </button>
+
+      {/* Close request */}
+      {item.status === "done" ? (
+        <div
+          className="flex items-center justify-center gap-2 rounded-[14px] px-4 py-[12px] text-[13px] font-bold"
+          style={{ background: "rgba(0,201,167,0.12)", color: "#00c9a7" }}
+        >
+          <CheckCircle2 size={15} />
+          Заявка закрыта
+        </div>
+      ) : (
+        <button
+          onClick={() => closeMutation.mutate()}
+          disabled={closeMutation.isPending}
+          className="flex items-center justify-center gap-2 rounded-[14px] px-4 py-[12px] text-[13px] font-bold border cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          style={{ background: "rgba(255,255,255,0.7)", borderColor: "rgba(197,32,72,0.25)", color: "#c52048" }}
+        >
+          <XCircle size={15} />
+          {closeMutation.isPending ? "Закрываем..." : "Закрыть заявку"}
+        </button>
+      )}
 
       {/* Chat with client */}
       {(item.channel === "telegram" || item.channel === "max") && (
