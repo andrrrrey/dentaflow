@@ -182,7 +182,16 @@ async def store_members(
     await db.execute(
         delete(PatientSegmentMember).where(PatientSegmentMember.segment_id == seg.id)
     )
+    # Dedupe by patient_id — a patient must appear at most once per segment
+    # (unique constraint uq_segment_patient). Keep the first reason seen.
+    seen: set[uuid.UUID] = set()
+    unique_rows: list[tuple[uuid.UUID, str | None]] = []
     for patient_id, reason in rows:
+        if patient_id in seen:
+            continue
+        seen.add(patient_id)
+        unique_rows.append((patient_id, reason))
+    for patient_id, reason in unique_rows:
         db.add(
             PatientSegmentMember(
                 segment_id=seg.id,
@@ -190,7 +199,7 @@ async def store_members(
                 reason=(reason or "")[:500] or None,
             )
         )
-    seg.member_count = len(rows)
+    seg.member_count = len(unique_rows)
     seg.computed_at = datetime.now(timezone.utc)
     seg.status = "done"
     seg.progress = 100
@@ -261,7 +270,10 @@ async def recompute_ai_segments(db: AsyncSession | None = None) -> dict:
             patients = list(
                 (
                     await s.execute(
-                        select(Patient).order_by(Patient.created_at.asc())
+                        # id tiebreaker → stable order across OFFSET pages even
+                        # when many patients share the same created_at, so no
+                        # patient is processed twice (or skipped).
+                        select(Patient).order_by(Patient.created_at.asc(), Patient.id.asc())
                         .offset(offset)
                         .limit(_BATCH_SIZE)
                     )
