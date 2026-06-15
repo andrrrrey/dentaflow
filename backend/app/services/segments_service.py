@@ -141,6 +141,73 @@ def _build_history(appts: list[Appointment]) -> list[dict]:
     ]
 
 
+_ATTENDED_STATUSES = {"arrived", "completed", "confirmed"}
+_MISSED_STATUSES = {"cancelled", "unconfirmed", "no_show", "notcome", "canceled"}
+_CONSULT_KW = ("консультац", "первичн", "осмотр")
+_HYGIENE_KW = ("гигиен", "чистк", "проф")
+
+
+def _history_facts(history: list[dict]) -> dict:
+    """Derive hard, deterministic facts from the visit history.
+
+    The AI is only trusted for the nuanced "did they finish the plan?" call.
+    Bucket membership (never showed up / actually did treatment / came at all)
+    is decided from these facts so patients land in the right list regardless
+    of fuzzy AI wording.
+    """
+    now = datetime.now(timezone.utc)
+
+    def _parse(dt):
+        if not dt:
+            return None
+        try:
+            d = datetime.fromisoformat(str(dt))
+            return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return None
+
+    def _service_names(h: dict) -> list[str]:
+        names: list[str] = []
+        if h.get("service"):
+            names.append(str(h["service"]))
+        sd = h.get("services_data")
+        if isinstance(sd, list):
+            for s in sd:
+                if isinstance(s, dict) and s.get("name"):
+                    names.append(str(s["name"]))
+        return [n.lower() for n in names]
+
+    attended_any = False
+    attended_treatment = False  # came to a non-consult, non-hygiene visit
+    missed_past_consultation = False  # booked a 1st consult that didn't happen
+
+    for h in history:
+        names = _service_names(h)
+        status = (h.get("status") or "").strip().lower()
+        dt = _parse(h.get("date"))
+        is_past = dt is not None and dt <= now
+        # A visit may bundle several services. It is a "treatment" visit if it
+        # carries at least one service that is neither a consultation nor hygiene.
+        has_consult = any(any(k in n for k in _CONSULT_KW) for n in names)
+        has_treatment = any(
+            not any(k in n for k in _CONSULT_KW) and not any(k in n for k in _HYGIENE_KW)
+            for n in names
+        )
+
+        if is_past and status in _ATTENDED_STATUSES:
+            attended_any = True
+            if has_treatment:
+                attended_treatment = True
+        if has_consult and is_past and status in _MISSED_STATUSES:
+            missed_past_consultation = True
+
+    return {
+        "attended_any": attended_any,
+        "attended_treatment": attended_treatment,
+        "missed_past_consultation": missed_past_consultation,
+    }
+
+
 def _patient_brief(patient: Patient) -> dict:
     return {
         "name": patient.name,
@@ -301,9 +368,10 @@ async def recompute_ai_segments(db: AsyncSession | None = None) -> dict:
 
             async def _verdict(patient: Patient) -> tuple[Patient, dict]:
                 history = _build_history(by_patient.get(patient.id, []))
+                facts = _history_facts(history)
                 fp = _fingerprint(history)
                 if patient.treatment_ai and patient.treatment_ai_fingerprint == fp:
-                    return patient, patient.treatment_ai
+                    return patient, patient.treatment_ai, facts
                 async with sem:
                     verdict = await ai.analyze_treatment_history(
                         _patient_brief(patient), history
@@ -311,23 +379,35 @@ async def recompute_ai_segments(db: AsyncSession | None = None) -> dict:
                 patient.treatment_ai = verdict
                 patient.treatment_ai_fingerprint = fp
                 patient.treatment_ai_at = now
-                return patient, verdict
+                return patient, verdict, facts
 
             results = await asyncio.gather(*[_verdict(p) for p in patients])
 
-            for patient, verdict in results:
+            for patient, verdict, facts in results:
                 if patient.id in exclude:
                     continue
                 reasoning = verdict.get("reasoning") or ""
-                if verdict.get("treatment_plan_completed") is False:
+
+                # Незавершённые планы лечения — ТОЛЬКО пациенты, которые реально
+                # ходили на лечебные визиты и, по вердикту ИИ, план не завершён.
+                # Пациентов без лечебных визитов сюда не пускаем, даже если ИИ
+                # вернул treatment_plan_completed=false (для них он бессмысленен).
+                if facts["attended_treatment"] and verdict.get("treatment_plan_completed") is False:
                     rows["unfinished_treatment"].append(
-                        (patient.id, reasoning or "План лечения не завершён")
+                        (patient.id, reasoning or "Был на лечении, план не завершён")
                     )
-                if verdict.get("missed_first_consultation") is True:
+
+                # Несостоявшиеся консультации — ТОЛЬКО пациенты, которые
+                # записывались на первичную консультацию и не пришли ВООБЩЕ ни
+                # на один приём. Если хоть раз посетили клинику — исключаем.
+                if facts["missed_past_consultation"] and not facts["attended_any"]:
                     rows["missed_consultation"].append(
-                        (patient.id, reasoning or "Консультация не состоялась")
+                        (patient.id, "Записан на первичную консультацию, но не пришёл ни на один приём")
                     )
-                if verdict.get("hygiene_due") is True:
+
+                # Нужна гигиена 6+ мес — по вердикту ИИ, но только для тех, кто
+                # реально посещал клинику (иначе это не «просроченная гигиена»).
+                if facts["attended_any"] and verdict.get("hygiene_due") is True:
                     rows["hygiene_due"].append(
                         (patient.id, reasoning or "Нужна профессиональная гигиена")
                     )
