@@ -205,6 +205,7 @@ def _history_facts(history: list[dict]) -> dict:
         "attended_any": attended_any,
         "attended_treatment": attended_treatment,
         "missed_past_consultation": missed_past_consultation,
+        "has_appointments": len(history) > 0,
     }
 
 
@@ -397,13 +398,17 @@ async def recompute_ai_segments(db: AsyncSession | None = None) -> dict:
                         (patient.id, reasoning or "Был на лечении, план не завершён")
                     )
 
-                # Несостоявшиеся консультации — ТОЛЬКО пациенты, которые
-                # записывались на первичную консультацию и не пришли ВООБЩЕ ни
-                # на один приём. Если хоть раз посетили клинику — исключаем.
-                if facts["missed_past_consultation"] and not facts["attended_any"]:
-                    rows["missed_consultation"].append(
-                        (patient.id, "Записан на первичную консультацию, но не пришёл ни на один приём")
+                # Несостоявшиеся консультации — клиенты из базы, которые так и
+                # не дошли до клиники: либо ни разу не записывались, либо были
+                # записаны, но не пришли ни на один приём. Признак — нет ни
+                # одного состоявшегося визита.
+                if not facts["attended_any"]:
+                    reason = (
+                        "Был записан, но не пришёл ни на один приём"
+                        if facts["has_appointments"]
+                        else "Нет ни одной записи в расписании"
                     )
+                    rows["missed_consultation"].append((patient.id, reason))
 
                 # Нужна гигиена 6+ мес — по вердикту ИИ, но только для тех, кто
                 # реально посещал клинику (иначе это не «просроченная гигиена»).
