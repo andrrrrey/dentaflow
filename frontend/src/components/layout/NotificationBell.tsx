@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Bot,
   CheckCheck,
+  Trash2,
+  X,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -35,10 +37,12 @@ function NotificationRow({
   item,
   onRead,
   onNavigate,
+  onDelete,
 }: {
   item: NotificationResponse;
   onRead: (id: string) => void;
   onNavigate: (link: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const timeAgo = formatDistanceToNow(new Date(item.created_at), {
     addSuffix: true,
@@ -46,12 +50,12 @@ function NotificationRow({
   });
 
   return (
-    <button
+    <div
       onClick={() => {
         if (!item.is_read) onRead(item.id);
         if (item.link) onNavigate(item.link);
       }}
-      className="w-full flex items-start gap-3 px-4 py-3 text-left border-none bg-transparent cursor-pointer transition-colors duration-100 hover:bg-[rgba(91,76,245,0.05)]"
+      className="group w-full flex items-start gap-3 px-4 py-3 text-left cursor-pointer transition-colors duration-100 hover:bg-[rgba(91,76,245,0.05)]"
       style={{
         background: item.is_read ? "transparent" : "rgba(91,76,245,0.03)",
       }}
@@ -80,7 +84,16 @@ function NotificationRow({
           {timeAgo}
         </span>
       </div>
-    </button>
+
+      {/* Delete one */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+        title="Удалить"
+        className="flex-shrink-0 p-1 rounded-md text-text-muted hover:text-danger hover:bg-[rgba(244,75,110,0.1)] transition-colors border-none cursor-pointer bg-transparent opacity-0 group-hover:opacity-100"
+      >
+        <X size={13} />
+      </button>
+    </div>
   );
 }
 
@@ -91,7 +104,7 @@ export default function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const { data, markAsRead, markAllRead } = useNotifications();
+  const { data, markAsRead, markAllRead, deleteNotification, clearAll } = useNotifications();
 
   /* Close on outside click */
   useEffect(() => {
@@ -152,15 +165,26 @@ export default function NotificationBell() {
             <span className="text-sm font-bold text-text-main">
               Уведомления
             </span>
-            {data.unread_count > 0 && (
-              <button
-                onClick={() => markAllRead()}
-                className="flex items-center gap-1 text-[11px] font-medium text-accent2 bg-transparent border-none cursor-pointer hover:underline"
-              >
-                <CheckCheck size={13} />
-                Отметить все прочитанным
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {data.unread_count > 0 && (
+                <button
+                  onClick={() => markAllRead()}
+                  className="flex items-center gap-1 text-[11px] font-medium text-accent2 bg-transparent border-none cursor-pointer hover:underline"
+                >
+                  <CheckCheck size={13} />
+                  Прочитать все
+                </button>
+              )}
+              {data.items.length > 0 && (
+                <button
+                  onClick={() => clearAll()}
+                  className="flex items-center gap-1 text-[11px] font-medium text-danger bg-transparent border-none cursor-pointer hover:underline"
+                >
+                  <Trash2 size={13} />
+                  Очистить
+                </button>
+              )}
+            </div>
           </div>
 
           {/* List */}
@@ -176,6 +200,7 @@ export default function NotificationBell() {
                   item={item}
                   onRead={markAsRead}
                   onNavigate={handleNavigate}
+                  onDelete={deleteNotification}
                 />
               ))
             )}

@@ -7,6 +7,7 @@ export interface Appointment {
   patient_id: string | null;
   patient_name: string;
   patient_phone: string | null;
+  patient_birth_date: string | null;
   doctor_name: string | null;
   doctor_id: string | null;
   service: string | null;
@@ -178,6 +179,7 @@ export function useUpdateAppointment() {
       doctor_name?: string;
       doctor_id?: string;
       comment?: string;
+      scheduled_at?: string;
     }) => {
       const { data } = await api.patch(`/schedule/${appointmentId}`, updates);
       return data;

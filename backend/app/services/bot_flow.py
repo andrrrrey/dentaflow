@@ -526,6 +526,15 @@ async def _create_lead_comm(
             "id": str(comm.id), "channel": comm.channel,
             "type": comm.type, "priority": comm.priority,
         })
+
+        from app.services.deals_service import maybe_create_auto_lead
+        lead_title = f"Лид: {name}, {phone}" if phone else f"Лид: {name or 'контакт'} ({ch})"
+        await maybe_create_auto_lead(
+            channel=ch,
+            patient_id=patient_id,
+            title=lead_title,
+            notes=comment,
+        )
         return str(comm.id)
     except Exception:
         logger.exception("bot_flow: failed to create lead communication")

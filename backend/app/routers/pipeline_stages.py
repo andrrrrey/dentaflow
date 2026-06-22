@@ -62,8 +62,54 @@ class StageRenameRequest(BaseModel):
     label: str
 
 
+class StageCreateRequest(BaseModel):
+    label: str
+    color: str | None = None
+
+
 class StageReorderRequest(BaseModel):
     stage_ids: list[str]
+
+
+def _slugify_key(label: str) -> str:
+    """Build an ASCII-ish key from a (possibly Cyrillic) label."""
+    import re
+
+    slug = re.sub(r"[^a-z0-9]+", "_", label.strip().lower()).strip("_")
+    return slug or "stage"
+
+
+@router.post("/", response_model=StageResponse, status_code=status.HTTP_201_CREATED)
+async def create_stage(
+    body: StageCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> StageResponse:
+    """Create a new (non-system) pipeline stage."""
+    await _ensure_defaults(db)
+    result = await db.execute(select(PipelineStage))
+    existing = result.scalars().all()
+    existing_keys = {s.key for s in existing}
+    max_position = max((s.position for s in existing), default=-1)
+
+    base_key = _slugify_key(body.label)
+    key = base_key
+    while key in existing_keys:
+        key = f"{base_key}_{uuid.uuid4().hex[:4]}"
+
+    stage = PipelineStage(
+        key=key,
+        label=body.label.strip() or "Новый этап",
+        color=body.color or "#8a8fa5",
+        position=max_position + 1,
+        is_system=False,
+    )
+    db.add(stage)
+    await db.commit()
+    return StageResponse(
+        id=str(stage.id), key=stage.key, label=stage.label,
+        color=stage.color, position=stage.position, is_system=stage.is_system,
+    )
 
 
 @router.post("/reset-defaults", response_model=list[StageResponse])
@@ -185,15 +231,14 @@ async def delete_stage(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Delete a non-system pipeline stage, moving its deals to 'new'."""
+    """Delete a pipeline stage, moving its deals to 'new'.
+
+    System stages (closed_won/closed_lost) can also be deleted; logic that keys
+    off those strings simply finds no column, and their deals migrate to 'new'.
+    """
     stage = await db.get(PipelineStage, stage_id)
     if stage is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
-    if stage.is_system:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete system stages",
-        )
     await db.execute(sql_update(Deal).where(Deal.stage == stage.key).values(stage="new"))
     await db.delete(stage)
     await db.commit()

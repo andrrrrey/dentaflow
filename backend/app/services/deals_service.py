@@ -199,6 +199,55 @@ async def create_deal(
             raise
 
 
+async def maybe_create_auto_lead(
+    *,
+    channel: str,
+    patient_id: uuid.UUID | None,
+    title: str,
+    notes: str | None = None,
+) -> None:
+    """Auto-create a CRM lead when enabled for this channel in settings.
+
+    Controlled by integration settings:
+    - auto_lead_enabled  ("true" to enable)
+    - auto_lead_channels (CSV of channels, empty = all)
+    - auto_lead_stage    (target stage key, default "new")
+    Dedupes by skipping creation when an open lead already exists for the patient.
+    """
+    from app.services.integrations_service import get_raw_value
+
+    try:
+        async with async_session_factory() as db:
+            if (await get_raw_value(db, "auto_lead_enabled")) != "true":
+                return
+            channels_raw = await get_raw_value(db, "auto_lead_channels")
+            allowed = {c.strip() for c in channels_raw.split(",") if c.strip()}
+            if allowed and channel not in allowed:
+                return
+            stage = await get_raw_value(db, "auto_lead_stage") or "new"
+
+            if patient_id:
+                existing = (await db.execute(
+                    select(Deal.id).where(
+                        Deal.patient_id == patient_id,
+                        Deal.stage.notin_(["closed_won", "closed_lost"]),
+                    ).limit(1)
+                )).first()
+                if existing:
+                    return
+
+        await create_deal(
+            title=title,
+            stage=stage,
+            patient_id=patient_id,
+            source_channel=channel,
+            notes=notes,
+        )
+        logger.info("Auto-lead created channel=%s stage=%s", channel, stage)
+    except Exception:
+        logger.exception("maybe_create_auto_lead failed channel=%s", channel)
+
+
 async def update_deal(
     deal_id: uuid.UUID,
     stage: str | None = None,

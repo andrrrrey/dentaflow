@@ -6,7 +6,7 @@ and task creation events.
 
 import uuid
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification
@@ -61,4 +61,20 @@ async def mark_all_read(db: AsyncSession) -> int:
         .where(Notification.is_read.is_(False))
         .values(is_read=True)
     )
+    return result.rowcount
+
+
+async def delete_notification(db: AsyncSession, notification_id: uuid.UUID) -> bool:
+    result = await db.execute(
+        select(Notification).where(Notification.id == notification_id)
+    )
+    notif = result.scalar_one_or_none()
+    if notif is None:
+        return False
+    await db.execute(delete(Notification).where(Notification.id == notification_id))
+    return True
+
+
+async def clear_all_notifications(db: AsyncSession) -> int:
+    result = await db.execute(delete(Notification))
     return result.rowcount

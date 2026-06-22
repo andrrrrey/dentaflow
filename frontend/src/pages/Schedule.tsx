@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
-import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWeek, addMonths, subMonths, isSameDay, isSameMonth } from "date-fns";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWeek, addMonths, subMonths, isSameDay, isSameMonth, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import StatCard from "../components/ui/StatCard";
 import Button from "../components/ui/Button";
-import { useSchedule, useDoctorsList, useSyncSchedule } from "../api/schedule";
+import { useSchedule, useDoctorsList, useSyncSchedule, useUpdateAppointment } from "../api/schedule";
 import type { Appointment } from "../api/schedule";
 import AppointmentDetailModal from "../components/schedule/AppointmentDetailModal";
 import AddAppointmentModal from "../components/schedule/AddAppointmentModal";
@@ -31,8 +31,20 @@ const CLINIC_START = 9;
 const CLINIC_END = 20;
 const HOURS = Array.from({ length: CLINIC_END - CLINIC_START + 1 }, (_, i) => CLINIC_START + i);
 const SLOT_HEIGHT = 150;
-const DOC_COL_W = 300;
+const MIN_COL_W = 150;
 const TIME_COL_W = 64;
+const SNAP_MIN = 15;
+const CLINIC_START_MIN = CLINIC_START * 60;
+const CLINIC_END_MIN = CLINIC_END * 60;
+
+function calcAge(birthDate: string | null | undefined): number | null {
+  if (!birthDate) return null;
+  try {
+    return differenceInYears(new Date(), new Date(birthDate));
+  } catch {
+    return null;
+  }
+}
 
 interface AppointmentLayout { appt: Appointment; col: number; totalCols: number; }
 
@@ -52,6 +64,21 @@ function computeLayout(appts: Appointment[]): AppointmentLayout[] {
     else { assigned.push({ appt: item.appt, col }); colEnds[col] = item.endMin; }
   }
   return assigned.map(({ appt, col }) => ({ appt, col, totalCols: colEnds.length }));
+}
+
+function fmtMin(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+interface DragPreview {
+  apptId: string;
+  newStartMin: number;
+  targetDoctor: string;
+  origDoctor: string;
+  dxPx: number;
+  dyPx: number;
 }
 
 function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
@@ -118,22 +145,33 @@ function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   );
 }
 
-function AppointmentBlock({ appt, onClick, col, totalCols }: { appt: Appointment; onClick: () => void; col: number; totalCols: number; }) {
+function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart, preview }: {
+  appt: Appointment;
+  onClick: () => void;
+  col: number;
+  totalCols: number;
+  colWidth: number;
+  onDragStart: (appt: Appointment, e: React.MouseEvent) => void;
+  preview: DragPreview | null;
+}) {
   if (!appt.scheduled_at) return null;
   const start = parseISO(appt.scheduled_at);
   const startMin = start.getHours() * 60 + start.getMinutes();
-  const clinicStartMin = CLINIC_START * 60;
-  const top = ((startMin - clinicStartMin) / 60) * SLOT_HEIGHT;
+  const top = ((startMin - CLINIC_START_MIN) / 60) * SLOT_HEIGHT;
   const height = Math.max((appt.duration_min / 60) * SLOT_HEIGHT - 3, 32);
   const colors = statusColors[appt.status ?? ""] ?? statusColors.unconfirmed;
   const GAP = 3;
   const colW = 100 / totalCols;
-  // How much room the block has for text — drives how many detail lines we show.
-  const compact = totalCols > 1;
+  const compact = totalCols > 1 || colWidth < 200;
+  const age = calcAge(appt.patient_birth_date);
+
+  const isDragging = preview != null;
+  const displayStartMin = isDragging ? preview.newStartMin : startMin;
+  const displayEndMin = displayStartMin + appt.duration_min;
 
   return (
     <div
-      className="absolute rounded-[10px] cursor-pointer overflow-hidden transition-all hover:shadow-lg hover:z-20"
+      className="absolute rounded-[10px] cursor-grab active:cursor-grabbing overflow-hidden transition-shadow hover:shadow-lg hover:z-20"
       style={{
         top: `${top}px`,
         height: `${height}px`,
@@ -141,17 +179,22 @@ function AppointmentBlock({ appt, onClick, col, totalCols }: { appt: Appointment
         width: `calc(${colW}% - ${GAP * 2}px)`,
         background: colors.bg,
         borderLeft: `4px solid ${colors.border}`,
-        boxShadow: "0 1px 4px rgba(120,140,180,0.12)",
-        zIndex: 10,
+        boxShadow: isDragging ? "0 8px 24px rgba(91,76,245,0.35)" : "0 1px 4px rgba(120,140,180,0.12)",
+        zIndex: isDragging ? 60 : 10,
+        transform: isDragging ? `translate(${preview.dxPx}px, ${preview.dyPx}px)` : undefined,
+        opacity: isDragging ? 0.92 : 1,
+        pointerEvents: isDragging ? "none" : undefined,
       }}
+      onMouseDown={(e) => onDragStart(appt, e)}
       onClick={onClick}
     >
       <div className="px-[9px] py-[7px] h-full flex flex-col justify-start overflow-hidden">
         <div className="text-[11.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
-          {format(start, "HH:mm")} – {format(new Date(start.getTime() + appt.duration_min * 60000), "HH:mm")}
+          {fmtMin(displayStartMin)} – {fmtMin(displayEndMin)}
         </div>
         <div className="text-[13.5px] font-bold text-text-main leading-snug mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
           {appt.patient_name}
+          {age !== null && <span className="font-medium text-text-muted">, {age} лет</span>}
         </div>
         {height > 56 && appt.patient_phone && (
           <div className="text-[12px] text-text-muted truncate mt-[3px] font-medium">{appt.patient_phone}</div>
@@ -177,6 +220,7 @@ export default function Schedule() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [calendarPanelOpen, setCalendarPanelOpen] = useState(true);
+  const [containerW, setContainerW] = useState(0);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -188,6 +232,7 @@ export default function Schedule() {
   });
   const { data: doctorsData } = useDoctorsList();
   const syncMutation = useSyncSchedule();
+  const updateAppt = useUpdateAppointment();
 
   const appointments = data?.appointments ?? [];
   const stats = data?.stats;
@@ -224,7 +269,146 @@ export default function Schedule() {
     return map;
   }, [doctorsData]);
 
+  const doctorIdByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of doctorsData?.doctors ?? []) {
+      if (d.doctor_name && d.doctor_id) map.set(d.doctor_name, d.doctor_id);
+    }
+    return map;
+  }, [doctorsData]);
+
   const gridHeight = HOURS.length * SLOT_HEIGHT;
+  const doctorCount = doctorsWithAppointments.length;
+
+  // Responsive column width: fit all doctors into the available width, only
+  // falling back to horizontal scroll when even MIN_COL_W doesn't fit.
+  const colWidth = useMemo(() => {
+    if (doctorCount === 0 || containerW === 0) return MIN_COL_W;
+    return Math.max(MIN_COL_W, Math.floor((containerW - TIME_COL_W) / doctorCount));
+  }, [containerW, doctorCount]);
+  const contentWidth = TIME_COL_W + colWidth * doctorCount;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const columnsRowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setContainerW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isLoading, calendarPanelOpen, doctorCount]);
+
+  // --- Drag-to-reschedule ---
+  const [drag, setDrag] = useState<{
+    appt: Appointment;
+    origDoctor: string;
+    origStartMin: number;
+    startX: number;
+    startY: number;
+    curX: number;
+    curY: number;
+    moved: boolean;
+  } | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+
+  const computePreview = useCallback((d: NonNullable<typeof drag>): DragPreview | null => {
+    const deltaY = d.curY - d.startY;
+    const deltaMin = Math.round((deltaY / SLOT_HEIGHT) * 60 / SNAP_MIN) * SNAP_MIN;
+    let newStartMin = d.origStartMin + deltaMin;
+    newStartMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - d.appt.duration_min, newStartMin));
+
+    let targetDoctor = d.origDoctor;
+    let origIndex = doctorsWithAppointments.findIndex(([name]) => name === d.origDoctor);
+    let targetIndex = origIndex;
+    const row = columnsRowRef.current;
+    if (row && doctorCount > 0) {
+      const rect = row.getBoundingClientRect();
+      const relX = d.curX - rect.left - TIME_COL_W;
+      const idx = Math.floor(relX / colWidth);
+      targetIndex = Math.max(0, Math.min(doctorCount - 1, idx));
+      targetDoctor = doctorsWithAppointments[targetIndex]?.[0] ?? d.origDoctor;
+    }
+    if (origIndex < 0) origIndex = targetIndex;
+
+    return {
+      apptId: d.appt.id,
+      newStartMin,
+      targetDoctor,
+      origDoctor: d.origDoctor,
+      dxPx: (targetIndex - origIndex) * colWidth,
+      dyPx: ((newStartMin - d.origStartMin) / 60) * SLOT_HEIGHT,
+    };
+  }, [doctorsWithAppointments, doctorCount, colWidth]);
+
+  const preview = drag && drag.moved ? computePreview(drag) : null;
+
+  const handleDragStart = useCallback((appt: Appointment, e: React.MouseEvent) => {
+    if (e.button !== 0 || !appt.scheduled_at) return;
+    // "Без врача" pseudo-column has no real doctor — still allow time moves
+    const start = parseISO(appt.scheduled_at);
+    const origStartMin = start.getHours() * 60 + start.getMinutes();
+    setDrag({
+      appt,
+      origDoctor: appt.doctor_name || "Без врача",
+      origStartMin,
+      startX: e.clientX,
+      startY: e.clientY,
+      curX: e.clientX,
+      curY: e.clientY,
+      moved: false,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: MouseEvent) => {
+      setDrag((prev) => {
+        if (!prev) return prev;
+        const moved = prev.moved || Math.abs(e.clientX - prev.startX) > 4 || Math.abs(e.clientY - prev.startY) > 4;
+        return { ...prev, curX: e.clientX, curY: e.clientY, moved };
+      });
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      if (d && d.moved) {
+        const p = computePreview(d);
+        if (p) {
+          const changedTime = p.newStartMin !== d.origStartMin;
+          const changedDoctor = p.targetDoctor !== d.origDoctor && p.targetDoctor !== "Без врача";
+          if (changedTime || changedDoctor) {
+            const scheduled_at = changedTime
+              ? `${format(selectedDate, "yyyy-MM-dd")}T${fmtMin(p.newStartMin)}:00`
+              : undefined;
+            const doctorPatch = changedDoctor
+              ? { doctor_name: p.targetDoctor, ...(doctorIdByName.get(p.targetDoctor) ? { doctor_id: doctorIdByName.get(p.targetDoctor) } : {}) }
+              : {};
+            updateAppt.mutate({
+              appointmentId: d.appt.id,
+              ...(scheduled_at ? { scheduled_at } : {}),
+              ...doctorPatch,
+            });
+          }
+        }
+      }
+      setDrag(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [drag != null, computePreview, selectedDate, doctorIdByName, updateAppt]);
+
+  // Suppress the click that fires right after a drag move
+  const suppressClickRef = useRef(false);
+  useEffect(() => {
+    if (drag?.moved) suppressClickRef.current = true;
+  }, [drag?.moved]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -372,8 +556,8 @@ export default function Schedule() {
           ) : doctorsWithAppointments.length === 0 ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
-            <div className="h-full overflow-auto">
-              <div style={{ minWidth: Math.max(doctorsWithAppointments.length * DOC_COL_W + TIME_COL_W, 600) }}>
+            <div ref={scrollRef} className="h-full overflow-auto">
+              <div style={{ width: contentWidth }}>
                 {/* Doctor headers */}
                 <div className="flex sticky top-0 z-40" style={{ borderBottom: "1px solid rgba(91,76,245,0.1)", background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}>
                   <div
@@ -386,8 +570,8 @@ export default function Schedule() {
                     return (
                       <div
                         key={doctorName}
-                        className="flex-1 flex items-center gap-[9px] py-[11px] px-3"
-                        style={{ minWidth: DOC_COL_W, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
+                        className="flex items-center gap-[9px] py-[11px] px-3"
+                        style={{ width: colWidth, flex: "0 0 auto", borderLeft: "1px solid rgba(91,76,245,0.08)" }}
                       >
                         <div
                           className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
@@ -407,7 +591,7 @@ export default function Schedule() {
                 </div>
 
                 {/* Time grid */}
-                <div className="flex relative">
+                <div ref={columnsRowRef} className="flex relative">
                   {/* Time column — sticky on horizontal scroll */}
                   <div
                     className="flex-shrink-0 sticky left-0 z-30"
@@ -428,8 +612,8 @@ export default function Schedule() {
                   {doctorsWithAppointments.map(([doctorName, doctorAppts]) => (
                     <div
                       key={doctorName}
-                      className="flex-1 relative"
-                      style={{ minWidth: DOC_COL_W, height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
+                      className="relative"
+                      style={{ width: colWidth, flex: "0 0 auto", height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
                     >
                       {/* Hour lines */}
                       {HOURS.map((h) => (
@@ -461,7 +645,13 @@ export default function Schedule() {
                           appt={appt}
                           col={col}
                           totalCols={totalCols}
-                          onClick={() => setSelectedAppointmentId(appt.id)}
+                          colWidth={colWidth}
+                          onDragStart={handleDragStart}
+                          preview={preview && preview.apptId === appt.id ? preview : null}
+                          onClick={() => {
+                            if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                            setSelectedAppointmentId(appt.id);
+                          }}
                         />
                       ))}
                     </div>
@@ -473,6 +663,23 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {/* Drag tooltip — follows the cursor with the new time / doctor */}
+      {drag && drag.moved && preview && (
+        <div
+          className="fixed z-[300] pointer-events-none rounded-lg px-3 py-[6px] text-[12px] font-bold text-white shadow-lg"
+          style={{
+            left: drag.curX + 14,
+            top: drag.curY + 14,
+            background: "linear-gradient(135deg, #5B4CF5, #3B7FED)",
+          }}
+        >
+          {fmtMin(preview.newStartMin)} – {fmtMin(preview.newStartMin + drag.appt.duration_min)}
+          {preview.targetDoctor !== preview.origDoctor && preview.targetDoctor !== "Без врача" && (
+            <span className="font-medium opacity-90"> · {preview.targetDoctor}</span>
+          )}
+        </div>
+      )}
 
       {showAddModal && (
         <AddAppointmentModal onClose={() => setShowAddModal(false)} />

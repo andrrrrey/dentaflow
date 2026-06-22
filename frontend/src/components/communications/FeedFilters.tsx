@@ -14,9 +14,10 @@ interface ChannelOption {
 
 interface Props {
   statusCounts: Record<string, number>;
+  channels?: ChannelOption[];
 }
 
-const CHANNEL_OPTIONS: ChannelOption[] = [
+const DEFAULT_CHANNEL_OPTIONS: ChannelOption[] = [
   { key: undefined, label: "Все каналы" },
   { key: "telegram", label: "Telegram" },
   { key: "novofon", label: "Телефония" },
@@ -24,8 +25,9 @@ const CHANNEL_OPTIONS: ChannelOption[] = [
   { key: "site", label: "Сайт" },
 ];
 
-export default function FeedFilters({ statusCounts }: Props) {
+export default function FeedFilters({ statusCounts, channels }: Props) {
   const { filters, setFilter } = useCommunicationsStore();
+  const CHANNEL_OPTIONS = channels ?? DEFAULT_CHANNEL_OPTIONS;
 
   const STATUS_TABS: StatusTab[] = [
     { key: undefined, label: "Все", count: statusCounts.total },

@@ -38,6 +38,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
     ],
     "site": ["site_webhook_url", "tilda_secret"],
     "mail": ["mail_host", "mail_port", "mail_user", "mail_password"],
+    "auto_lead": ["auto_lead_enabled", "auto_lead_stage", "auto_lead_channels"],
 }
 
 ALL_KEYS = [k for keys in INTEGRATION_KEYS.values() for k in keys]

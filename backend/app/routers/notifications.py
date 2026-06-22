@@ -8,6 +8,8 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.notification import NotificationListResponse, NotificationResponse
 from app.services.notifications_service import (
+    clear_all_notifications,
+    delete_notification,
     list_notifications,
     mark_all_read,
     mark_as_read,
@@ -44,3 +46,24 @@ async def read_all_notifications(
 ) -> dict:
     count = await mark_all_read(db=db)
     return {"marked": count}
+
+
+@router.delete("/")
+async def clear_notifications(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    count = await clear_all_notifications(db=db)
+    return {"deleted": count}
+
+
+@router.delete("/{notification_id}")
+async def remove_notification(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    ok = await delete_notification(db=db, notification_id=notification_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"deleted": True}

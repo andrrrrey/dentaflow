@@ -9,9 +9,10 @@ interface Props {
   communicationId: string;
   channel: string;
   botChatId: string | null;
+  fill?: boolean;
 }
 
-export default function ChatBox({ communicationId, channel, botChatId }: Props) {
+export default function ChatBox({ communicationId, channel, botChatId, fill }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -53,14 +54,13 @@ export default function ChatBox({ communicationId, channel, botChatId }: Props) 
 
   return (
     <div
-      className="rounded-[16px] flex flex-col"
+      className={`rounded-[16px] flex flex-col ${fill ? "h-full min-h-0" : ""}`}
       style={{
         background: "rgba(255,255,255,0.80)",
         backdropFilter: "blur(18px)",
         border: "1px solid rgba(255,255,255,0.85)",
         boxShadow: "0 4px 18px rgba(120,140,180,0.10)",
-        minHeight: 200,
-        maxHeight: 420,
+        ...(fill ? {} : { minHeight: 200, maxHeight: 420 }),
       }}
     >
       {/* Header */}

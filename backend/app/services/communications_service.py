@@ -142,6 +142,21 @@ async def delete_communication(
     return True
 
 
+CHAT_CHANNELS = ("telegram", "max")
+
+
+async def get_unread_chats_count(db: AsyncSession) -> int:
+    """Count new inbound messages from chat channels (Telegram / Max-VK)."""
+    count = (await db.execute(
+        select(func.count(Communication.id)).where(
+            Communication.channel.in_(CHAT_CHANNELS),
+            Communication.status == "new",
+            Communication.direction == "inbound",
+        )
+    )).scalar() or 0
+    return count
+
+
 async def get_communication_stats(
     db: AsyncSession,
 ) -> dict[str, int]:

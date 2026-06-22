@@ -35,6 +35,20 @@ export function useRenameStage() {
   });
 }
 
+export function useCreateStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ label, color }: { label: string; color?: string }) => {
+      const { data } = await api.post("/pipeline-stages/", { label, color });
+      return data as PipelineStage;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pipeline-stages"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}
+
 export function useResetPipelineStages() {
   const qc = useQueryClient();
   return useMutation({

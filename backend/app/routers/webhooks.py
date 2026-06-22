@@ -267,6 +267,14 @@ async def novofon_webhook(
         "priority": comm.priority,
     })
 
+    from app.services.deals_service import maybe_create_auto_lead
+    await maybe_create_auto_lead(
+        channel="novofon",
+        patient_id=patient_id,
+        title=f"Лид: {phone}" if phone else "Лид: звонок",
+        notes=comm.content,
+    )
+
     logger.info("Novofon webhook processed: comm_id=%s", comm.id)
     return {"status": "ok", "communication_id": str(comm.id)}
 
@@ -641,6 +649,17 @@ async def site_form_webhook(
             "type": comm.type,
             "priority": comm.priority,
         })
+
+        from app.services.deals_service import maybe_create_auto_lead
+        lead_title = f"Лид: {name}, {phone}" if (name and phone) else (
+            f"Лид: {name}" if name else f"Заявка с сайта{f', {phone}' if phone else ''}"
+        )
+        await maybe_create_auto_lead(
+            channel="site",
+            patient_id=patient_id,
+            title=lead_title,
+            notes=content,
+        )
 
         logger.info("Site form saved: comm_id=%s phone=%s name=%s", comm.id, phone, name)
 

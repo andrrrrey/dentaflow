@@ -48,3 +48,16 @@ export async function sendCommunicationReply(id: string, text: string): Promise<
   const { data } = await api.post<BotMessage>(`/communications/${id}/reply`, { text });
   return data;
 }
+
+export function useUnreadChatsCount() {
+  return useQuery<{ unread: number }>({
+    queryKey: ["unread-chats-count"],
+    queryFn: async () => {
+      const { data } = await api.get<{ unread: number }>("/communications/unread-chats-count");
+      return data;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+}

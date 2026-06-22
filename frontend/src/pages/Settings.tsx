@@ -16,6 +16,8 @@ import {
   useDeleteKbFile,
 } from "../api/integrations";
 import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
+import { usePipelineStages } from "../api/pipelineStages";
+import { GitBranch } from "lucide-react";
 
 /* ---------- helpers ---------- */
 
@@ -599,6 +601,100 @@ function IntegrationCard({
   );
 }
 
+/* ---------- Auto-lead card ---------- */
+
+const LEAD_CHANNELS: { key: string; label: string }[] = [
+  { key: "site", label: "Сайт" },
+  { key: "novofon", label: "Телефония" },
+  { key: "telegram", label: "Telegram" },
+  { key: "max", label: "Max/VK" },
+];
+
+function AutoLeadCard({
+  values,
+  onChange,
+}: {
+  values: Record<string, string>;
+  onChange: (key: string, val: string) => void;
+}) {
+  const { data: stages } = usePipelineStages();
+  const enabled = values["auto_lead_enabled"] === "true";
+  const selected = (values["auto_lead_channels"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allSelected = LEAD_CHANNELS.every((c) => selected.includes(c.key));
+
+  function toggleChannel(key: string) {
+    const set = new Set(selected);
+    if (set.has(key)) set.delete(key);
+    else set.add(key);
+    onChange("auto_lead_channels", Array.from(set).join(","));
+  }
+
+  function toggleAll() {
+    if (allSelected) onChange("auto_lead_channels", "");
+    else onChange("auto_lead_channels", LEAD_CHANNELS.map((c) => c.key).join(","));
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <GitBranch size={16} className="text-accent2" />
+        <div>
+          <h3 className="text-[14px] font-bold text-text-main">Автосоздание лидов из заявок</h3>
+          <p className="text-[11.5px] text-text-muted mt-[2px]">Заявки из выбранных каналов автоматически попадают в воронку CRM</p>
+        </div>
+      </div>
+
+      <Toggle
+        label="Автоматически создавать лиды в воронке"
+        checked={enabled}
+        onChange={(v) => onChange("auto_lead_enabled", v ? "true" : "")}
+      />
+
+      {enabled && (
+        <div className="flex flex-col gap-3 mt-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Этап воронки для новых лидов</label>
+            <select
+              value={values["auto_lead_stage"] ?? "new"}
+              onChange={(e) => onChange("auto_lead_stage", e.target.value)}
+              className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none w-full cursor-pointer"
+              style={{ border: "1px solid rgba(91,76,245,0.15)", background: "rgba(255,255,255,0.5)" }}
+            >
+              {(stages ?? []).map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Каналы</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 cursor-pointer text-[13px] font-semibold text-text-main">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-[#5B4CF5] w-4 h-4" />
+                Все каналы
+              </label>
+              {LEAD_CHANNELS.map((c) => (
+                <label key={c.key} className="flex items-center gap-2 cursor-pointer text-[13px] text-text-main pl-4">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(c.key)}
+                    onChange={() => toggleChannel(c.key)}
+                    className="accent-[#5B4CF5] w-4 h-4"
+                  />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /* ---------- Integrations tab ---------- */
 
 function IntegrationsTab() {
@@ -649,6 +745,8 @@ function IntegrationsTab() {
 
   return (
     <div className="flex flex-col gap-[14px]">
+      <AutoLeadCard values={values} onChange={handleChange} />
+
       <KnowledgeBaseCard />
 
       {INTEGRATIONS.map((cfg) => (

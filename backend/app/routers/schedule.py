@@ -47,7 +47,12 @@ async def list_schedule(
     dt_to = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=timezone.utc)
 
     stmt = (
-        select(Appointment, Patient.name.label("patient_name"), Patient.phone.label("patient_phone"))
+        select(
+            Appointment,
+            Patient.name.label("patient_name"),
+            Patient.phone.label("patient_phone"),
+            Patient.birth_date.label("patient_birth_date"),
+        )
         .outerjoin(Patient, Appointment.patient_id == Patient.id)
         .where(Appointment.scheduled_at >= dt_from, Appointment.scheduled_at <= dt_to)
         .order_by(Appointment.scheduled_at)
@@ -70,6 +75,7 @@ async def list_schedule(
             "patient_id": str(appt.patient_id) if appt.patient_id else None,
             "patient_name": row.patient_name or "Неизвестный пациент",
             "patient_phone": row.patient_phone,
+            "patient_birth_date": str(row.patient_birth_date) if row.patient_birth_date else None,
             "doctor_name": appt.doctor_name,
             "doctor_id": appt.doctor_id,
             "service": appt.service,
@@ -156,6 +162,7 @@ class UpdateAppointmentBody(BaseModel):
     doctor_name: str | None = None
     doctor_id: str | None = None
     comment: str | None = None
+    scheduled_at: datetime | None = None
 
 
 @router.patch("/{appointment_id}")
@@ -180,14 +187,31 @@ async def update_appointment(
         appt.doctor_id = body.doctor_id
     if body.comment is not None:
         appt.comment = body.comment
+    if body.scheduled_at is not None:
+        # scheduled_at is stored as naive wall-clock time (matching the create path),
+        # so drop any tzinfo without shifting the clock value.
+        new_dt = body.scheduled_at
+        if new_dt.tzinfo is not None:
+            new_dt = new_dt.replace(tzinfo=None)
+        appt.scheduled_at = new_dt
 
     await db.commit()
 
+    is_remote = bool(appt.external_id) and not appt.external_id.startswith("local-")
+
     # Sync comment back to 1Denta if applicable
-    if body.comment is not None and appt.external_id and not appt.external_id.startswith("local-"):
+    if body.comment is not None and is_remote:
         try:
             svc = await OneDentaService.from_db(db)
             await svc.update_visit(appt.external_id, comment=body.comment)
+        except Exception:
+            pass  # best-effort
+
+    # Sync new date/time back to 1Denta if applicable
+    if body.scheduled_at is not None and is_remote:
+        try:
+            svc = await OneDentaService.from_db(db)
+            await svc.update_visit(appt.external_id, dt=appt.scheduled_at.isoformat())
         except Exception:
             pass  # best-effort
 
@@ -197,6 +221,7 @@ async def update_appointment(
         "doctor_name": appt.doctor_name,
         "doctor_id": appt.doctor_id,
         "comment": appt.comment,
+        "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
     }
 
 
