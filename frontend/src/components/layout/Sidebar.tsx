@@ -7,6 +7,7 @@ import {
   ClipboardList,
   BarChart3,
   MessageSquare,
+  MessageCircle,
   GitBranch,
   Users,
   UserCheck,
@@ -22,6 +23,7 @@ import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
 import { useActiveTaskCount } from "../../api/tasks";
+import { useUnreadChatsCount } from "../../api/communications";
 
 /* ---------- types ---------- */
 
@@ -58,9 +60,14 @@ const sections: NavSection[] = [
   {
     items: [
       {
-        label: "Коммуникации",
+        label: "Заявки",
         icon: <MessageSquare size={15} />,
         path: "/communications",
+      },
+      {
+        label: "Коммуникация",
+        icon: <MessageCircle size={15} />,
+        path: "/chats",
       },
       {
         label: "Воронка",
@@ -103,6 +110,14 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const { data: taskCountData } = useActiveTaskCount();
   const activeTaskCount = taskCountData?.active ?? 0;
+  const { data: unreadChatsData } = useUnreadChatsCount();
+  const unreadChats = unreadChatsData?.unread ?? 0;
+
+  // Per-path live badge counts (tasks + unread chats).
+  const badgeCountByPath: Record<string, number> = {
+    "/tasks": activeTaskCount,
+    "/chats": unreadChats,
+  };
 
   const displayName = authUser?.name ?? _currentUser?.name ?? "Пользователь";
   const displayRole = authUser?.role ?? _currentUser?.role ?? "";
@@ -205,19 +220,19 @@ export default function Sidebar({ currentUser: _currentUser }: SidebarProps) {
                 >
                   <span className="w-5 flex items-center justify-center flex-shrink-0 relative">
                     {item.icon}
-                    {collapsed && item.path === "/tasks" && activeTaskCount > 0 && (
+                    {collapsed && (badgeCountByPath[item.path] ?? 0) > 0 && (
                       <span className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full bg-danger flex items-center justify-center text-white text-[8px] font-bold leading-none">
-                        {activeTaskCount > 99 ? "99" : activeTaskCount}
+                        {badgeCountByPath[item.path] > 99 ? "99" : badgeCountByPath[item.path]}
                       </span>
                     )}
                   </span>
                   {!collapsed && <span className="truncate">{item.label}</span>}
-                  {!collapsed && item.path === "/tasks" && activeTaskCount > 0 && (
+                  {!collapsed && (badgeCountByPath[item.path] ?? 0) > 0 && (
                     <span className="ml-auto text-white text-[10px] font-bold px-[6px] py-[2px] rounded-[10px] bg-danger">
-                      {activeTaskCount > 99 ? "99+" : activeTaskCount}
+                      {badgeCountByPath[item.path] > 99 ? "99+" : badgeCountByPath[item.path]}
                     </span>
                   )}
-                  {!collapsed && item.path !== "/tasks" && item.badge && (
+                  {!collapsed && !(item.path in badgeCountByPath) && item.badge && (
                     <span
                       className={clsx(
                         "ml-auto text-white text-[10px] font-bold px-[6px] py-[2px] rounded-[10px]",

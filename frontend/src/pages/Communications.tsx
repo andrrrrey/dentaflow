@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useCommunications } from "../api/communications";
 import { useCommunicationsStore } from "../store/communicationsStore";
 import FeedFilters from "../components/communications/FeedFilters";
-import ChatBox from "../components/communications/ChatBox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import {
@@ -127,95 +126,6 @@ function getPreview(item: CommunicationItem): string {
     return `Звонок (${duration})`;
   }
   return item.content ?? "Нет содержания";
-}
-
-/* ── AI banner ── */
-
-function AiCommunicationsBanner({ items }: { items: CommunicationItem[] }) {
-  if (items.length === 0) return null;
-
-  const newItems = items.filter((i) => i.status === "new");
-  const urgentItems = items.filter((i) => i.priority === "urgent");
-  const unansweredItems = items.filter((i) => {
-    if (i.status !== "new" || i.direction !== "inbound") return false;
-    const mins = (Date.now() - new Date(i.created_at).getTime()) / 60_000;
-    return mins > 10;
-  });
-  const siteItems = items.filter((i) => i.channel === "site" && i.status === "new");
-
-  const insights: { emoji: string; text: string }[] = [];
-
-  if (unansweredItems.length > 0) {
-    insights.push({
-      emoji: "⏰",
-      text: `${unansweredItems.length} обращений без ответа более 10 минут — ответьте как можно скорее, пока клиент не ушёл`,
-    });
-  }
-  if (urgentItems.length > 0) {
-    insights.push({
-      emoji: "🚨",
-      text: `${urgentItems.length} срочных обращений — требуют немедленного внимания менеджера`,
-    });
-  }
-  if (siteItems.length > 0) {
-    insights.push({
-      emoji: "🌐",
-      text: `${siteItems.length} новых заявок с сайта — проверьте услугу и перезвоните пациентам`,
-    });
-  }
-  if (newItems.length > 5) {
-    insights.push({
-      emoji: "📋",
-      text: `${newItems.length} необработанных обращений — распределите между менеджерами и возьмите в работу`,
-    });
-  }
-  if (insights.length === 0) {
-    insights.push({
-      emoji: "✅",
-      text: `${items.length} обращений в очереди, всё под контролем — продолжайте в том же темпе`,
-    });
-  }
-
-  return (
-    <div
-      className="rounded-[18px] p-[20px_24px] relative overflow-hidden mb-4"
-      style={{
-        background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
-        boxShadow: "0 4px 24px rgba(91,76,245,0.22)",
-      }}
-    >
-      <div
-        className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-15"
-        style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }}
-      />
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles size={15} className="text-white" />
-            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">
-              ИИ-Ассистент · Коммуникации
-            </span>
-          </div>
-          <span className="text-[13px] font-bold text-white/90">
-            {items.length} обращений
-          </span>
-        </div>
-        <div className="flex flex-col gap-[8px]">
-          {insights.slice(0, 3).map((ins, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
-              <span
-                className="text-[13.5px] text-white font-medium leading-snug"
-                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}
-              >
-                {ins.text}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /* ── Left: compact list row ── */
@@ -454,18 +364,17 @@ function DetailPanel({
           {closeMutation.isPending ? "Закрываем..." : "Закрыть заявку"}
         </button>
       )}
-
-      {/* Chat with client */}
-      {(item.channel === "telegram" || item.channel === "max") && (
-        <ChatBox
-          communicationId={item.id}
-          channel={item.channel}
-          botChatId={item.bot_chat_id}
-        />
-      )}
     </div>
   );
 }
+
+/* ── Channels shown on the "Заявки" page (Сайт + Телефония only) ── */
+const REQUEST_CHANNELS = ["site", "novofon"];
+const REQUEST_CHANNEL_OPTIONS = [
+  { key: undefined as string | undefined, label: "Все каналы" },
+  { key: "novofon", label: "Телефония" },
+  { key: "site", label: "Сайт" },
+];
 
 /* ── Page ── */
 
@@ -504,11 +413,11 @@ export default function Communications() {
     priority: filters.priority,
   });
 
-  const items = data?.items ?? [];
+  const items = (data?.items ?? []).filter((i) => REQUEST_CHANNELS.includes(i.channel));
   const selected = selectedId ? items.find((i) => i.id === selectedId) ?? null : null;
 
   const statusCounts = useMemo(() => {
-    const allItems = allData?.items ?? [];
+    const allItems = (allData?.items ?? []).filter((i) => REQUEST_CHANNELS.includes(i.channel));
     const counts: Record<string, number> = { total: allItems.length, new: 0, in_progress: 0, done: 0 };
     for (const item of allItems) {
       if (item.status in counts) {
@@ -520,16 +429,14 @@ export default function Communications() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
-      {!isLoading && <AiCommunicationsBanner items={items} />}
-
-      <FeedFilters statusCounts={statusCounts} />
+      <FeedFilters statusCounts={statusCounts} channels={REQUEST_CHANNEL_OPTIONS} />
 
       {isLoading && (
         <div className="text-center py-12 text-text-muted text-[13px]">Загрузка...</div>
       )}
 
       {!isLoading && items.length === 0 && (
-        <div className="text-center py-12 text-text-muted text-[13px]">Нет обращений</div>
+        <div className="text-center py-12 text-text-muted text-[13px]">Нет заявок</div>
       )}
 
       {!isLoading && items.length > 0 && (

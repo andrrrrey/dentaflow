@@ -70,6 +70,8 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
 
   const [commentValue, setCommentValue] = useState<string>("");
   const [commentSaved, setCommentSaved] = useState(false);
+  const [editingDateTime, setEditingDateTime] = useState(false);
+  const [dateTimeValue, setDateTimeValue] = useState<string>("");
   const [discountInput, setDiscountInput] = useState<string>("");
   const [paymentInput, setPaymentInput] = useState<string>("");
   const [paid, setPaid] = useState(false);
@@ -96,6 +98,8 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
       );
       setPaid(false);
       setCommentSaved(false);
+      setEditingDateTime(false);
+      setDateTimeValue(appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : "");
     }
   }, [appt?.id]); // reset only when appointment changes
 
@@ -140,6 +144,15 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
           setTimeout(() => setCommentSaved(false), 2000);
         },
       }
+    );
+  }
+
+  function handleDateTimeSave() {
+    if (!dateTimeValue) return;
+    const scheduled_at = dateTimeValue.length === 16 ? `${dateTimeValue}:00` : dateTimeValue;
+    updateAppt.mutate(
+      { appointmentId, scheduled_at },
+      { onSuccess: () => setEditingDateTime(false) }
     );
   }
 
@@ -247,7 +260,49 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
             <div className="flex flex-col gap-2">
               <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Запись</div>
               <div className="grid grid-cols-2 gap-3">
-                <InfoRow icon={<Calendar size={13} />} label="Дата и время" value={formatDt(appt.scheduled_at)} />
+                {/* Date & time — editable */}
+                <div className="flex items-start gap-2">
+                  <span className="text-text-muted flex-shrink-0 mt-[1px]"><Calendar size={13} /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] text-text-muted">Дата и время</div>
+                    {editingDateTime ? (
+                      <div className="flex flex-col gap-1 mt-1">
+                        <input
+                          type="datetime-local"
+                          value={dateTimeValue}
+                          onChange={(e) => setDateTimeValue(e.target.value)}
+                          className="w-full text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                          style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleDateTimeSave}
+                            disabled={updateAppt.isPending}
+                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer disabled:opacity-50"
+                            style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
+                          >
+                            {updateAppt.isPending ? "Сохранение..." : "Сохранить"}
+                          </button>
+                          <button
+                            onClick={() => { setEditingDateTime(false); setDateTimeValue(appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : ""); }}
+                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer"
+                            style={{ background: "rgba(120,130,150,0.1)", color: "#64748b" }}
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-text-muted">Синхронизируется с 1Denta</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setEditingDateTime(true)}
+                        className="text-[12.5px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0 text-left"
+                      >
+                        {formatDt(appt.scheduled_at)}
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <InfoRow icon={<Clock size={13} />} label="Длительность" value={`${appt.duration_min} мин`} />
                 <InfoRow icon={<MapPin size={13} />} label="Филиал" value={appt.branch || "—"} />
               </div>

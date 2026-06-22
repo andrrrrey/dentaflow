@@ -20,6 +20,7 @@ from app.services.communications_service import (
     get_communication_by_id,
     get_communication_stats,
     get_communications,
+    get_unread_chats_count,
     update_communication,
 )
 
@@ -33,6 +34,15 @@ async def communications_stats(
 ) -> dict[str, int]:
     """Return communication counts by status."""
     return await get_communication_stats(db)
+
+
+@router.get("/unread-chats-count")
+async def unread_chats_count(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """Return count of new inbound messages from chat channels (Telegram / Max-VK)."""
+    return {"unread": await get_unread_chats_count(db)}
 
 
 @router.get("/", response_model=CommunicationListResponse)

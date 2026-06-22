@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check, Sparkles } from "lucide-react";
+import { Plus, X, List, LayoutGrid, ChevronLeft, ChevronRight, Trash2, GripVertical, Pencil, Check } from "lucide-react";
 import CreatePatientModal from "../components/patient/CreatePatientModal";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
@@ -10,7 +10,7 @@ import DealModal from "../components/pipeline/DealModal";
 import AddDealModal from "../components/pipeline/AddDealModal";
 import { usePipelineQuery, useMoveDeal, useDeleteDeal } from "../api/deals";
 import { usePatientsByStage } from "../api/pipeline_ext";
-import { usePipelineStages, useRenameStage, useReorderStages, useDeleteStage, useDeleteStageDeals } from "../api/pipelineStages";
+import { usePipelineStages, useRenameStage, useReorderStages, useDeleteStage, useDeleteStageDeals, useCreateStage } from "../api/pipelineStages";
 import { useStaff } from "../api/staff";
 import type { PipelineStage } from "../api/pipelineStages";
 import type { DealResponse, PipelineResponse, StageColumn } from "../api/deals";
@@ -100,74 +100,6 @@ function PatientsSidePanel({ stage, onClose }: { stage: string; onClose: () => v
   );
 }
 
-/* -- AI banner -- */
-
-function AiPipelineBanner({ pipeline }: { pipeline: PipelineResponse }) {
-  const allDeals = pipeline.stages.flatMap((s) => s.deals);
-  const total = allDeals.length;
-  if (total === 0) return null;
-
-  const stuckStage = pipeline.stages
-    .filter((s) => !["closed_won", "closed_lost"].includes(s.stage))
-    .sort((a, b) => b.count - a.count)[0];
-
-  const hotLeads = allDeals.filter((d) => d.stage === "negotiation" || d.stage === "scheduled").length;
-  const lostDeals = allDeals.filter((d) => d.stage === "closed_lost").length;
-  const newDeals = allDeals.filter((d) => d.stage === "new").length;
-  const totalValue = pipeline.total_pipeline_value;
-
-  const valueStr = totalValue >= 1_000_000
-    ? (totalValue / 1_000_000).toFixed(1) + " млн ₽"
-    : Math.round(totalValue).toLocaleString("ru-RU") + " ₽";
-
-  const insights: { emoji: string; text: string }[] = [];
-
-  if (stuckStage && stuckStage.count >= 3) {
-    insights.push({ emoji: "⏳", text: `${stuckStage.count} сделок застряли на «${stuckStage.label}» — назначьте ответственного и поставьте дедлайн` });
-  }
-  if (hotLeads > 0) {
-    insights.push({ emoji: "🔥", text: `${hotLeads} горячих лида на этапе переговоров — позвоните сегодня, пока интерес не остыл` });
-  }
-  if (lostDeals > 0) {
-    insights.push({ emoji: "💌", text: `${lostDeals} отказов за период — запустите реактивационную рассылку со спецпредложением` });
-  }
-  if (newDeals > 5) {
-    insights.push({ emoji: "📋", text: `${newDeals} необработанных заявок в «Новые» — распределите между врачами как можно скорее` });
-  }
-  if (insights.length === 0) {
-    insights.push({ emoji: "✅", text: `${total} сделок в воронке, показатели в норме — продолжайте в том же темпе` });
-  }
-
-  return (
-    <div
-      className="rounded-[18px] p-[20px_24px] relative overflow-hidden"
-      style={{
-        background: "linear-gradient(135deg, #6c5ce7 0%, #3b7fed 60%, #00c9a7 100%)",
-        boxShadow: "0 4px 24px rgba(91,76,245,0.22)",
-      }}
-    >
-      <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-15" style={{ background: "radial-gradient(circle, #fff 0%, transparent 70%)" }} />
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles size={15} className="text-white" />
-            <span className="text-[11px] font-bold tracking-wider text-white/80 uppercase">ИИ-Ассистент · Воронка пациентов</span>
-          </div>
-          <span className="text-[13px] font-bold text-white/90">{valueStr}</span>
-        </div>
-        <div className="flex flex-col gap-[8px]">
-          {insights.slice(0, 3).map((ins, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className="text-[15px] leading-tight flex-shrink-0">{ins.emoji}</span>
-              <span className="text-[13.5px] text-white font-medium leading-snug" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.2)" }}>{ins.text}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* -- Component -- */
 
 export default function Pipeline() {
@@ -180,6 +112,8 @@ export default function Pipeline() {
   const reorderStagesMutation = useReorderStages();
   const deleteStageMutation = useDeleteStage();
   const deleteStageDealsMutation = useDeleteStageDeals();
+  const createStageMutation = useCreateStage();
+  const [newStageLabel, setNewStageLabel] = useState("");
   const [confirmDeleteStageId, setConfirmDeleteStageId] = useState<string | null>(null);
   const [confirmDeleteDealsStageId, setConfirmDeleteDealsStageId] = useState<string | null>(null);
   const { data: staffData } = useStaff();
@@ -304,7 +238,7 @@ export default function Pipeline() {
                     {stage.label}
                   </span>
                 )}
-                {!stage.is_system && editingStageId !== stage.id && (
+                {editingStageId !== stage.id && (
                   <>
                     <button
                       onClick={() => handleRenameStage(stage.id, stage.label)}
@@ -374,11 +308,39 @@ export default function Pipeline() {
               </div>
             ))}
           </div>
+
+          {/* Add new stage */}
+          <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+            <input
+              value={newStageLabel}
+              onChange={(e) => setNewStageLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newStageLabel.trim()) {
+                  createStageMutation.mutate({ label: newStageLabel.trim() });
+                  setNewStageLabel("");
+                }
+              }}
+              placeholder="Название нового этапа"
+              className="flex-1 text-[12.5px] font-medium rounded-[8px] px-3 py-[7px] outline-none"
+              style={{ border: "1px solid rgba(91,76,245,0.2)", background: "rgba(255,255,255,0.9)" }}
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!newStageLabel.trim() || createStageMutation.isPending}
+              onClick={() => {
+                if (newStageLabel.trim()) {
+                  createStageMutation.mutate({ label: newStageLabel.trim() });
+                  setNewStageLabel("");
+                }
+              }}
+            >
+              <Plus size={13} className="mr-[4px]" />
+              Добавить этап
+            </Button>
+          </div>
         </Card>
       )}
-
-      {/* AI pipeline banner */}
-      {!pipelineLoading && <AiPipelineBanner pipeline={filteredPipeline} />}
 
       {/* CRM view */}
       <div className="flex flex-col gap-[14px] min-h-0">

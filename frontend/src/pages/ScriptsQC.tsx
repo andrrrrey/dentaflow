@@ -382,9 +382,9 @@ export default function ScriptsQC() {
             Нет загруженных скриптов. Нажмите «Загрузить скрипт» чтобы добавить первый.
           </div>
         ) : (
-          <div className="flex gap-5">
+          <div className="flex flex-col lg:flex-row gap-5 overflow-hidden">
             {/* Scripts table */}
-            <div className="w-[420px] flex-shrink-0">
+            <div className="w-full lg:w-[420px] lg:flex-shrink-0 overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
