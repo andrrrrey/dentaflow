@@ -1,6 +1,9 @@
 import uuid
+from datetime import datetime, timezone
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -65,6 +68,29 @@ async def list_patients(
         visits_max=visits_max,
         page=page,
         limit=limit,
+    )
+
+
+@router.get("/export")
+async def export_patients_xlsx(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Export the entire patient base (contacts, 1Denta card, visit history and
+    purchased services) as a single .xlsx workbook.
+
+    Declared before ``/{patient_id}`` so FastAPI does not try to parse the
+    literal ``export`` as a UUID.
+    """
+    from app.services.patients_export import export_all_patients_xlsx
+
+    data = await export_all_patients_xlsx(db)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"patients_{stamp}.xlsx"
+    return StreamingResponse(
+        BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

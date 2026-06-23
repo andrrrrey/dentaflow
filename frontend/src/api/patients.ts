@@ -223,6 +223,19 @@ export function useCreatePatient() {
   });
 }
 
+export async function downloadAllPatientsExcel() {
+  const res = await api.get("/patients/export", { responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement("a");
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.download = `patients_${stamp}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export function usePatientSearch(search: string) {
   return useQuery<PatientListResponse>({
     queryKey: ["patients-search", search],
