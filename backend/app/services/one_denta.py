@@ -7,7 +7,7 @@ Token is cached module-level and refreshed automatically on 401.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -23,6 +23,31 @@ logger = logging.getLogger(__name__)
 _cached_token: str | None = None
 _auth_locked_until: float = 0.0  # epoch seconds; don't retry auth before this time
 _resources_cache: dict = {"data": [], "ts": None}  # 10-min in-process cache
+
+
+def parse_birthdate(value: str | None) -> date | None:
+    """Parse a 1Denta birth date which may arrive as DD.MM.YYYY or ISO.
+
+    1Denta returns ``birthDate`` as "30.08.2021" (DD.MM.YYYY) but other
+    sources may use ISO ("2021-08-30"), so try several formats.
+    """
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    # ISO datetime (e.g. "2021-08-30T00:00:00")
+    if "T" in raw:
+        try:
+            return datetime.fromisoformat(raw).date()
+        except ValueError:
+            pass
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d.%m.%y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _utcnow() -> datetime:

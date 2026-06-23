@@ -52,6 +52,7 @@ async def list_schedule(
             Patient.name.label("patient_name"),
             Patient.phone.label("patient_phone"),
             Patient.birth_date.label("patient_birth_date"),
+            Patient.raw_1denta_data.label("patient_raw"),
         )
         .outerjoin(Patient, Appointment.patient_id == Patient.id)
         .where(Appointment.scheduled_at >= dt_from, Appointment.scheduled_at <= dt_to)
@@ -66,16 +67,23 @@ async def list_schedule(
     result = await db.execute(stmt)
     rows = result.all()
 
+    from app.services.one_denta import parse_birthdate
+
     appointments = []
     for row in rows:
         appt = row.Appointment
+        # Prefer the dedicated column; fall back to the raw 1Denta birthDate
+        # (DD.MM.YYYY) for patients whose column hasn't been backfilled yet.
+        bd = row.patient_birth_date
+        if bd is None and isinstance(row.patient_raw, dict):
+            bd = parse_birthdate(row.patient_raw.get("birth_date") or row.patient_raw.get("birthDate"))
         appointments.append({
             "id": str(appt.id),
             "external_id": appt.external_id,
             "patient_id": str(appt.patient_id) if appt.patient_id else None,
             "patient_name": row.patient_name or "Неизвестный пациент",
             "patient_phone": row.patient_phone,
-            "patient_birth_date": str(row.patient_birth_date) if row.patient_birth_date else None,
+            "patient_birth_date": bd.isoformat() if bd else None,
             "doctor_name": appt.doctor_name,
             "doctor_id": appt.doctor_id,
             "service": appt.service,
@@ -139,13 +147,20 @@ async def get_appointment_detail(
         "patient": None,
     }
     if patient:
+        from app.services.one_denta import parse_birthdate
+        bd = patient.birth_date
+        if bd is None and isinstance(patient.raw_1denta_data, dict):
+            bd = parse_birthdate(
+                patient.raw_1denta_data.get("birth_date")
+                or patient.raw_1denta_data.get("birthDate")
+            )
         response["patient"] = {
             "id": str(patient.id),
             "external_id": patient.external_id,
             "name": patient.name,
             "phone": patient.phone,
             "email": patient.email,
-            "birth_date": str(patient.birth_date) if patient.birth_date else None,
+            "birth_date": bd.isoformat() if bd else None,
             "source_channel": patient.source_channel,
             "is_new_patient": patient.is_new_patient,
             "last_visit_at": patient.last_visit_at.strftime("%Y-%m-%dT%H:%M:%S") if patient.last_visit_at else None,
