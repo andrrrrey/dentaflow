@@ -70,12 +70,10 @@ async def _sync_patients_async() -> dict:
                     synced_at=now_utc,
                 )
                 if p_data.get("birth_date"):
-                    try:
-                        patient.birth_date = datetime.strptime(
-                            p_data["birth_date"], "%Y-%m-%d"
-                        ).date()
-                    except ValueError:
-                        pass
+                    from app.services.one_denta import parse_birthdate
+                    bd = parse_birthdate(p_data["birth_date"])
+                    if bd is not None:
+                        patient.birth_date = bd
                 if p_data.get("last_visit_at"):
                     try:
                         patient.last_visit_at = datetime.fromisoformat(
@@ -96,6 +94,11 @@ async def _sync_patients_async() -> dict:
                 patient.patient_type = patient_type_val or patient.patient_type
                 patient.raw_1denta_data = p_data
                 patient.synced_at = now_utc
+                if not patient.birth_date and p_data.get("birth_date"):
+                    from app.services.one_denta import parse_birthdate
+                    bd = parse_birthdate(p_data["birth_date"])
+                    if bd is not None:
+                        patient.birth_date = bd
                 if p_data.get("last_visit_at"):
                     try:
                         patient.last_visit_at = datetime.fromisoformat(
