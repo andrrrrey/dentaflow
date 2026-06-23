@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X, Plus, ListChecks } from "lucide-react";
+import { Search, User, ChevronLeft, ChevronRight, RefreshCw, SlidersHorizontal, X, Plus, ListChecks, Download } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import Pill from "../components/ui/Pill";
-import { usePatients, type PatientFilters } from "../api/patients";
+import { usePatients, downloadAllPatientsExcel, type PatientFilters } from "../api/patients";
 import { useSyncSchedule } from "../api/schedule";
 import CreatePatientModal from "../components/patient/CreatePatientModal";
 import SegmentsPanel from "../components/patient/SegmentsPanel";
@@ -46,7 +46,20 @@ export default function Patients() {
   const [showCreate, setShowCreate] = useState(false);
   const [showSegments, setShowSegments] = useState(false);
   const [activeSegment, setActiveSegment] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const navigate = useNavigate();
+
+  async function handleExport() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await downloadAllPatientsExcel();
+    } catch {
+      alert("Не удалось выгрузить базу пациентов. Попробуйте ещё раз.");
+    } finally {
+      setExporting(false);
+    }
+  }
   const syncMutation = useSyncSchedule();
 
   const [filters, setFilters] = useState<PatientFilters>({});
@@ -100,6 +113,14 @@ export default function Patients() {
           style={{ background: showSegments ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
           <ListChecks size={14} />
           Списки
+        </button>
+
+        {/* Export full base */}
+        <button onClick={handleExport} disabled={exporting}
+          className="flex items-center gap-[6px] px-3 py-[10px] rounded-[14px] border-none cursor-pointer transition-colors flex-shrink-0 text-[11px] font-semibold disabled:opacity-50"
+          style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+          <Download size={13} className={exporting ? "animate-pulse" : ""} />
+          {exporting ? "Готовим…" : "Скачать базу"}
         </button>
 
         {/* Sync */}
