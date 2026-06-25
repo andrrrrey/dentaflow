@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Loader2, Play, Send, Trash2, Plus } from "lucide-react";
+import { Loader2, Play, Send, Trash2, Plus, Mic, Square } from "lucide-react";
 import {
   useTtsVoices,
   useTtsTest,
@@ -13,6 +13,7 @@ import {
   useAddScriptCorrection,
   useDeleteScriptCorrection,
 } from "../api/aicalling";
+import { useVoiceDialog, type VoiceState, type VoiceMsg } from "../hooks/useVoiceDialog";
 
 type Tab = "dialog" | "tts" | "scripts";
 
@@ -52,6 +53,36 @@ function pcmBase64ToWavUrl(base64: string, sampleRate = 8000): string {
 
   return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
 }
+
+/* Общий список реплик для текстового и голосового режима. */
+function Transcript({ messages, empty }: { messages: ChatLike[]; empty: string }) {
+  return (
+    <div className="flex flex-col gap-2 min-h-[200px] max-h-[420px] overflow-y-auto p-2 rounded-xl bg-[rgba(91,76,245,0.04)]">
+      {messages.length === 0 && (
+        <div className="text-[12px] text-text-muted m-auto text-center px-4">{empty}</div>
+      )}
+      {messages.map((m, i) => (
+        <div
+          key={i}
+          className={`max-w-[80%] px-3 py-2 rounded-xl text-[13px] ${
+            m.role === "user"
+              ? "self-end bg-accent2 text-white"
+              : m.role === "system"
+                ? "self-center bg-transparent text-text-muted text-[11px]"
+                : "self-start bg-white border border-[rgba(91,76,245,0.12)]"
+          }`}
+        >
+          {m.text}
+          {m.role === "robot" && m.meta && (
+            <div className="text-[10px] text-text-muted mt-1">{m.meta}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ChatLike { role: "robot" | "user" | "system"; text: string; meta?: string; }
 
 /* ---------- Тест TTS ---------- */
 
@@ -153,19 +184,36 @@ function TtsTab() {
   );
 }
 
+/* ---------- Тест диалога: общий заголовок режима ---------- */
+
+const VOICE_STATE_LABEL: Record<VoiceState, string> = {
+  idle: "Не активно",
+  connecting: "Подключение…",
+  listening: "🎙 Слушаю…",
+  processing: "⏳ Обработка…",
+  speaking: "🔊 Говорит ИИ…",
+};
+
 /* ---------- Тест диалога ---------- */
 
-interface ChatMsg { role: "robot" | "user"; text: string; node?: string; phase_label?: string; }
-
 function DialogTab() {
+  const [mode, setMode] = useState<"text" | "voice">("text");
+
+  // --- текстовый режим ---
   const startMut = useDialogStart();
   const turnMut = useDialogTurn();
   const deleteMut = useDialogDeleteSession();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [messages, setMessages] = useState<ChatLike[]>([]);
   const [phaseLabel, setPhaseLabel] = useState("");
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // --- голосовой режим ---
+  const voice = useVoiceDialog();
+  const { data: voices } = useTtsVoices();
+  const [vVoice, setVVoice] = useState("alena");
+  const [vSpeed, setVSpeed] = useState("1.0");
 
   async function handleStart() {
     setError(null);
@@ -173,7 +221,7 @@ function DialogTab() {
     try {
       const res = await startMut.mutateAsync({ session_id: id });
       setSessionId(id);
-      setMessages([{ role: "robot", text: res.robot_text, node: res.node, phase_label: res.phase_label }]);
+      setMessages([{ role: "robot", text: res.robot_text, meta: res.node }]);
       setPhaseLabel(res.phase_label);
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || "Ошибка запуска");
@@ -187,7 +235,7 @@ function DialogTab() {
     setMessages((m) => [...m, { role: "user", text: userText }]);
     try {
       const res = await turnMut.mutateAsync({ session_id: sessionId, user_text: userText });
-      setMessages((m) => [...m, { role: "robot", text: res.robot_text, node: res.node, phase_label: res.phase_label }]);
+      setMessages((m) => [...m, { role: "robot", text: res.robot_text, meta: res.node }]);
       setPhaseLabel(res.phase_label);
     } catch (e: any) {
       setError(e?.response?.data?.detail || e?.message || "Ошибка обработки");
@@ -202,44 +250,93 @@ function DialogTab() {
     setError(null);
   }
 
+  function switchMode(next: "text" | "voice") {
+    if (next === mode) return;
+    // покидаем активную сессию текущего режима
+    if (mode === "voice") voice.stop();
+    else if (sessionId) handleReset();
+    setMode(next);
+  }
+
+  const voiceActive = voice.state !== "idle";
+
   return (
     <Card className="max-w-[640px]">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-[13px] font-semibold">
-          Скрипт v2.0{phaseLabel && <span className="ml-2 text-text-muted">· фаза: {phaseLabel}</span>}
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-[3px] p-1 rounded-lg bg-[rgba(91,76,245,0.07)]">
+            {(["text", "voice"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => switchMode(m)}
+                className={`px-3 py-[5px] rounded-md text-[12px] font-semibold border-none transition-all ${
+                  mode === m ? "bg-white text-accent2 shadow-sm" : "text-text-muted bg-transparent cursor-pointer"
+                }`}
+              >
+                {m === "text" ? "Текст" : "Голос"}
+              </button>
+            ))}
+          </div>
+          <div className="text-[12px] text-text-muted">
+            Скрипт v2.0
+            {mode === "text" && phaseLabel && <span className="ml-1">· фаза: {phaseLabel}</span>}
+            {mode === "voice" && voice.phaseLabel && <span className="ml-1">· фаза: {voice.phaseLabel}</span>}
+            {mode === "voice" && <span className="ml-1">· {VOICE_STATE_LABEL[voice.state]}</span>}
+          </div>
         </div>
-        {sessionId ? (
-          <Button variant="ghost" onClick={handleReset}>Сбросить</Button>
+
+        {mode === "text" ? (
+          sessionId ? (
+            <Button variant="ghost" onClick={handleReset}>Сбросить</Button>
+          ) : (
+            <Button onClick={handleStart} disabled={startMut.isPending}>
+              {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+              Начать диалог
+            </Button>
+          )
+        ) : voiceActive ? (
+          <Button variant="ghost" onClick={() => voice.stop()}>
+            <Square size={14} /> Завершить
+          </Button>
         ) : (
-          <Button onClick={handleStart} disabled={startMut.isPending}>
-            {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-            Начать диалог
+          <Button onClick={() => voice.start({ voice: vVoice, speed: parseFloat(vSpeed) })} disabled={voice.state === "connecting"}>
+            {voice.state === "connecting" ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
+            Начать голосом
           </Button>
         )}
       </div>
 
-      <div className="flex flex-col gap-2 min-h-[200px] max-h-[420px] overflow-y-auto p-2 rounded-xl bg-[rgba(91,76,245,0.04)]">
-        {messages.length === 0 && (
-          <div className="text-[12px] text-text-muted m-auto">Нажмите «Начать диалог», чтобы протестировать алгоритм скрипта v2.0.</div>
-        )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[80%] px-3 py-2 rounded-xl text-[13px] ${
-              m.role === "robot"
-                ? "self-start bg-white border border-[rgba(91,76,245,0.12)]"
-                : "self-end bg-accent2 text-white"
-            }`}
-          >
-            {m.text}
-            {m.role === "robot" && m.node && (
-              <div className="text-[10px] text-text-muted mt-1">node: {m.node}</div>
-            )}
+      {mode === "voice" && !voiceActive && (
+        <div className="grid grid-cols-2 gap-3 mb-3 max-w-[360px]">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-text-muted">Голос</label>
+            <select value={vVoice} onChange={(e) => setVVoice(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none">
+              {(voices ?? [{ id: "alena", roles: [] }]).map((v) => (
+                <option key={v.id} value={v.id}>{v.id}</option>
+              ))}
+            </select>
           </div>
-        ))}
-      </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-text-muted">Скорость</label>
+            <select value={vSpeed} onChange={(e) => setVSpeed(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none">
+              {["0.8", "1.0", "1.2", "1.5"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
-      {sessionId && (
+      <Transcript
+        messages={mode === "text" ? messages : (voice.messages as VoiceMsg[] as ChatLike[])}
+        empty={
+          mode === "text"
+            ? "Нажмите «Начать диалог», чтобы протестировать алгоритм скрипта v2.0."
+            : "Нажмите «Начать голосом», разрешите доступ к микрофону и говорите."
+        }
+      />
+
+      {mode === "text" && sessionId && (
         <div className="flex items-center gap-2 mt-3">
           <input
             value={input}
@@ -253,7 +350,10 @@ function DialogTab() {
           </Button>
         </div>
       )}
-      {error && <div className="text-[12px] text-[#f44b6e] mt-2">{error}</div>}
+
+      {(error || voice.error) && (
+        <div className="text-[12px] text-[#f44b6e] mt-2">{mode === "text" ? error : voice.error}</div>
+      )}
     </Card>
   );
 }
