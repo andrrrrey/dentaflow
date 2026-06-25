@@ -1,0 +1,3 @@
+aicallrobot.futuguru.com {
+    reverse_proxy ai-robot:8000
+}

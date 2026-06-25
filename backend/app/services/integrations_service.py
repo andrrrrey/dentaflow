@@ -21,6 +21,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
     "novofon": ["novofon_api_key", "novofon_webhook_secret"],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
     "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
+    "yandex_speechkit": ["yandex_api_key", "yandex_folder_id"],
     "bots": ["bot_welcome_message", "bot_clinic_name"],
     "telegram": [
         "telegram_bot_token",
@@ -47,6 +48,7 @@ MASKED_KEYS = {
     "novofon_api_key", "novofon_webhook_secret",
     "one_denta_password",
     "openai_api_key",
+    "yandex_api_key",
     "telegram_bot_token", "telegram_webhook_secret",
     "max_bot_token",
     "tilda_secret",
@@ -115,6 +117,8 @@ async def check_connection(service: str, db: AsyncSession, webhook_url: str | No
             return await _check_one_denta(db)
         elif service == "openai":
             return await _check_openai(db)
+        elif service == "yandex_speechkit":
+            return await _check_yandex_speechkit(db)
         elif service == "telegram":
             return await _check_telegram(db)
         elif service == "max_vk":
@@ -243,6 +247,32 @@ async def _check_openai(db: AsyncSession) -> dict:
         if "model" in body and ("does not exist" in body or "not found" in body):
             return {"ok": False, "message": f"Модель «{model}» недоступна для аккаунта"}
         return {"ok": True, "message": "Подключено"}
+
+
+async def _check_yandex_speechkit(db: AsyncSession) -> dict:
+    api_key = await get_raw_value(db, "yandex_api_key")
+    folder_id = await get_raw_value(db, "yandex_folder_id")
+    if not api_key:
+        return {"ok": False, "message": "API-ключ не указан"}
+    if not folder_id:
+        return {"ok": False, "message": "Folder ID не указан"}
+
+    url = "https://tts.api.cloud.yandex.net:443/tts/v3/utteranceSynthesis"
+    body = {
+        "text": "тест",
+        "hints": [{"voice": "alena"}],
+        "output_audio_spec": {
+            "raw_audio": {"audio_encoding": "LINEAR16_PCM", "sample_rate_hertz": 8000}
+        },
+    }
+    headers = {"Authorization": f"Api-Key {api_key}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(url, headers=headers, json=body)
+        if resp.status_code == 200:
+            return {"ok": True, "message": "Подключено"}
+        if resp.status_code in (401, 403):
+            return {"ok": False, "message": "Неверный API-ключ или нет доступа к папке"}
+        return {"ok": False, "message": f"Ошибка API: {resp.status_code} — {resp.text[:200]}"}
 
 
 async def _check_telegram(db: AsyncSession) -> dict:

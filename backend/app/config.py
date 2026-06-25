@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     SITE_WEBHOOK_URL: str = ""
 
+    # AI-обзвон (aicallrobot) — отдельный сервис, к которому проксирует бэкенд.
+    AICALLROBOT_URL: str = "http://aicallrobot:8000"
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 

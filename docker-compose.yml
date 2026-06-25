@@ -22,6 +22,8 @@ services:
   backend:
     build: ./backend
     env_file: .env
+    environment:
+      AICALLROBOT_URL: http://aicallrobot:8000
     ports:
       - "8000:8000"
     depends_on:
@@ -30,6 +32,16 @@ services:
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  aicallrobot:
+    # ИИ обзвон (Тест TTS / Тест диалога / Скрипты диалога).
+    # API-ключи (Yandex SpeechKit, OpenAI) приходят из DentaFlow в рантайме.
+    build: ./aicallrobot
+    ports:
+      - "8001:8000"
+    volumes:
+      - aicallrobot_data:/app/data
+      - aicallrobot_kb:/app/knowledge_base
 
   celery-worker:
     build: ./backend
@@ -65,3 +77,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  aicallrobot_data:
+  aicallrobot_kb:

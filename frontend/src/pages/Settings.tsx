@@ -3,7 +3,7 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
-  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star,
+  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -413,6 +413,29 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "openai_model", label: "Модель (чат, подсказки, инсайты)", placeholder: "gpt-4o" },
       { key: "segment_ai_model", label: "Модель для анализа базы (списки пациентов)", placeholder: "gpt-4o-mini" },
       { key: "segment_ai_concurrency", label: "Параллелизм анализа базы", type: "number", placeholder: "15" },
+    ],
+  },
+  {
+    service: "yandex_speechkit",
+    title: "Yandex SpeechKit (ИИ обзвон)",
+    icon: <Phone size={15} />,
+    description: "Синтез речи (TTS) и распознавание для разделов «Тест TTS» и «Тест диалога»",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Где взять ключи:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>Создайте сервисный аккаунт в <b>Yandex Cloud</b> с ролью <code>ai.speechkit-tts.user</code> (и при необходимости ASR)</li>
+          <li>Создайте <b>API-ключ</b> для этого аккаунта и вставьте его ниже</li>
+          <li>Скопируйте <b>Folder ID</b> (идентификатор каталога) из консоли Yandex Cloud</li>
+        </ol>
+        <div className="mt-1 text-text-muted">
+          Классификация реплик в «Тест диалога» использует уже подключённый OpenAI (раздел выше).
+        </div>
+      </div>
+    ),
+    fields: [
+      { key: "yandex_api_key", label: "API Key", type: "password", placeholder: "AQVN..." },
+      { key: "yandex_folder_id", label: "Folder ID", placeholder: "b1g..." },
     ],
   },
   {

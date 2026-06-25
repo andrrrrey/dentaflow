@@ -1,0 +1,383 @@
+import { useMemo, useRef, useState } from "react";
+import Card from "../components/ui/Card";
+import Button from "../components/ui/Button";
+import { Loader2, Play, Send, Trash2, Plus } from "lucide-react";
+import {
+  useTtsVoices,
+  useTtsTest,
+  useDialogStart,
+  useDialogTurn,
+  useDialogDeleteSession,
+  useScenarios,
+  useScriptCorrections,
+  useAddScriptCorrection,
+  useDeleteScriptCorrection,
+} from "../api/aicalling";
+
+type Tab = "dialog" | "tts" | "scripts";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "dialog", label: "Тест диалога" },
+  { key: "tts", label: "Тест TTS" },
+  { key: "scripts", label: "Скрипты диалога" },
+];
+
+/* ---------- helpers ---------- */
+
+// Yandex SpeechKit отдаёт сырой LPCM (16-bit mono). Оборачиваем в WAV для плеера.
+function pcmBase64ToWavUrl(base64: string, sampleRate = 8000): string {
+  const binary = atob(base64);
+  const pcm = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) pcm[i] = binary.charCodeAt(i);
+
+  const buffer = new ArrayBuffer(44 + pcm.length);
+  const view = new DataView(buffer);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byteRate
+  view.setUint16(32, 2, true); // blockAlign
+  view.setUint16(34, 16, true); // bitsPerSample
+  writeStr(36, "data");
+  view.setUint32(40, pcm.length, true);
+  new Uint8Array(buffer, 44).set(pcm);
+
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
+
+/* ---------- Тест TTS ---------- */
+
+function TtsTab() {
+  const { data: voices } = useTtsVoices();
+  const ttsTest = useTtsTest();
+  const [text, setText] = useState("Здравствуйте! Это тест синтеза речи.");
+  const [voice, setVoice] = useState("");
+  const [role, setRole] = useState("");
+  const [speed, setSpeed] = useState("1.0");
+  const [error, setError] = useState<string | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  const selectedVoice = useMemo(
+    () => voices?.find((v) => v.id === (voice || voices?.[0]?.id)),
+    [voices, voice],
+  );
+
+  async function handleSpeak() {
+    setError(null);
+    try {
+      const res = await ttsTest.mutateAsync({
+        text,
+        voice: voice || undefined,
+        role: role || undefined,
+        speed: parseFloat(speed) || undefined,
+      });
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      const url = pcmBase64ToWavUrl(res.audio_base64, res.sample_rate);
+      audioUrlRef.current = url;
+      setAudioUrl(url);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Ошибка синтеза");
+    }
+  }
+
+  return (
+    <Card className="max-w-[640px]">
+      <div className="flex flex-col gap-3">
+        <label className="text-[12px] font-semibold text-text-muted">Текст</label>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          className="w-full rounded-xl border border-[rgba(91,76,245,0.18)] p-3 text-[13px] outline-none focus:border-accent2"
+        />
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[12px] font-semibold text-text-muted">Голос</label>
+            <select
+              value={voice}
+              onChange={(e) => { setVoice(e.target.value); setRole(""); }}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none"
+            >
+              {(voices ?? []).map((v) => (
+                <option key={v.id} value={v.id}>{v.id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[12px] font-semibold text-text-muted">Амплуа</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none"
+            >
+              <option value="">по умолчанию</option>
+              {(selectedVoice?.roles ?? []).map((r) => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[12px] font-semibold text-text-muted">Скорость</label>
+            <select
+              value={speed}
+              onChange={(e) => setSpeed(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none"
+            >
+              {["0.8", "1.0", "1.2", "1.5"].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button onClick={handleSpeak} disabled={ttsTest.isPending || !text.trim()}>
+            {ttsTest.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            Озвучить
+          </Button>
+          {audioUrl && <audio src={audioUrl} controls autoPlay className="h-9" />}
+        </div>
+        {error && <div className="text-[12px] text-[#f44b6e]">{error}</div>}
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- Тест диалога ---------- */
+
+interface ChatMsg { role: "robot" | "user"; text: string; node?: string; phase_label?: string; }
+
+function DialogTab() {
+  const startMut = useDialogStart();
+  const turnMut = useDialogTurn();
+  const deleteMut = useDialogDeleteSession();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [phaseLabel, setPhaseLabel] = useState("");
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleStart() {
+    setError(null);
+    const id = crypto.randomUUID();
+    try {
+      const res = await startMut.mutateAsync({ session_id: id });
+      setSessionId(id);
+      setMessages([{ role: "robot", text: res.robot_text, node: res.node, phase_label: res.phase_label }]);
+      setPhaseLabel(res.phase_label);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Ошибка запуска");
+    }
+  }
+
+  async function handleSend() {
+    if (!sessionId || !input.trim()) return;
+    const userText = input.trim();
+    setInput("");
+    setMessages((m) => [...m, { role: "user", text: userText }]);
+    try {
+      const res = await turnMut.mutateAsync({ session_id: sessionId, user_text: userText });
+      setMessages((m) => [...m, { role: "robot", text: res.robot_text, node: res.node, phase_label: res.phase_label }]);
+      setPhaseLabel(res.phase_label);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Ошибка обработки");
+    }
+  }
+
+  async function handleReset() {
+    if (sessionId) await deleteMut.mutateAsync(sessionId).catch(() => {});
+    setSessionId(null);
+    setMessages([]);
+    setPhaseLabel("");
+    setError(null);
+  }
+
+  return (
+    <Card className="max-w-[640px]">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[13px] font-semibold">
+          Скрипт v2.0{phaseLabel && <span className="ml-2 text-text-muted">· фаза: {phaseLabel}</span>}
+        </div>
+        {sessionId ? (
+          <Button variant="ghost" onClick={handleReset}>Сбросить</Button>
+        ) : (
+          <Button onClick={handleStart} disabled={startMut.isPending}>
+            {startMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+            Начать диалог
+          </Button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 min-h-[200px] max-h-[420px] overflow-y-auto p-2 rounded-xl bg-[rgba(91,76,245,0.04)]">
+        {messages.length === 0 && (
+          <div className="text-[12px] text-text-muted m-auto">Нажмите «Начать диалог», чтобы протестировать алгоритм скрипта v2.0.</div>
+        )}
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`max-w-[80%] px-3 py-2 rounded-xl text-[13px] ${
+              m.role === "robot"
+                ? "self-start bg-white border border-[rgba(91,76,245,0.12)]"
+                : "self-end bg-accent2 text-white"
+            }`}
+          >
+            {m.text}
+            {m.role === "robot" && m.node && (
+              <div className="text-[10px] text-text-muted mt-1">node: {m.node}</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {sessionId && (
+        <div className="flex items-center gap-2 mt-3">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            placeholder="Ваша реплика…"
+            className="flex-1 rounded-xl border border-[rgba(91,76,245,0.18)] p-2.5 text-[13px] outline-none focus:border-accent2"
+          />
+          <Button onClick={handleSend} disabled={turnMut.isPending || !input.trim()}>
+            {turnMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </Button>
+        </div>
+      )}
+      {error && <div className="text-[12px] text-[#f44b6e] mt-2">{error}</div>}
+    </Card>
+  );
+}
+
+/* ---------- Скрипты диалога ---------- */
+
+function ScriptsTab() {
+  const { data: scenarios } = useScenarios();
+  const { data: corrections } = useScriptCorrections();
+  const addMut = useAddScriptCorrection();
+  const delMut = useDeleteScriptCorrection();
+  const [trigger, setTrigger] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [phase, setPhase] = useState("any");
+
+  async function handleAdd() {
+    if (!trigger.trim() || !answer.trim()) return;
+    await addMut.mutateAsync({
+      trigger: trigger.trim(),
+      correct_answer: answer.trim(),
+      current_answer: "",
+      phase,
+      enabled: true,
+    });
+    setTrigger("");
+    setAnswer("");
+  }
+
+  return (
+    <div className="flex flex-col gap-[18px] max-w-[720px]">
+      <Card>
+        <h3 className="text-[14px] font-bold mb-2">Сценарии</h3>
+        <div className="flex flex-col gap-1.5">
+          {(scenarios ?? []).map((s) => (
+            <div key={s.id} className="text-[13px] flex items-center gap-2">
+              <span className="font-semibold">{s.name || s.id}</span>
+              {s.description && <span className="text-text-muted">— {s.description}</span>}
+            </div>
+          ))}
+          {(scenarios ?? []).length === 0 && (
+            <div className="text-[12px] text-text-muted">Сценарии не загружены.</div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <h3 className="text-[14px] font-bold mb-1">Правки скрипта</h3>
+        <p className="text-[11.5px] text-text-muted mb-3">
+          Реплики, которыми робот отвечает на конкретные фразы собеседника (настраиваются в рантайме).
+        </p>
+
+        <div className="grid grid-cols-[1fr_1fr_120px_auto] gap-2 mb-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-text-muted">Триггер (фраза собеседника)</label>
+            <input value={trigger} onChange={(e) => setTrigger(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-text-muted">Ответ робота</label>
+            <input value={answer} onChange={(e) => setAnswer(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-text-muted">Фаза</label>
+            <select value={phase} onChange={(e) => setPhase(e.target.value)}
+              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none">
+              <option value="any">любая</option>
+              <option value="secretary">Секретарь</option>
+              <option value="lpr_greeting">ЛПР (приветствие)</option>
+              <option value="lpr_main">ЛПР</option>
+              <option value="qualification">Квалификация</option>
+            </select>
+          </div>
+          <Button onClick={handleAdd} disabled={addMut.isPending || !trigger.trim() || !answer.trim()}>
+            {addMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Добавить
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          {(corrections ?? []).map((c) => (
+            <div key={c.id} className="flex items-center gap-2 text-[13px] p-2 rounded-xl bg-[rgba(91,76,245,0.04)]">
+              <span className="font-semibold">{c.trigger}</span>
+              <span className="text-text-muted">→ {c.correct_answer}</span>
+              <span className="ml-auto text-[10px] text-text-muted">{c.phase}</span>
+              <button onClick={() => delMut.mutate(c.id)} className="text-[#f44b6e] bg-transparent border-none cursor-pointer">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          {(corrections ?? []).length === 0 && (
+            <div className="text-[12px] text-text-muted">Правок пока нет.</div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------- page ---------- */
+
+export default function AiCalling() {
+  const [tab, setTab] = useState<Tab>("dialog");
+  return (
+    <div className="flex flex-col gap-[18px]">
+      <div className="flex gap-[3px] p-1 rounded-xl bg-[rgba(91,76,245,0.07)] w-fit">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-[6px] rounded-[9px] text-[12.5px] font-semibold transition-all border-none ${
+              tab === key
+                ? "bg-white text-accent2 shadow-[0_2px_8px_rgba(91,76,245,0.15)]"
+                : "text-text-muted bg-transparent cursor-pointer"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "dialog" && <DialogTab />}
+      {tab === "tts" && <TtsTab />}
+      {tab === "scripts" && <ScriptsTab />}
+    </div>
+  );
+}
