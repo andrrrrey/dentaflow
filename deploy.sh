@@ -25,9 +25,10 @@ git pull origin main
 # ── Backend ────────────────────────────────────────────
 if [ $FRONT_ONLY -eq 0 ]; then
   echo "→ Backend build (образ собирается один раз)..."
-  # Собираем образ один раз через backend, остальные сервисы используют тот же image
-  $COMPOSE build backend
-  $COMPOSE up -d --remove-orphans backend celery_worker celery_beat telegram_bot
+  # Собираем образ один раз через backend, остальные сервисы используют тот же image.
+  # aicallrobot (ИИ обзвон) — отдельный образ, собираем его явно.
+  $COMPOSE build backend aicallrobot
+  $COMPOSE up -d --remove-orphans aicallrobot backend celery_worker celery_beat telegram_bot
 fi
 
 # ── Frontend ───────────────────────────────────────────

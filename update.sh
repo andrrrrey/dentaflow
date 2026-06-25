@@ -18,12 +18,12 @@ git pull origin main
 
 # ── Бэкенд ────────────────────────────────────────
 if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
-  echo "→ Пересборка бэкенда..."
-  $COMPOSE build backend
+  echo "→ Пересборка бэкенда и aicallrobot (ИИ обзвон)..."
+  $COMPOSE build backend aicallrobot
 
-  echo "→ Запуск бэкенда и celery..."
+  echo "→ Запуск aicallrobot, бэкенда и celery..."
   $COMPOSE up -d --no-deps --remove-orphans --force-recreate \
-    backend celery_worker celery_worker_segments celery_beat
+    aicallrobot backend celery_worker celery_worker_segments celery_beat
 
   echo "→ Перезапуск nginx..."
   $COMPOSE restart nginx
