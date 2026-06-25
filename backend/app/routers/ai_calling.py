@@ -125,6 +125,23 @@ async def dialog_delete_session(
     return await _proxy("DELETE", f"/api/v1/ai/chat_v2/session/{session_id}")
 
 
+# ── Голосовой тест диалога: создание сессии (call_id для WebSocket) ──────────────
+
+@router.post("/calls/start")
+async def calls_start(
+    body: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    await _sync_credentials(db)
+    payload = {
+        "phone_number": (body or {}).get("phone_number", "dentaflow-owner"),
+        "scenario_id": (body or {}).get("scenario_id", "default"),
+        "algo_version": "v2",
+    }
+    return await _proxy("POST", "/api/v1/calls/start", json=payload)
+
+
 # ── Скрипты диалога ─────────────────────────────────────────────────────────────
 
 @router.get("/scenarios")
