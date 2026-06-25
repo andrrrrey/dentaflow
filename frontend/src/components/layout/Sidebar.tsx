@@ -18,6 +18,7 @@ import {
   CheckSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Phone,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuthStore } from "../../store/authStore";
@@ -88,6 +89,16 @@ const sections: NavSection[] = [
       { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports", hideForRoles: ["admin"] },
       { label: "Сотрудники", icon: <Users size={15} />, path: "/staff", hideForRoles: ["admin"] },
       { label: "Настройки", icon: <Settings size={15} />, path: "/settings", hideForRoles: ["admin"] },
+    ],
+  },
+  {
+    items: [
+      {
+        label: "ИИ обзвон",
+        icon: <Phone size={15} />,
+        path: "/ai-calling",
+        hideForRoles: ["manager", "admin", "marketer"],
+      },
     ],
   },
 ];

@@ -31,11 +31,24 @@ services:
     build: ./backend
     image: dentaflow-backend:latest
     env_file: .env
+    environment:
+      AICALLROBOT_URL: http://aicallrobot:8000
     depends_on:
       - postgres
       - redis
+      - aicallrobot
     restart: always
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+
+  aicallrobot:
+    # ИИ обзвон (Тест TTS / Тест диалога / Скрипты диалога).
+    # API-ключи (Yandex SpeechKit, OpenAI) приходят из DentaFlow в рантайме
+    # (POST /api/v1/runtime-credentials), .env этого сервиса не требуется.
+    build: ./aicallrobot
+    restart: always
+    volumes:
+      - aicallrobot_data:/app/data
+      - aicallrobot_kb:/app/knowledge_base
 
   celery_worker:
     image: dentaflow-backend:latest
@@ -99,3 +112,5 @@ volumes:
   certbot_data:
   frontend_dist:
   frontend_node_modules:    # cached node_modules for fast frontend builds
+  aicallrobot_data:
+  aicallrobot_kb:

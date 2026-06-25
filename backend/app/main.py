@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.routers import (
     ai,
+    ai_calling,
     auth,
     calls,
     communications,
@@ -86,6 +87,7 @@ app.include_router(calls.router)
 app.include_router(pipeline_ext.router)
 app.include_router(search.router)
 app.include_router(ai.router)
+app.include_router(ai_calling.router)
 app.include_router(staff.router)
 app.include_router(integrations.router)
 app.include_router(scripts.router)

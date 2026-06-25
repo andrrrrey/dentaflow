@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Робот — Панель управления</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --surface: #131829;
+  --surface2: #1a2035;
+  --border: #2a3050;
+  --accent: #4f8cff;
+  --accent2: #7c5cfc;
+  --green: #34d399;
+  --red: #f87171;
+  --orange: #fb923c;
+  --yellow: #fbbf24;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --radius: 12px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Manrope', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+.header {
+  background: linear-gradient(135deg, #131829 0%, #1a1040 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 20px 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.header .logo {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.header h1 { font-size: 18px; font-weight: 800; }
+.header .sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.header-nav { margin-left: auto; display: flex; gap: 12px; }
+.header-nav a {
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.header-nav a:hover { color: var(--text); border-color: var(--accent); }
+
+.tab-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 32px;
+  gap: 4px;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 16px 20px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-icon { font-size: 16px; }
+
+/* Режим /test — только раздел «Тест диалога» */
+.test-only .tab-bar,
+.test-only .header-nav { display: none; }
+.test-only #panel-knowledge { display: none; }
+
+.container { max-width: 960px; margin: 0 auto; padding: 28px 24px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  opacity: 0.7;
+}
+.card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.card .desc { font-size: 13px; color: var(--text2); margin-bottom: 18px; }
+
+textarea, input[type="text"] {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  padding: 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+label { display: block; font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-danger {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(248,113,113,0.3);
+}
+.btn-danger:hover { background: rgba(248, 113, 113, 0.25); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-green { background: rgba(52,211,153,0.15); color: var(--green); }
+.badge-red { background: rgba(248,113,113,0.15); color: var(--red); }
+.badge-orange { background: rgba(251,146,60,0.15); color: var(--orange); }
+.badge-gray { background: rgba(148,163,184,0.1); color: var(--text2); }
+.badge-blue { background: rgba(79,140,255,0.15); color: var(--accent); }
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 36px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(79,140,255,0.05);
+}
+.upload-zone .upload-icon { font-size: 36px; margin-bottom: 10px; }
+.upload-zone .upload-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.upload-zone .upload-sub { font-size: 12px; color: var(--text2); }
+.upload-formats { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.format-tag {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Documents table */
+.doc-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.doc-table th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-table td {
+  padding: 12px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(42,48,80,0.5);
+  vertical-align: middle;
+}
+.doc-table tr:last-child td { border-bottom: none; }
+.doc-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* Call history */
+.call-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.call-card:hover { border-color: var(--accent); }
+.call-card-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.call-phone { font-weight: 700; font-size: 14px; flex: 1; min-width: 120px; }
+.call-meta { font-size: 12px; color: var(--text2); }
+.call-summary-preview {
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 8px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.call-detail { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.call-card.expanded .call-detail { display: block; }
+.call-card.expanded .call-summary-preview { display: none; }
+
+/* Transcript */
+.transcript { background: var(--bg); border-radius: 8px; padding: 12px; max-height: 300px; overflow-y: auto; }
+.transcript-line { margin-bottom: 8px; font-size: 13px; line-height: 1.5; }
+.transcript-line .role {
+  font-weight: 700; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 2px;
+}
+.transcript-line.robot .role { color: var(--accent); }
+.transcript-line.client .role { color: var(--green); }
+
+/* Chat UI */
+.chat-messages {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 16px;
+  height: 340px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+.chat-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.chat-bubble.robot {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  margin-right: auto;
+}
+.chat-bubble.user {
+  background: linear-gradient(135deg, rgba(79,140,255,0.2), rgba(124,92,252,0.2));
+  border: 1px solid rgba(79,140,255,0.3);
+  margin-left: auto;
+  text-align: right;
+}
+.chat-bubble .intent-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: 4px;
+  color: var(--text2);
+}
+.chat-input-row { display: flex; gap: 10px; }
+.chat-input-row input { flex: 1; }
+.chat-kb-context {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  display: none;
+}
+.chat-kb-context.visible { display: block; }
+
+.toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  display: none;
+  z-index: 1000;
+  animation: slide-in 0.3s ease;
+}
+.toast.show { display: block; }
+.toast.success { border-color: var(--green); color: var(--green); }
+.toast.error { border-color: var(--red); color: var(--red); }
+@keyframes slide-in { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 14px; }
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 18px 0 10px;
+}
+</style>
+</head>
+<body>
+<script>
+// Режим «только Тест диалога» для страницы /test — помечаем как можно раньше,
+// чтобы CSS скрыл лишнее без мигания контента.
+if (location.pathname.replace(/\/+$/, '') === '/test') {
+  document.documentElement.classList.add('test-only');
+}
+</script>
+
+<div class="header">
+  <div class="logo">🤖</div>
+  <div>
+    <h1>AI-Робот</h1>
+    <div class="sub">Панель управления</div>
+  </div>
+  <nav class="header-nav">
+    <a href="/demo">Демо</a>
+    <a href="/admin" style="color:var(--accent);border-color:var(--accent)">Админ</a>
+  </nav>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('knowledge')" id="tab-knowledge">
+    <span class="tab-icon">📚</span> База знаний
+  </button>
+  <button class="tab-btn" onclick="switchTab('ai-config')" id="tab-ai-config">
+    <span class="tab-icon">⚙️</span> Настройки ИИ
+  </button>
+  <button class="tab-btn" onclick="switchTab('history')" id="tab-history">
+    <span class="tab-icon">📋</span> История звонков
+  </button>
+  <button class="tab-btn" onclick="switchTab('chat')" id="tab-chat">
+    <span class="tab-icon">🎙</span> Тест диалога
+  </button>
+  <button class="tab-btn" onclick="switchTab('corrections')" id="tab-corrections">
+    <span class="tab-icon">✏️</span> Правки скрипта
+  </button>
+  <button class="tab-btn" onclick="switchTab('voice')" id="tab-voice">
+    <span class="tab-icon">🔊</span> Тест TTS
+  </button>
+</div>
+
+<!-- TAB 1: Knowledge Base -->
+<div id="panel-knowledge" class="container">
+  <div class="card">
+    <h2>📚 База знаний</h2>
+    <p class="desc">Загружайте файлы (.txt, .pdf, .docx) — ИИ будет использовать их при ответах на вопросы клиентов.</p>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon">📁</div>
+      <div class="upload-title">Перетащите файл или нажмите для выбора</div>
+      <div class="upload-sub">ИИ автоматически разобьёт документ на фрагменты</div>
+      <div class="upload-formats">
+        <span class="format-tag">TXT</span>
+        <span class="format-tag">PDF</span>
+        <span class="format-tag">DOCX</span>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".txt,.pdf,.docx" style="display:none" onchange="uploadFile(this.files[0])">
+    <div id="uploadStatus" style="margin-top:12px; font-size:13px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Загруженные документы</h2>
+    <div id="docList"><div class="empty-state"><div class="icon">📂</div>Документов пока нет</div></div>
+  </div>
+</div>
+
+<!-- TAB 2: AI Config -->
+<div id="panel-ai-config" class="container" style="display:none">
+  <div class="card">
+    <h2>⚙️ Инструкции для ИИ</h2>
+    <p class="desc">Задайте поведение ИИ-ассистента: его роль, стиль общения и ограничения.</p>
+
+    <label>Системные инструкции</label>
+    <textarea id="systemPrompt" rows="7" placeholder="Ты — AI-ассистент по имени Татьяна..."></textarea>
+
+    <div class="section-label" style="margin-top:18px;">Контекст сценария</div>
+    <label>Описание продукта, цели звонка, особые инструкции</label>
+    <textarea id="scenarioContext" rows="5" placeholder="Например: Мы предлагаем CRM-систему для отдела продаж..."></textarea>
+
+    <div style="margin-top:18px; display:flex; gap:10px; align-items:center;">
+      <button class="btn" onclick="saveAIConfig()" id="saveBtn">💾 Сохранить</button>
+      <button class="btn" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);" onclick="loadAIConfig()">↺ Сбросить</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: Call History -->
+<div id="panel-history" class="container" style="display:none">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+    <h2 style="font-size:16px; font-weight:700;">История звонков</h2>
+    <button class="btn btn-sm" onclick="loadHistory()" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);">↺ Обновить</button>
+  </div>
+  <div id="filterRow" style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+    <button class="btn btn-sm active-filter" onclick="filterHistory('')" id="filter-all" style="background:var(--surface2);color:var(--text);border:1px solid var(--accent);">Все</button>
+    <button class="btn btn-sm" onclick="filterHistory('interested')" id="filter-interested" style="background:rgba(52,211,153,0.1);color:var(--green);border:1px solid rgba(52,211,153,0.3);">Заинтересован</button>
+    <button class="btn btn-sm" onclick="filterHistory('callback')" id="filter-callback" style="background:rgba(251,146,60,0.1);color:var(--orange);border:1px solid rgba(251,146,60,0.3);">Перезвонить</button>
+    <button class="btn btn-sm" onclick="filterHistory('not_interested')" id="filter-not_interested" style="background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.3);">Отказ</button>
+    <button class="btn btn-sm" onclick="filterHistory('unknown')" id="filter-unknown" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);">Неизвестно</button>
+  </div>
+  <div id="callList"><div class="empty-state"><div class="icon">📞</div>Завершённых звонков нет</div></div>
+</div>
+
+<!-- TAB 4: Voice Dialogue Test -->
+<div id="panel-chat" class="container" style="display:none">
+
+  <!-- Переключатель версии алгоритма -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
+    <span style="font-size:12px;color:var(--text2);flex-shrink:0;">Алгоритм:</span>
+    <button id="btn-mode-v2" class="btn" onclick="setChatMode('v2')" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:13px;padding:7px 16px;">🎙 Голосовой v2.0</button>
+  </div>
+
+  <!-- Голосовой диалог (v1 и v2 используют одну панель) -->
+  <div class="card" style="border-color:rgba(124,92,252,0.5);">
+    <h2 id="vd-panel-title">🎙 Голосовой диалог (Скрипт v2.0)</h2>
+    <p class="desc" id="vd-panel-desc">Голосовой режим. ИИ только классифицирует намерение — все ответы строго из скрипта продаж. Переход «Секретарь → ЛПР → Квалификация» автоматический.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
+      <div>
+        <label>Сценарий</label>
+        <select id="vd-scenario" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="default">default</option>
+        </select>
+      </div>
+      <div>
+        <label>Провайдер TTS</label>
+        <select id="vd-provider" onchange="vdUpdateVoiceList()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="yandex">Yandex SpeechKit</option>
+          <option value="salutespeech">SaluteSpeech (Sber)</option>
+        </select>
+      </div>
+      <div>
+        <label>Голос</label>
+        <select id="vd-voice" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="marina">Марина (жен.)</option>
+          <option value="dasha">Даша (жен.)</option>
+          <option value="lera">Лера (жен.)</option>
+          <option value="masha">Маша (жен.)</option>
+          <option value="julia">Юлия (жен.)</option>
+          <option value="alexander">Александр (муж.)</option>
+          <option value="kirill">Кирилл (муж.)</option>
+          <option value="anton">Антон (муж.)</option>
+          <option value="alena">Алёна (жен.)</option>
+          <option value="filipp">Филипп (муж.)</option>
+        </select>
+      </div>
+      <div id="vd-role-wrap">
+        <label>Амплуа</label>
+        <select id="vd-role" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="neutral">Нейтральная</option>
+          <option value="friendly">Дружелюбная</option>
+          <option value="good">Радостная</option>
+        </select>
+      </div>
+      <div id="vd-speed-wrap">
+        <label>Скорость</label>
+        <select id="vd-speed" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="0.8">Медленно (0.8)</option>
+          <option value="1.0" selected>Норма (1.0)</option>
+          <option value="1.2">Быстрее (1.2)</option>
+          <option value="1.5">Быстро (1.5)</option>
+        </select>
+      </div>
+      <div id="vd-samplerate-wrap" style="display:none">
+        <label>Частота дискретизации</label>
+        <select id="vd-samplerate" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="8000">8 000 Гц</option>
+          <option value="16000" selected>16 000 Гц</option>
+          <option value="24000">24 000 Гц</option>
+          <option value="48000">48 000 Гц</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div id="vd-indicator" style="width:10px;height:10px;border-radius:50%;background:var(--red);flex-shrink:0;transition:background 0.3s;"></div>
+        <span id="vd-mic-status" style="font-size:13px;color:var(--text2);">Не активно</span>
+      </div>
+      <button class="btn" id="vd-btn" style="margin-left:auto;" onclick="startVoiceSession()">🎙 Начать диалог</button>
+      <button class="btn" id="vd-switch-btn" style="display:none;background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="vdSwitchToLPR()">👤 ЛПР взял трубку</button>
+    </div>
+
+    <p class="desc" style="margin-bottom:12px;font-size:12px;display:none;" id="vd-hint-v1">
+      💡 Используются инструкции ИИ из «Настройки ИИ» и документы из «База знаний».
+    </p>
+
+    <!-- Индикатор фазы v2 -->
+    <div id="vd-phase-indicator" style="display:flex;padding:8px 14px;border-radius:8px;
+      font-size:12px;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.4);
+      margin-bottom:12px;gap:16px;align-items:center;flex-wrap:wrap;">
+      <span>Фаза: <strong id="vd-phase-label">—</strong></span>
+      <span id="vd-phase-node" style="color:var(--text2);font-size:11px;font-family:monospace;"></span>
+      <span id="vd-phase-qual" style="display:none;">Шаг: <strong id="vd-phase-qual-step">—</strong></span>
+    </div>
+
+    <div style="height:4px;background:var(--surface2);border-radius:2px;margin-bottom:16px;overflow:hidden;">
+      <div id="vd-level-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--accent));transition:width 0.06s;"></div>
+    </div>
+
+    <div id="vd-transcript" style="background:var(--bg);border-radius:10px;padding:16px;height:400px;overflow-y:auto;">
+      <div class="vd-placeholder" style="text-align:center;color:var(--text2);font-size:13px;padding-top:100px;">
+        Нажмите «Начать диалог» и говорите в микрофон
+      </div>
+    </div>
+
+    <div style="margin-top:8px;display:flex;justify-content:flex-end;">
+      <button onclick="vdClearTranscript()" style="background:none;border:none;color:var(--text2);font-size:12px;cursor:pointer;padding:4px 8px;">Очистить</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- TAB 5: TTS Test -->
+<div id="panel-voice" class="container" style="display:none">
+
+  <!-- Yandex SpeechKit TTS test -->
+  <div class="card">
+    <h2>🔊 Yandex SpeechKit — TTS</h2>
+    <p class="desc">Тест синтеза речи через Yandex Cloud.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div>
+        <label>Голос</label>
+        <select id="yx-voice" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="marina">Марина (жен.)</option>
+          <option value="dasha">Даша (жен.)</option>
+          <option value="lera">Лера (жен.)</option>
+          <option value="masha">Маша (жен.)</option>
+          <option value="julia">Юлия (жен.)</option>
+          <option value="alexander">Александр (муж.)</option>
+          <option value="kirill">Кирилл (муж.)</option>
+          <option value="anton">Антон (муж.)</option>
+          <option value="alena">Алёна (жен.)</option>
+          <option value="filipp">Филипп (муж.)</option>
+        </select>
+      </div>
+      <div>
+        <label>Скорость</label>
+        <select id="yx-speed" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="0.8">Медленно (0.8)</option>
+          <option value="1.0" selected>Норма (1.0)</option>
+          <option value="1.2">Быстрее (1.2)</option>
+          <option value="1.5">Быстро (1.5)</option>
+        </select>
+      </div>
+      <div>
+        <label>Амплуа</label>
+        <select id="yx-role" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="neutral">Нейтральная</option>
+          <option value="friendly">Дружелюбная</option>
+          <option value="good">Радостная</option>
+        </select>
+      </div>
+    </div>
+    <textarea id="yx-text" rows="3" placeholder="Текст для озвучивания...">Здравствуйте! Меня зовут Татьяна, я звоню от компании. Удобно ли вам сейчас говорить?</textarea>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn" id="yx-btn" onclick="testYandexTTS()">🔊 Озвучить (Yandex)</button>
+      <span id="yx-status" style="font-size:13px;color:var(--text2);"></span>
+    </div>
+    <audio id="yx-audio" controls style="width:100%;margin-top:12px;display:none;border-radius:8px;"></audio>
+  </div>
+
+  <!-- SaluteSpeech TTS test -->
+  <div class="card">
+    <h2>🔊 SaluteSpeech (Sber) — TTS</h2>
+    <p class="desc">Тест синтеза речи через Sber SmartSpeech. Требуется <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:12px;">SALUTESPEECH_AUTH_KEY</code>.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div>
+        <label>Голос</label>
+        <select id="ss-voice" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="Bys">Bys (муж.)</option>
+          <option value="Tur">Tur (муж.)</option>
+          <option value="Ost">Ost (муж.)</option>
+          <option value="Pon">Pon (муж.)</option>
+          <option value="Rma">Rma (муж.)</option>
+          <option value="Rnu">Rnu (муж.)</option>
+          <option value="May">May (жен.)</option>
+          <option value="Nec">Nec (жен.)</option>
+          <option value="Kin">Kin (жен.)</option>
+          <option value="Kma">Kma (жен.)</option>
+          <option value="Nur">Nur (жен.)</option>
+        </select>
+      </div>
+      <div>
+        <label>Частота дискретизации</label>
+        <select id="ss-rate" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;">
+          <option value="8000">8000 Гц (телефония)</option>
+          <option value="24000" selected>24000 Гц (рекомендуется)</option>
+        </select>
+      </div>
+    </div>
+    <textarea id="ss-text" rows="3" placeholder="Текст для озвучивания...">Здравствуйте! Меня зовут Татьяна, я звоню от компании. Удобно ли вам сейчас говорить?</textarea>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn" id="ss-btn" onclick="testSaluteSpeech()">🔊 Озвучить (SaluteSpeech)</button>
+      <span id="ss-status" style="font-size:13px;color:var(--text2);"></span>
+    </div>
+    <audio id="ss-audio" controls style="width:100%;margin-top:12px;display:none;border-radius:8px;"></audio>
+  </div>
+
+</div>
+
+<!-- TAB: Script corrections -->
+<div id="panel-corrections" class="container" style="display:none">
+  <div class="card">
+    <h2>✏️ Правки скрипта (Голосовой v2.0)</h2>
+    <p class="desc">
+      Дорабатывайте ответы робота без программирования. Каждая строка — это правка:
+      когда собеседник говорит фразу, похожую на <b>пример</b>, робот произнесёт
+      <b>правильный ответ</b> вместо текущего. Логика диалога при этом не меняется —
+      подменяется только реплика.
+    </p>
+
+    <div class="upload-zone" id="corrUploadZone" onclick="document.getElementById('corrFileInput').click()">
+      <div class="upload-icon">📁</div>
+      <div class="upload-title">Перетащите таблицу или нажмите для выбора</div>
+      <div class="upload-sub">3 столбца: пример фразы · что отвечает сейчас · правильный ответ (+ необязательная фаза)</div>
+      <div class="upload-formats">
+        <span class="format-tag">XLSX</span>
+        <span class="format-tag">CSV</span>
+      </div>
+    </div>
+    <input type="file" id="corrFileInput" accept=".xlsx,.csv" style="display:none" onchange="uploadCorrectionsFile(this.files[0])">
+
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <label style="font-size:13px;color:var(--text2);display:flex;align-items:center;gap:6px;">
+        Режим загрузки:
+        <select id="corrUploadMode" style="padding:6px 10px;">
+          <option value="append">Добавить к текущим</option>
+          <option value="replace">Заменить все</option>
+        </select>
+      </label>
+      <button class="btn btn-outline btn-sm" onclick="exportCorrections('xlsx')">⬇ Экспорт XLSX</button>
+      <button class="btn btn-outline btn-sm" onclick="exportCorrections('csv')">⬇ Экспорт CSV</button>
+      <span id="corrUploadStatus" style="font-size:13px;color:var(--text2);"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h2 style="margin:0;">Список правок</h2>
+      <button class="btn btn-sm" onclick="addCorrectionRow()">+ Добавить строку</button>
+    </div>
+    <div id="corrList" style="margin-top:16px;"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// === State ===
+let chatHistory = [];
+let allCalls = [];
+let activeFilter = '';
+let vdAlgoVersion = 'v2';
+
+// === Tab switching ===
+function switchTab(name) {
+  ['knowledge','ai-config','history','chat','voice','corrections'].forEach(t => {
+    document.getElementById('panel-' + t).style.display = 'none';
+    document.getElementById('tab-' + t).classList.remove('active');
+  });
+  document.getElementById('panel-' + name).style.display = 'block';
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'knowledge') loadDocuments();
+  if (name === 'ai-config') loadAIConfig();
+  if (name === 'history') loadHistory();
+  if (name === 'chat') vdLoadScenarios();
+  if (name === 'corrections') loadCorrections();
+}
+
+// === Toast ===
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// === Knowledge Base ===
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+});
+
+async function uploadFile(file) {
+  if (!file) return;
+  const status = document.getElementById('uploadStatus');
+  status.innerHTML = '<span class="spinner"></span> Загрузка: ' + file.name;
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch('/api/v1/knowledge/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Ошибка загрузки');
+    status.innerHTML = '<span style="color:var(--green)">✓ Загружено: ' + file.name + ' (' + data.chunks_count + ' фрагментов)</span>';
+    document.getElementById('fileInput').value = '';
+    loadDocuments();
+    showToast('Документ загружен: ' + data.chunks_count + ' фрагментов');
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">✗ ' + e.message + '</span>';
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadDocuments() {
+  try {
+    const res = await fetch('/api/v1/knowledge/documents');
+    const data = await res.json();
+    const docs = data.documents || [];
+    const container = document.getElementById('docList');
+
+    if (docs.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="icon">📂</div>Документов пока нет</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Файл</th>
+            <th>ID документа</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${docs.map(d => `
+            <tr>
+              <td>
+                <span style="font-weight:600">${escHtml(d.filename)}</span>
+              </td>
+              <td><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text2)">${d.doc_id.substring(0,8)}...</span></td>
+              <td style="text-align:right">
+                <button class="btn btn-sm btn-danger" onclick="deleteDocument('${d.doc_id}','${escHtml(d.filename)}')">Удалить</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function deleteDocument(docId, filename) {
+  if (!confirm('Удалить документ «' + filename + '»?')) return;
+  try {
+    const res = await fetch('/api/v1/knowledge/documents/' + docId, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Ошибка удаления');
+    showToast('Документ удалён');
+    loadDocuments();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// === Script corrections ===
+let corrItems = [];
+const PHASE_LABELS = {
+  any: 'Любая фаза', secretary: 'Секретарь', lpr_greeting: 'ЛПР: приветствие',
+  lpr_main: 'ЛПР: основная', qualification: 'Квалификация',
+};
+
+(function initCorrUpload() {
+  const zone = document.getElementById('corrUploadZone');
+  if (!zone) return;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) uploadCorrectionsFile(file);
+  });
+})();
+
+async function loadCorrections() {
+  try {
+    const res = await fetch('/api/v1/script-corrections');
+    const data = await res.json();
+    corrItems = data.corrections || [];
+    renderCorrections();
+  } catch(e) { console.error(e); }
+}
+
+function renderCorrections() {
+  const c = document.getElementById('corrList');
+  if (!corrItems.length) {
+    c.innerHTML = '<div class="empty-state"><div class="icon">📝</div>Правок пока нет. Загрузите таблицу или добавьте строку.</div>';
+    return;
+  }
+  const phaseOpts = (sel) => Object.entries(PHASE_LABELS)
+    .map(([v,l]) => `<option value="${v}"${v===sel?' selected':''}>${l}</option>`).join('');
+  c.innerHTML = corrItems.map((it, i) => `
+    <div class="card" style="padding:14px;margin-bottom:12px;background:var(--bg);" data-id="${it.id}">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;color:var(--text2);">1. Пример фразы собеседника</label>
+          <textarea rows="3" data-f="trigger" oninput="corrEdit(${i},'trigger',this.value)" style="width:100%;">${escHtml(it.trigger)}</textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);">2. Что отвечает сейчас</label>
+          <textarea rows="3" data-f="current_answer" oninput="corrEdit(${i},'current_answer',this.value)" style="width:100%;">${escHtml(it.current_answer)}</textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);">3. Правильный ответ</label>
+          <textarea rows="3" data-f="correct_answer" oninput="corrEdit(${i},'correct_answer',this.value)" style="width:100%;">${escHtml(it.correct_answer)}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+        <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;">
+          Фаза: <select onchange="corrEdit(${i},'phase',this.value)" style="padding:5px 8px;">${phaseOpts(it.phase)}</select>
+        </label>
+        <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" ${it.enabled?'checked':''} onchange="corrEdit(${i},'enabled',this.checked)"> Включена
+        </label>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-sm" onclick="saveCorrectionRow(${i})">Сохранить</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteCorrectionRow(${i})">Удалить</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function corrEdit(i, field, value) { corrItems[i][field] = value; }
+
+async function uploadCorrectionsFile(file) {
+  if (!file) return;
+  const status = document.getElementById('corrUploadStatus');
+  const mode = document.getElementById('corrUploadMode').value;
+  status.innerHTML = '<span class="spinner"></span> Загрузка: ' + escHtml(file.name);
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch('/api/v1/script-corrections/upload?mode=' + mode, { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Ошибка загрузки');
+    status.innerHTML = '<span style="color:var(--green)">✓ Загружено правок: ' + data.imported + '</span>';
+    document.getElementById('corrFileInput').value = '';
+    showToast('Загружено правок: ' + data.imported);
+    loadCorrections();
+  } catch(e) {
+    status.innerHTML = '<span style="color:var(--red)">✗ ' + e.message + '</span>';
+    showToast(e.message, 'error');
+  }
+}
+
+function addCorrectionRow() {
+  corrItems.unshift({ id: null, trigger: '', current_answer: '', correct_answer: '', phase: 'any', enabled: true });
+  renderCorrections();
+}
+
+async function saveCorrectionRow(i) {
+  const it = corrItems[i];
+  if (!it.trigger.trim() || !it.correct_answer.trim()) {
+    showToast('Заполните пример фразы и правильный ответ', 'error');
+    return;
+  }
+  const body = JSON.stringify({
+    trigger: it.trigger, current_answer: it.current_answer,
+    correct_answer: it.correct_answer, phase: it.phase, enabled: it.enabled,
+  });
+  try {
+    const url = it.id ? '/api/v1/script-corrections/' + it.id : '/api/v1/script-corrections';
+    const method = it.id ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.detail || 'Ошибка'); }
+    showToast('Правка сохранена');
+    loadCorrections();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function deleteCorrectionRow(i) {
+  const it = corrItems[i];
+  if (!it.id) { corrItems.splice(i, 1); renderCorrections(); return; }
+  if (!confirm('Удалить правку?')) return;
+  try {
+    const res = await fetch('/api/v1/script-corrections/' + it.id, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Ошибка удаления');
+    showToast('Правка удалена');
+    loadCorrections();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+function exportCorrections(fmt) {
+  window.open('/api/v1/script-corrections/export?fmt=' + fmt, '_blank');
+}
+
+// === AI Config ===
+async function loadAIConfig() {
+  try {
+    const res = await fetch('/api/v1/ai/config');
+    const data = await res.json();
+    document.getElementById('systemPrompt').value = data.system_prompt || '';
+    document.getElementById('scenarioContext').value = data.scenario_context || '';
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function saveAIConfig() {
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Сохранение...';
+
+  const body = {
+    system_prompt: document.getElementById('systemPrompt').value,
+    scenario_context: document.getElementById('scenarioContext').value,
+  };
+
+  try {
+    const res = await fetch('/api/v1/ai/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('Ошибка сохранения');
+    showToast('Настройки сохранены');
+  } catch(e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 Сохранить';
+  }
+}
+
+// === Call History ===
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/v1/calls/history');
+    const data = await res.json();
+    allCalls = data.calls || [];
+    renderCallList(allCalls);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function filterHistory(status) {
+  activeFilter = status;
+  // Update filter button styles
+  ['all','interested','callback','not_interested','unknown'].forEach(f => {
+    const btn = document.getElementById('filter-' + f);
+    if (btn) btn.style.borderColor = f === 'all' && status === '' ? 'var(--accent)' :
+      (f === status ? 'var(--accent)' : '');
+  });
+  const filtered = status ? allCalls.filter(c => c.client_status === status) : allCalls;
+  renderCallList(filtered);
+}
+
+function statusBadge(status) {
+  const map = {
+    interested: ['badge-green','Заинтересован'],
+    callback: ['badge-orange','Перезвонить'],
+    not_interested: ['badge-red','Отказ'],
+    unknown: ['badge-gray','Неизвестно'],
+  };
+  const [cls, label] = map[status] || ['badge-gray', status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function formatDuration(secs) {
+  if (!secs) return '0 сек';
+  if (secs < 60) return secs + ' сек';
+  return Math.floor(secs/60) + ' мин ' + (secs%60) + ' сек';
+}
+
+function formatDate(ts) {
+  if (!ts) return '';
+  return new Date(ts * 1000).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+
+function renderCallList(calls) {
+  const container = document.getElementById('callList');
+  if (!calls || calls.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📞</div>Нет звонков</div>';
+    return;
+  }
+  container.innerHTML = calls.map((c,i) => `
+    <div class="call-card" id="call-${i}" onclick="toggleCall(${i})">
+      <div class="call-card-header">
+        <div class="call-phone">📞 ${escHtml(c.phone || 'Неизвестно')}</div>
+        ${statusBadge(c.client_status)}
+        <span class="call-meta">${formatDuration(c.duration)}</span>
+        <span class="call-meta">${formatDate(c.started_at)}</span>
+        <span class="call-meta">${c.messages || 0} реплик</span>
+      </div>
+      ${c.summary ? `<div class="call-summary-preview">${escHtml(c.summary)}</div>` : ''}
+      <div class="call-detail">
+        ${c.summary ? `
+          <div style="margin-bottom:14px;">
+            <div class="section-label">Саммари</div>
+            <div style="font-size:13px; line-height:1.6; white-space:pre-wrap;">${escHtml(c.summary)}</div>
+          </div>
+        ` : ''}
+        <button class="btn btn-sm" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);margin-bottom:10px;"
+          onclick="event.stopPropagation();loadTranscript('${c.call_id}',${i})">
+          Показать транскрипт
+        </button>
+        <div id="transcript-${i}"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleCall(i) {
+  const card = document.getElementById('call-' + i);
+  card.classList.toggle('expanded');
+}
+
+async function loadTranscript(callId, i) {
+  const el = document.getElementById('transcript-' + i);
+  if (el.innerHTML) { el.innerHTML = ''; return; }
+  try {
+    const res = await fetch('/api/v1/calls/' + callId + '/summary');
+    const data = await res.json();
+    const lines = (data.transcript || []).map(e => `
+      <div class="transcript-line ${e.role}">
+        <div class="role">${e.role === 'robot' ? 'Робот' : 'Клиент'}</div>
+        <div>${escHtml(e.text || '')}</div>
+      </div>
+    `).join('');
+    el.innerHTML = lines ? `<div class="transcript">${lines}</div>` : '<div style="color:var(--text2);font-size:13px;">Транскрипт пуст</div>';
+  } catch(e) {
+    el.textContent = 'Ошибка загрузки: ' + e.message;
+  }
+}
+
+// === Chat Test ===
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('chatMessages').innerHTML = '<div style="text-align:center;color:var(--text2);font-size:13px;margin-top:60px;">Начните диалог — напишите сообщение</div>';
+  document.getElementById('kbContext').className = 'chat-kb-context';
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  const btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+
+  appendBubble('user', msg, '');
+  chatHistory.push({ role: 'user', text: msg });
+
+  const typingId = 'typing-' + Date.now();
+  const messagesEl = document.getElementById('chatMessages');
+  const typingEl = document.createElement('div');
+  typingEl.id = typingId;
+  typingEl.className = 'chat-bubble robot';
+  typingEl.innerHTML = '<span class="spinner"></span>';
+  messagesEl.appendChild(typingEl);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const res = await fetch('/api/v1/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, history: chatHistory.slice(-10) }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Ошибка');
+
+    document.getElementById(typingId)?.remove();
+
+    const intentLabel = { positive:'✅ positive', negative:'❌ negative', objection:'⚠️ objection', unknown:'❓ unknown' }[data.intent] || data.intent;
+    appendBubble('robot', data.response, intentLabel);
+    chatHistory.push({ role: 'assistant', text: data.response });
+
+    if (data.kb_context && data.kb_context.length > 0) {
+      const kbEl = document.getElementById('kbContext');
+      kbEl.className = 'chat-kb-context visible';
+      kbEl.textContent = '📚 Контекст из базы знаний:\n' + data.kb_context.join('\n---\n');
+    } else {
+      document.getElementById('kbContext').className = 'chat-kb-context';
+    }
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    appendBubble('robot', '⚠️ Ошибка: ' + e.message, '');
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+function appendBubble(role, text, intentLabel) {
+  const messagesEl = document.getElementById('chatMessages');
+  // Remove placeholder
+  const placeholder = messagesEl.querySelector('[style*="margin-top:60px"]');
+  if (placeholder) placeholder.remove();
+
+  const div = document.createElement('div');
+  div.className = 'chat-bubble ' + role;
+  div.innerHTML = escHtml(text).replace(/\n/g, '<br>') +
+    (intentLabel ? `<div class="intent-tag">${intentLabel}</div>` : '');
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// === Utils ===
+function escHtml(text) {
+  return String(text || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// === Chat Mode Toggle (v1 / v2) ===
+function setChatMode(mode) {
+  // Остался только скриптовый алгоритм v2.0
+  vdAlgoVersion = 'v2';
+  const v2btn = document.getElementById('btn-mode-v2');
+  const phaseBar = document.getElementById('vd-phase-indicator');
+  const hintV1 = document.getElementById('vd-hint-v1');
+  if (v2btn) {
+    v2btn.style.background = 'linear-gradient(135deg,#2563eb,#1d4ed8)';
+    v2btn.style.color = '#fff';
+  }
+  if (phaseBar) phaseBar.style.display = 'flex';
+  if (hintV1) hintV1.style.display = 'none';
+  document.getElementById('vd-panel-title').textContent = '🎙 Голосовой диалог (Скрипт v2.0)';
+  document.getElementById('vd-panel-desc').textContent = 'Голосовой режим. ИИ только классифицирует намерение — все ответы строго из скрипта продаж. Переход «Секретарь → ЛПР → Квалификация» автоматический.';
+}
+
+
+// === Voice Dialogue ===
+let vdWs = null;
+let vdCallId = null;
+let vdAudioCtx = null;
+let vdPlayCtx = null;
+let vdProcessor = null;
+let vdStream = null;
+let vdMicMuted = false;
+let vdNextPlayTime = 0;
+
+function vdSetState(state) {
+  const btn    = document.getElementById('vd-btn');
+  const dot    = document.getElementById('vd-indicator');
+  const lbl    = document.getElementById('vd-mic-status');
+  if (!btn) return;
+  if (state === 'idle') {
+    btn.textContent = '🎙 Начать диалог'; btn.onclick = startVoiceSession;
+    btn.disabled = false; btn.style.background = '';
+    dot.style.background = 'var(--red)'; dot.style.animation = '';
+    lbl.textContent = 'Не активно'; lbl.style.color = 'var(--text2)';
+  } else if (state === 'connecting') {
+    btn.textContent = '⏳ Подключение...'; btn.disabled = true;
+    dot.style.background = 'var(--orange)';
+    lbl.textContent = 'Подключение...';
+  } else if (state === 'listening') {
+    btn.textContent = '⏹ Завершить'; btn.onclick = stopVoiceSession;
+    btn.disabled = false; btn.style.background = 'var(--red)';
+    dot.style.background = 'var(--green)'; dot.style.animation = 'pulse 1s infinite';
+    lbl.textContent = '🎙 Слушаю...'; lbl.style.color = 'var(--green)';
+  } else if (state === 'processing') {
+    dot.style.background = 'var(--accent)'; dot.style.animation = 'pulse 0.5s infinite';
+    lbl.textContent = '⏳ Обработка...'; lbl.style.color = 'var(--accent)';
+  } else if (state === 'speaking') {
+    dot.style.background = 'var(--accent2)';
+    lbl.textContent = '🔊 Говорит ИИ...'; lbl.style.color = 'var(--accent2)';
+  }
+}
+
+async function startVoiceSession() {
+  vdSetState('connecting');
+  try {
+    const scenarioId = document.getElementById('vd-scenario').value;
+    const r = await fetch('/api/v1/calls/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ phone_number: 'demo-admin', scenario_id: scenarioId, algo_version: vdAlgoVersion }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json();
+    vdCallId = data.call_id;
+
+    if (data.greeting) {
+      vdAppendLine('robot', data.greeting, '');
+      await vdPlayTTSText(data.greeting);
+    }
+
+    const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+    vdWs = new WebSocket(`${wsProto}://${location.host}/ws/audio/${vdCallId}`);
+    vdWs.binaryType = 'arraybuffer';
+
+    vdWs.onopen = async () => {
+      // Send voice config before audio streaming
+      const vdProvider = document.getElementById('vd-provider').value;
+      const voiceConfig = {
+        action: 'config',
+        provider: vdProvider,
+        voice: document.getElementById('vd-voice').value,
+        role: document.getElementById('vd-role')?.value || 'neutral',
+        speed: parseFloat(document.getElementById('vd-speed')?.value || '1.0'),
+        sample_rate: vdProvider === 'salutespeech'
+          ? parseInt(document.getElementById('vd-samplerate')?.value || '16000')
+          : undefined,
+      };
+      vdWs.send(JSON.stringify(voiceConfig));
+      await vdStartMic();
+      vdSetState('listening');
+      document.getElementById('vd-switch-btn').style.display = '';
+    };
+
+    vdWs.onmessage = (ev) => {
+      if (ev.data instanceof ArrayBuffer) {
+        vdQueuePCMAudio(ev.data);
+      } else {
+        try { vdHandleMsg(JSON.parse(ev.data)); } catch(e) {}
+      }
+    };
+
+    vdWs.onclose = () => { vdStopMic(); vdSetState('idle'); };
+    vdWs.onerror = () => { vdAppendLine('system', '⚠️ Ошибка WebSocket', ''); stopVoiceSession(); };
+
+  } catch(e) {
+    vdAppendLine('system', '⚠️ ' + e.message, '');
+    vdSetState('idle');
+  }
+}
+
+function stopVoiceSession() {
+  if (vdWs) {
+    try { vdWs.send(JSON.stringify({ action: 'end' })); } catch(e) {}
+    vdWs.close(); vdWs = null;
+  }
+  vdStopMic();
+  vdSetState('idle');
+  document.getElementById('vd-switch-btn').style.display = 'none';
+}
+
+function vdSwitchToLPR() {
+  if (!vdWs || vdWs.readyState !== WebSocket.OPEN) return;
+  vdWs.send(JSON.stringify({ action: 'switch_to_lpr' }));
+  document.getElementById('vd-switch-btn').style.display = 'none';
+  vdAppendLine('system', '👤 Смена собеседника: ЛПР взял трубку', '');
+}
+
+function vdHandleMsg(msg) {
+  if (msg.type === 'recognition') {
+    vdAppendLine('user', msg.text, '');
+    vdSetState('processing');
+  } else if (msg.type === 'intent') {
+    const labels = { positive: '✅ позитив', negative: '❌ негатив', objection: '⚠️ возражение', unknown: '❓ неизвестно' };
+    const metas = document.querySelectorAll('#vd-transcript .vd-user-meta');
+    if (metas.length) metas[metas.length - 1].textContent = labels[msg.intent] || msg.intent;
+  } else if (msg.type === 'response') {
+    const metaText = vdAlgoVersion === 'v2'
+      ? (msg.intent ? `${msg.intent}` : '')
+      : (msg.step ? `шаг: ${msg.step}` : '');
+    vdAppendLine('robot', msg.text, metaText);
+    vdSetState('speaking');
+  } else if (msg.type === 'interrupt') {
+    vdSetState('listening');
+  } else if (msg.type === 'step_changed') {
+    vdAppendLine('system', `🔄 Шаг изменён на: ${msg.step}`, '');
+  } else if (msg.type === 'phase') {
+    const label = document.getElementById('vd-phase-label');
+    const node  = document.getElementById('vd-phase-node');
+    const qual  = document.getElementById('vd-phase-qual');
+    const qstep = document.getElementById('vd-phase-qual-step');
+    if (label) label.textContent = msg.phase_label || msg.phase || '—';
+    if (node)  node.textContent = msg.node ? '· ' + msg.node : '';
+    if (qual && qstep) {
+      qual.style.display = msg.phase === 'qualification' ? '' : 'none';
+      qstep.textContent = msg.qual_step ?? '—';
+    }
+  }
+}
+
+async function vdStartMic() {
+  vdStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+  });
+  vdAudioCtx = new AudioContext({ sampleRate: 8000 });
+  const source = vdAudioCtx.createMediaStreamSource(vdStream);
+  vdProcessor = vdAudioCtx.createScriptProcessor(1024, 1, 1);
+  vdProcessor.onaudioprocess = (e) => {
+    if (vdMicMuted || !vdWs || vdWs.readyState !== WebSocket.OPEN) return;
+    const f32 = e.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++)
+      i16[i] = Math.max(-32768, Math.min(32767, Math.round(f32[i] * 32767)));
+    vdWs.send(i16.buffer);
+    // Level meter
+    let peak = 0;
+    for (let i = 0; i < f32.length; i++) if (Math.abs(f32[i]) > peak) peak = Math.abs(f32[i]);
+    document.getElementById('vd-level-bar').style.width = Math.min(100, Math.round(peak * 300)) + '%';
+  };
+  source.connect(vdProcessor);
+  vdProcessor.connect(vdAudioCtx.destination);
+}
+
+function vdStopMic() {
+  if (vdProcessor) { try { vdProcessor.disconnect(); } catch(e) {} vdProcessor = null; }
+  if (vdAudioCtx)  { try { vdAudioCtx.close(); } catch(e) {} vdAudioCtx = null; }
+  if (vdStream)    { vdStream.getTracks().forEach(t => t.stop()); vdStream = null; }
+  const bar = document.getElementById('vd-level-bar');
+  if (bar) bar.style.width = '0%';
+}
+
+function vdQueuePCMAudio(arrayBuffer) {
+  if (!vdPlayCtx) { vdPlayCtx = new AudioContext({ sampleRate: 8000 }); vdNextPlayTime = 0; }
+  const i16 = new Int16Array(arrayBuffer);
+  const f32 = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+  const buf = vdPlayCtx.createBuffer(1, f32.length, 8000);
+  buf.copyToChannel(f32, 0);
+  const src = vdPlayCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(vdPlayCtx.destination);
+  const now = vdPlayCtx.currentTime;
+  if (vdNextPlayTime < now) vdNextPlayTime = now;
+  src.start(vdNextPlayTime);
+  vdNextPlayTime += buf.duration;
+  vdMicMuted = true;
+  src.onended = () => {
+    if (vdNextPlayTime <= (vdPlayCtx ? vdPlayCtx.currentTime + 0.15 : 0)) {
+      vdMicMuted = false;
+      vdSetState('listening');
+    }
+  };
+}
+
+async function vdPlayTTSText(text) {
+  try {
+    const provider = document.getElementById('vd-provider')?.value || 'yandex';
+    const voice    = document.getElementById('vd-voice')?.value;
+    const role     = document.getElementById('vd-role')?.value || 'neutral';
+    const url      = provider === 'salutespeech' ? '/api/v1/salutespeech/tts' : '/api/v1/tts';
+    const body     = provider === 'salutespeech'
+      ? { text, voice }
+      : { text, voice, role, speed: parseFloat(document.getElementById('vd-speed')?.value || '1.0') };
+    const r = await fetch(url, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!vdPlayCtx) { vdPlayCtx = new AudioContext({ sampleRate: 8000 }); vdNextPlayTime = 0; }
+    const pcm = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    const i16 = new Int16Array(pcm.buffer);
+    const f32 = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+    const buf = vdPlayCtx.createBuffer(1, f32.length, 8000);
+    buf.copyToChannel(f32, 0);
+    const src = vdPlayCtx.createBufferSource();
+    src.buffer = buf; src.connect(vdPlayCtx.destination); src.start();
+    await new Promise(res => { src.onended = res; setTimeout(res, 15000); });
+  } catch(e) {}
+}
+
+function vdAppendLine(role, text, meta) {
+  const c = document.getElementById('vd-transcript');
+  const ph = c.querySelector('.vd-placeholder');
+  if (ph) ph.remove();
+  const colors = { robot: 'var(--accent)', user: 'var(--green)', system: 'var(--text2)' };
+  const labels = { robot: 'ИИ-Робот', user: 'Вы', system: 'Система' };
+  const div = document.createElement('div');
+  div.style.cssText = 'margin-bottom:14px;';
+  div.innerHTML =
+    `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${colors[role]};margin-bottom:3px;display:flex;gap:10px;align-items:center;">` +
+    `<span>${labels[role]}</span>` +
+    (role === 'user' ? `<span class="vd-user-meta" style="font-weight:400;text-transform:none;color:var(--text2);font-size:11px;"></span>` : '') +
+    (meta ? `<span style="font-weight:400;text-transform:none;color:var(--text2);font-size:11px;">${escHtml(meta)}</span>` : '') +
+    `</div><div style="font-size:14px;line-height:1.55;">${escHtml(text)}</div>`;
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+
+const VD_VOICES = {
+  yandex: [
+    {id:'marina',l:'Марина (жен.)'},{id:'dasha',l:'Даша (жен.)'},{id:'lera',l:'Лера (жен.)'},
+    {id:'masha',l:'Маша (жен.)'},{id:'julia',l:'Юлия (жен.)'},{id:'alexander',l:'Александр (муж.)'},
+    {id:'kirill',l:'Кирилл (муж.)'},{id:'anton',l:'Антон (муж.)'},{id:'alena',l:'Алёна (жен.)'},
+    {id:'filipp',l:'Филипп (муж.)'},
+  ],
+  salutespeech: [
+    {id:'Bys',l:'Bys (муж.)'},{id:'Tur',l:'Tur (муж.)'},{id:'Ost',l:'Ost (муж.)'},
+    {id:'Pon',l:'Pon (муж.)'},{id:'Rma',l:'Rma (муж.)'},{id:'Rnu',l:'Rnu (муж.)'},
+    {id:'May',l:'May (жен.)'},{id:'Nec',l:'Nec (жен.)'},{id:'Kin',l:'Kin (жен.)'},
+    {id:'Kma',l:'Kma (жен.)'},{id:'Nur',l:'Nur (жен.)'},
+  ],
+};
+
+function vdUpdateVoiceList() {
+  const provider = document.getElementById('vd-provider').value;
+  const sel = document.getElementById('vd-voice');
+  sel.innerHTML = VD_VOICES[provider].map(v => `<option value="${v.id}">${v.l}</option>`).join('');
+  const isSalute = provider === 'salutespeech';
+  // Role and speed are Yandex-only; sample rate is SaluteSpeech-only
+  const roleWrap = document.getElementById('vd-role-wrap');
+  if (roleWrap) roleWrap.style.display = isSalute ? 'none' : '';
+  const speedWrap = document.getElementById('vd-speed-wrap');
+  if (speedWrap) speedWrap.style.display = isSalute ? 'none' : '';
+  const srWrap = document.getElementById('vd-samplerate-wrap');
+  if (srWrap) srWrap.style.display = isSalute ? '' : 'none';
+}
+
+function vdClearTranscript() {
+  document.getElementById('vd-transcript').innerHTML =
+    '<div class="vd-placeholder" style="text-align:center;color:var(--text2);font-size:13px;padding-top:80px;">Нажмите «Начать диалог» и говорите в микрофон</div>';
+}
+
+async function vdLoadScenarios() {
+  try {
+    const r = await fetch('/api/v1/scenarios');
+    if (!r.ok) return;
+    const data = await r.json();
+    const sel = document.getElementById('vd-scenario');
+    if (!sel || !data.scenarios.length) return;
+    sel.innerHTML = data.scenarios.map(s => `<option value="${s.id}">${escHtml(s.name || s.id)}</option>`).join('');
+  } catch(e) {}
+}
+
+// === Voice Test (TTS) ===
+function pcmToWav(pcmData, sampleRate) {
+  const numChannels = 1, bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const dataSize = pcmData.length;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  function ws(off, s) { for (let i=0;i<s.length;i++) view.setUint8(off+i,s.charCodeAt(i)); }
+  ws(0,'RIFF'); view.setUint32(4,36+dataSize,true); ws(8,'WAVE'); ws(12,'fmt ');
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,numChannels,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,byteRate,true);
+  view.setUint16(32,blockAlign,true); view.setUint16(34,bitsPerSample,true);
+  ws(36,'data'); view.setUint32(40,dataSize,true);
+  new Uint8Array(buffer).set(pcmData,44);
+  return buffer;
+}
+
+async function testYandexTTS() {
+  const btn = document.getElementById('yx-btn');
+  const status = document.getElementById('yx-status');
+  const audio = document.getElementById('yx-audio');
+  btn.disabled = true; status.textContent = '⏳ Синтез...';
+  try {
+    const r = await fetch('/api/v1/tts', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        text: document.getElementById('yx-text').value,
+        voice: document.getElementById('yx-voice').value,
+        speed: parseFloat(document.getElementById('yx-speed').value),
+        role: document.getElementById('yx-role').value,
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json();
+    const pcm = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    const wav = pcmToWav(pcm, data.sample_rate || 8000);
+    audio.src = URL.createObjectURL(new Blob([wav], {type:'audio/wav'}));
+    audio.style.display = 'block'; audio.play();
+    status.textContent = `✓ ${data.size_bytes} байт`;
+    status.style.color = 'var(--green)';
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+}
+
+async function testSaluteSpeech() {
+  const btn = document.getElementById('ss-btn');
+  const status = document.getElementById('ss-status');
+  const audio = document.getElementById('ss-audio');
+  btn.disabled = true; status.textContent = '⏳ Синтез...';
+  try {
+    const r = await fetch('/api/v1/salutespeech/tts', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        text: document.getElementById('ss-text').value,
+        voice: document.getElementById('ss-voice').value,
+        sample_rate: parseInt(document.getElementById('ss-rate').value),
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+    const data = await r.json();
+    const wav = Uint8Array.from(atob(data.audio_base64), c => c.charCodeAt(0));
+    audio.src = URL.createObjectURL(new Blob([wav], {type:'audio/wav'}));
+    audio.style.display = 'block'; audio.play();
+    status.textContent = `✓ ${data.size_bytes} байт`;
+    status.style.color = 'var(--green)';
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+}
+
+// === Init ===
+if (document.documentElement.classList.contains('test-only')) {
+  // Страница /test — показываем только раздел «Тест диалога»
+  const sub = document.querySelector('.header .sub');
+  if (sub) sub.textContent = 'Тест диалога';
+  switchTab('chat');
+} else {
+  loadDocuments();
+}
+</script>
+</body>
+</html>

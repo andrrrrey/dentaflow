@@ -19,6 +19,7 @@ import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 import Marketing from "./pages/Marketing";
 import Tasks from "./pages/Tasks";
+import AiCalling from "./pages/AiCalling";
 
 /* ---------- app ---------- */
 
@@ -196,6 +197,16 @@ function App() {
             <ProtectedRoute denyRoles={["admin"]}>
               <AppLayout title="Настройки">
                 <Settings />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai-calling"
+          element={
+            <ProtectedRoute denyRoles={["manager", "admin", "marketer"]}>
+              <AppLayout title="ИИ обзвон">
+                <AiCalling />
               </AppLayout>
             </ProtectedRoute>
           }
