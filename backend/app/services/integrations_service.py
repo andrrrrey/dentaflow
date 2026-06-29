@@ -18,7 +18,14 @@ from app.models.integration_setting import IntegrationSetting
 logger = logging.getLogger(__name__)
 
 INTEGRATION_KEYS: dict[str, list[str]] = {
-    "novofon": ["novofon_api_key", "novofon_webhook_secret"],
+    "novofon": [
+        "novofon_api_key",
+        "novofon_webhook_secret",
+        "novofon_sip_login",
+        "novofon_sip_password",
+        "novofon_sip_server",
+        "novofon_caller_id",
+    ],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
     "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
     "yandex_speechkit": ["yandex_api_key", "yandex_folder_id"],
@@ -45,7 +52,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
 ALL_KEYS = [k for keys in INTEGRATION_KEYS.values() for k in keys]
 
 MASKED_KEYS = {
-    "novofon_api_key", "novofon_webhook_secret",
+    "novofon_api_key", "novofon_webhook_secret", "novofon_sip_password",
     "one_denta_password",
     "openai_api_key",
     "yandex_api_key",

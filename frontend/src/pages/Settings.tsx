@@ -388,10 +388,14 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
   {
     service: "novofon",
     title: "Novofon (телефония)",
-    description: "Звонки, записи разговоров, вебхуки",
+    description: "Звонки, записи разговоров, вебхуки, SIP для ИИ-обзвона",
     fields: [
       { key: "novofon_api_key", label: "API Key (Настройки → API → Ключ)", type: "password", placeholder: "Длинный буквенно-цифровой ключ" },
       { key: "novofon_webhook_secret", label: "API Secret (Настройки → API → Секрет)", type: "password", placeholder: "Секрет из раздела API (не appid_...)" },
+      { key: "novofon_sip_login", label: "SIP-логин (Телефония → АТС → Сотрудники)", placeholder: "Например, 100XXXXX" },
+      { key: "novofon_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-пользователя" },
+      { key: "novofon_sip_server", label: "SIP-сервер", placeholder: "Например, sip.novofon.com" },
+      { key: "novofon_caller_id", label: "Исходящий номер (CallerID)", placeholder: "Номер, который видит пациент" },
     ],
   },
   {
