@@ -14,7 +14,7 @@ import uuid
 
 import httpx
 import websockets
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,6 +76,26 @@ async def _proxy(method: str, path: str, *, json: dict | None = None, params: di
         return resp.json()
     except ValueError:
         return resp.text
+
+
+# ── Внутренний эндпоинт: SIP-настройки Novofon для медиасервера (Asterisk) ───────
+# Источник истины — админка «Интеграции» (таблица IntegrationSetting), НЕ .env.
+# Доступ только внутри docker-сети по общему секрету INTERNAL_API_TOKEN; наружу
+# через nginx не публикуется.
+
+@router.get("/internal/novofon-sip")
+async def internal_novofon_sip(
+    x_internal_token: str = Header(default=""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.INTERNAL_API_TOKEN or x_internal_token != settings.INTERNAL_API_TOKEN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return {
+        "sip_login": await get_raw_value(db, "novofon_sip_login"),
+        "sip_password": await get_raw_value(db, "novofon_sip_password"),
+        "sip_server": await get_raw_value(db, "novofon_sip_server"),
+        "caller_id": await get_raw_value(db, "novofon_caller_id"),
+    }
 
 
 # ── Тест TTS ────────────────────────────────────────────────────────────────────

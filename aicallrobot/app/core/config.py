@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     audio_channels: int = 1
     recordings_dir: str = "/app/recordings"
 
+    # AudioSocket-мост (телефония: Asterisk ⇄ WS /ws/audio/{call_id})
+    audiosocket_host: str = "0.0.0.0"
+    audiosocket_port: int = 9092
+    # WS-адрес собственного сервиса, к которому подключается мост (внутри контейнера).
+    internal_ws_base_url: str = "ws://127.0.0.1:8000"
+
     # Scenarios
     scenarios_dir: str = "/app/scenarios"
     default_scenario: str = "default"

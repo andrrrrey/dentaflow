@@ -50,6 +50,22 @@ services:
       - aicallrobot_data:/app/data
       - aicallrobot_kb:/app/knowledge_base
 
+  asterisk:
+    # Медиасервер ИИ-обзвона: исходящий SIP-транк до Novofon (регистрация) +
+    # AudioSocket в aicallrobot:9092. SIP-настройки берутся из админки DentaFlow.
+    # За NAT задайте EXTERNAL_IP в .env и при необходимости перейдите на host-сеть.
+    build: ./asterisk
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "5060:5060/udp"
+      - "10000-10020:10000-10020/udp"   # RTP (см. asterisk/etc/rtp.conf)
+    depends_on:
+      - backend
+      - aicallrobot
+    restart: always
+
   celery_worker:
     image: dentaflow-backend:latest
     env_file: .env
