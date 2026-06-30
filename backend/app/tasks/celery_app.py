@@ -24,6 +24,7 @@ celery_app.conf.task_default_queue = "default"
 # starves the segment recompute and leaves lists stuck "queued".
 celery_app.conf.task_routes = {
     "app.tasks.segments.*": {"queue": "segments"},
+    "app.tasks.ai_calling.*": {"queue": "ai"},
 }
 
 # Serialisation
@@ -80,6 +81,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.auto_tasks.create_yesterday_followup_tasks",
         "schedule": crontab(hour=3, minute=5),  # 03:05 Moscow = 08:05 Улан-Удэ
     },
+    # ИИ-обзвон: диспетчер кампаний (расписание/окна/слоты).
+    "ai-calling-tick": {
+        "task": "app.tasks.ai_calling.tick_campaigns",
+        "schedule": 60.0,  # каждую минуту
+    },
     "deactivate-expired-tasks": {
         "task": "app.tasks.auto_tasks.deactivate_expired_tasks",
         "schedule": crontab(hour=0, minute=5),  # 00:05 Moscow — before task generation
@@ -95,6 +101,7 @@ celery_app.conf.include = [
     "app.tasks.bot_reminders",
     "app.tasks.auto_tasks",
     "app.tasks.segments",
+    "app.tasks.ai_calling",
 ]
 
 # Remove legacy patients-only periodic sync (now part of sync_full_daily)

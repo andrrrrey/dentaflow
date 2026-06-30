@@ -1,10 +1,7 @@
 #!/bin/sh
-# Рендер pjsip.conf из шаблона. SIP-настройки Novofon берём из админки DentaFlow
+# Рендер конфигов из шаблонов. SIP-настройки Novofon берём из админки DentaFlow
 # (источник истины — БД, раздел «Интеграции»), с фоллбэком на переменные окружения.
 set -e
-
-TEMPLATE=/etc/asterisk/pjsip.conf.template
-OUT=/etc/asterisk/pjsip.conf
 
 # 1) Пытаемся забрать SIP-настройки из backend (внутренний эндпоинт по общему секрету).
 if [ -n "$BACKEND_URL" ] && [ -n "$INTERNAL_API_TOKEN" ]; then
@@ -18,16 +15,20 @@ if [ -n "$BACKEND_URL" ] && [ -n "$INTERNAL_API_TOKEN" ]; then
     fi
 fi
 
-# 2) external_media/signaling — только если задан публичный IP (работа за NAT).
 EXTERNAL_IP=${EXTERNAL_IP:-}
-export SIP_LOGIN SIP_PASSWORD SIP_SERVER CALLER_ID EXTERNAL_IP
+AMI_PASSWORD=${AMI_PASSWORD:-}
+export SIP_LOGIN SIP_PASSWORD SIP_SERVER CALLER_ID EXTERNAL_IP AMI_PASSWORD
 
 if [ -z "$SIP_SERVER" ] || [ -z "$SIP_LOGIN" ]; then
     echo "[entrypoint] ВНИМАНИЕ: SIP-настройки Novofon не заданы (ни env, ни админка)."
     echo "[entrypoint] Транк не зарегистрируется. Заполните раздел «Интеграции → Novofon»."
 fi
+if [ -z "$AMI_PASSWORD" ]; then
+    echo "[entrypoint] ВНИМАНИЕ: AMI_PASSWORD не задан — оркестратор не сможет инициировать звонки."
+fi
 
-envsubst < "$TEMPLATE" > "$OUT"
-echo "[entrypoint] pjsip.conf отрендерен (server=$SIP_SERVER login=$SIP_LOGIN)."
+envsubst < /etc/asterisk/pjsip.conf.template   > /etc/asterisk/pjsip.conf
+envsubst < /etc/asterisk/manager.conf.template > /etc/asterisk/manager.conf
+echo "[entrypoint] Конфиги отрендерены (server=$SIP_SERVER login=$SIP_LOGIN, AMI=on)."
 
 exec asterisk -f -vvvg

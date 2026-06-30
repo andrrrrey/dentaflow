@@ -491,6 +491,9 @@ async def get_call(call_id: str):
     session = await call_manager.get_call(call_id)
     if not session:
         raise HTTPException(status_code=404, detail="Call not found")
+    duration = (
+        int(session.ended_at - session.started_at) if session.ended_at else None
+    )
     return {
         "call_id": session.call_id,
         "phone": session.phone_number,
@@ -499,6 +502,8 @@ async def get_call(call_id: str):
         "transcript": session.transcript,
         "client_status": session.client_status,
         "summary": session.summary,
+        "duration": duration,
+        "ended_at": session.ended_at,
     }
 
 

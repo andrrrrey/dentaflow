@@ -13,6 +13,7 @@ from app.models.pipeline_stage import PipelineStage
 from app.models.directory_cache import DirectoryCache
 from app.models.bot_message import BotMessage
 from app.models.patient_segment import PatientSegment, PatientSegmentMember
+from app.models.ai_calling import AiCallingCampaign, AiCallingCampaignItem
 
 __all__ = [
     "Base",
@@ -32,4 +33,6 @@ __all__ = [
     "BotMessage",
     "PatientSegment",
     "PatientSegmentMember",
+    "AiCallingCampaign",
+    "AiCallingCampaignItem",
 ]

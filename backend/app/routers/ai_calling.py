@@ -22,6 +22,9 @@ from app.config import settings
 from app.database import async_session_factory, get_db
 from app.dependencies import role_required
 from app.models.user import User
+from pydantic import BaseModel
+from datetime import datetime
+from app.services import ai_calling_service
 from app.services.integrations_service import get_raw_value
 from app.utils.security import decode_token
 
@@ -283,3 +286,132 @@ async def _pump_upstream_to_client(upstream, client: WebSocket) -> None:
             await client.close()
         except Exception:
             pass
+
+
+# ── Кампании ИИ-обзвона (B4–B6) ───────────────────────────────────────────────
+
+class CampaignCreate(BaseModel):
+    name: str
+    segment_key: str
+    scenario_id: str = "default"
+    max_concurrent: int = 1
+    scheduled_at: datetime | None = None
+    window_start: str | None = None  # "09:00"
+    window_end: str | None = None    # "20:00"
+    timezone: str = "Europe/Moscow"
+
+
+class CampaignControl(BaseModel):
+    action: str  # start | pause | resume | cancel
+
+
+def _campaign_dict(c) -> dict:
+    total = c.total or 0
+    progress = int(round((c.completed / total) * 100)) if total else 0
+    return {
+        "id": str(c.id),
+        "name": c.name,
+        "segment_key": c.segment_key,
+        "scenario_id": c.scenario_id,
+        "status": c.status,
+        "max_concurrent": c.max_concurrent,
+        "scheduled_at": c.scheduled_at.isoformat() if c.scheduled_at else None,
+        "window_start": c.window_start,
+        "window_end": c.window_end,
+        "timezone": c.timezone,
+        "total": total,
+        "completed": c.completed,
+        "succeeded": c.succeeded,
+        "failed": c.failed,
+        "progress": progress,
+        "started_at": c.started_at.isoformat() if c.started_at else None,
+        "ended_at": c.ended_at.isoformat() if c.ended_at else None,
+        "error": c.error,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+def _item_dict(i) -> dict:
+    return {
+        "id": str(i.id),
+        "patient_id": str(i.patient_id) if i.patient_id else None,
+        "phone": i.phone,
+        "status": i.status,
+        "outcome": i.outcome,
+        "summary": i.summary,
+        "duration_sec": i.duration_sec,
+        "attempts": i.attempts,
+        "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+    }
+
+
+@router.get("/campaigns")
+async def campaigns_list(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    items = await ai_calling_service.list_campaigns(db)
+    return {"items": [_campaign_dict(c) for c in items]}
+
+
+@router.post("/campaigns")
+async def campaigns_create(
+    body: CampaignCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(role_required("owner")),
+):
+    campaign = await ai_calling_service.create_campaign(
+        db,
+        name=body.name,
+        segment_key=body.segment_key,
+        scenario_id=body.scenario_id,
+        max_concurrent=body.max_concurrent,
+        scheduled_at=body.scheduled_at,
+        window_start=body.window_start,
+        window_end=body.window_end,
+        tz=body.timezone,
+        created_by=user.id,
+    )
+    if campaign.total == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="В выбранном сегменте нет пациентов с телефоном",
+        )
+    return _campaign_dict(campaign)
+
+
+@router.get("/campaigns/{campaign_id}")
+async def campaign_get(
+    campaign_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    campaign = await ai_calling_service.get_campaign(db, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Кампания не найдена")
+    return _campaign_dict(campaign)
+
+
+@router.get("/campaigns/{campaign_id}/items")
+async def campaign_items(
+    campaign_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    items = await ai_calling_service.list_items(db, campaign_id)
+    return {"items": [_item_dict(i) for i in items]}
+
+
+@router.post("/campaigns/{campaign_id}/control")
+async def campaign_control(
+    campaign_id: uuid.UUID,
+    body: CampaignControl,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    if body.action not in ("start", "pause", "resume", "cancel"):
+        raise HTTPException(status_code=400, detail="Недопустимое действие")
+    campaign = await ai_calling_service.control_campaign(db, campaign_id, body.action)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Кампания не найдена")
+    return _campaign_dict(campaign)
