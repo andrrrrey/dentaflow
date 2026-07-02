@@ -661,9 +661,13 @@ def sync_hourly(self):
     near-term appointments. Replaces the old every-5-min appointment sync and
     the separate hourly directories sync, so 1Denta is queried ~once/hour and
     the patient list stays current between nightly full syncs."""
+    # Track which stage is running so a failure names the culprit in the status.
+    stage = "Справочники"
     try:
         dir_result = _run_async(_sync_directories_async())
+        stage = "Пациенты"
         pat_result = _run_async(_sync_patients_async())
+        stage = "Расписание"
         appt_result = _run_async(_sync_appointments_async(days_back=7, days_forward=21))
         logger.info(
             "sync_hourly complete: dirs=%s patients=%s appointments=%s",
@@ -677,8 +681,8 @@ def sync_hourly(self):
         _run_async(_record_1denta_sync_async("hourly", result, ok=True))
         return result
     except Exception as exc:
-        logger.exception("sync_hourly failed")
-        _run_async(_record_1denta_sync_async("hourly", None, ok=False, error=str(exc)))
+        logger.exception("sync_hourly failed at stage %s", stage)
+        _run_async(_record_1denta_sync_async("hourly", None, ok=False, error=f"{stage}: {exc}"))
         raise self.retry(exc=exc, countdown=300)
 
 
@@ -686,11 +690,16 @@ def sync_hourly(self):
 def sync_full_daily(self):
     """Nightly full sync with 1Denta and Novofon across all sections:
     Справочники, Пациенты, Расписание, Контроль звонков, Маркетинг."""
+    stage = "Справочники"
     try:
         dir_result = _run_async(_sync_directories_async())
+        stage = "Пациенты"
         pat_result = _run_async(_sync_patients_async())
+        stage = "Расписание"
         appt_result = _run_async(_sync_appointments_async(days_back=30, days_forward=90))
+        stage = "Контроль звонков"
         calls_result = _run_async(_sync_calls_async(days=30))
+        stage = "Маркетинг"
         marketing_result = _run_async(_sync_marketing_async())
         logger.info(
             "sync_full_daily complete: dirs=%s patients=%s appointments=%s calls=%s marketing=%s",
@@ -706,8 +715,8 @@ def sync_full_daily(self):
         _run_async(_record_1denta_sync_async("daily", result, ok=True))
         return result
     except Exception as exc:
-        logger.exception("sync_full_daily failed")
-        _run_async(_record_1denta_sync_async("daily", None, ok=False, error=str(exc)))
+        logger.exception("sync_full_daily failed at stage %s", stage)
+        _run_async(_record_1denta_sync_async("daily", None, ok=False, error=f"{stage}: {exc}"))
         raise self.retry(exc=exc, countdown=300)
 
 

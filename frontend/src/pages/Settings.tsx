@@ -795,6 +795,10 @@ function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }
   if (pat) summaryParts.push(`пациенты +${pat.created ?? 0}/~${pat.updated ?? 0}`);
   if (appt) summaryParts.push(`записи +${appt.created ?? 0}/~${appt.updated ?? 0}`);
 
+  const failed = status.ok === false;
+  const err = status.error ?? "";
+  const isLocked = /423|locked|temporarily blocked|заблокир/i.test(err);
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
@@ -803,10 +807,19 @@ function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }
           Последняя синхронизация: {fmtRelative(status.last_sync_at)}
         </span>
         <span className="text-text-muted">({fmtDateTime(status.last_sync_at)})</span>
-        {status.ok === false && (
-          <span className="text-[#f44b6e] font-semibold">— с ошибкой</span>
-        )}
+        {failed && <span className="text-[#f44b6e] font-semibold">— с ошибкой</span>}
       </div>
+
+      {failed && (
+        <div className="text-[#f44b6e] break-words">
+          {isLocked
+            ? "Аккаунт 1Denta временно заблокирован из-за частых попыток входа — подождите 15–30 минут и попробуйте снова."
+            : err
+              ? `Ошибка: ${err}`
+              : "Синхронизация завершилась с ошибкой. Подробности — в логах сервера."}
+        </div>
+      )}
+
       <div className="text-text-muted">
         Следующая ≈ {fmtDateTime(status.next_sync_at)}
       </div>
