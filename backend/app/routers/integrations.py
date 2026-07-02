@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -61,6 +61,31 @@ async def update_integrations(
             logger.warning("Max webhook auto-registration failed (will retry on next check)")
 
     return {"ok": True}
+
+
+@router.post("/sync-1denta")
+async def sync_one_denta(
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Owner-only: trigger a full 1Denta sync in the background.
+
+    Replaces the per-section "Синхронизировать" buttons — the whole app now
+    auto-syncs hourly, and this is the single manual "refresh everything" action
+    available to the clinic owner. Runs asynchronously via Celery so the request
+    returns immediately and never times out on large clinics.
+    """
+    if _current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Только владелец может запускать синхронизацию")
+
+    from app.tasks.sync_1denta import sync_full_daily
+
+    try:
+        sync_full_daily.delay()
+    except Exception:
+        logger.exception("Failed to enqueue 1Denta full sync")
+        raise HTTPException(status_code=503, detail="Не удалось запустить синхронизацию (очередь недоступна)")
+
+    return {"status": "started"}
 
 
 @router.post("/check/{service}")

@@ -45,6 +45,15 @@ export function useCheckIntegration() {
   });
 }
 
+export function useSyncOneDenta() {
+  return useMutation<{ status: string }, Error, void>({
+    mutationFn: async () => {
+      const { data } = await api.post("/integrations/sync-1denta");
+      return data;
+    },
+  });
+}
+
 // ---------- Knowledge Base ----------
 
 export function useKnowledgeBaseFiles() {

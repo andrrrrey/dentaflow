@@ -184,6 +184,18 @@ async def _check_one_denta(db: AsyncSession) -> dict:
     if not email or not password:
         return {"ok": False, "message": "Email или пароль не указаны"}
 
+    # Respect the cluster-wide auth lock: if 1Denta already blocked us for too
+    # many logins, don't add another /api/v1/auth attempt on every button click.
+    from app.services.one_denta import one_denta_auth_locked_for
+
+    locked_for = await one_denta_auth_locked_for()
+    if locked_for > 0:
+        mins = max(1, locked_for // 60)
+        return {
+            "ok": False,
+            "message": f"Аккаунт временно заблокирован (слишком много попыток входа). Подождите ещё ~{mins} мин и попробуйте снова.",
+        }
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             f"{url}/api/v1/auth",
@@ -199,6 +211,11 @@ async def _check_one_denta(db: AsyncSession) -> dict:
             return {"ok": True, "message": f"Подключено (orgId: {org})"}
         detail = body.get("message") or body.get("detail") or body.get("error") or resp.text[:200]
         if resp.status_code == 423:
+            # Record the lock cluster-wide so other processes and repeated clicks
+            # back off instead of piling on more login attempts.
+            import time
+            from app.services.one_denta import _AUTH_LOCK_SECONDS, _shared_set_lock_until
+            await _shared_set_lock_until(time.time() + _AUTH_LOCK_SECONDS)
             return {"ok": False, "message": f"Аккаунт временно заблокирован (слишком много попыток входа). Подождите 15–30 минут и попробуйте снова. Ответ 1Denta: {detail}"}
         return {"ok": False, "message": f"Ошибка {resp.status_code}: {detail}"}
 

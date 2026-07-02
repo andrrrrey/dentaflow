@@ -3,7 +3,7 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
-  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone,
+  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone, RefreshCw,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -11,6 +11,7 @@ import {
   useIntegrations,
   useSaveIntegrations,
   useCheckIntegration,
+  useSyncOneDenta,
   useKnowledgeBaseFiles,
   useUploadKbFile,
   useDeleteKbFile,
@@ -549,6 +550,9 @@ function IntegrationCard({
   onCheck,
   checkResult,
   checking,
+  onSync,
+  syncing,
+  syncStatus,
 }: {
   config: IntegrationCardConfig;
   values: Record<string, string>;
@@ -556,6 +560,9 @@ function IntegrationCard({
   onCheck: () => void;
   checkResult: { ok: boolean; message: string } | null;
   checking: boolean;
+  onSync?: () => void;
+  syncing?: boolean;
+  syncStatus?: string;
 }) {
   return (
     <Card>
@@ -609,7 +616,21 @@ function IntegrationCard({
         )}
       </div>
 
-      <div className="flex justify-end mt-3">
+      <div className="flex items-center justify-end gap-2 mt-3">
+        {syncStatus && (
+          <span className="text-[11px] font-semibold text-[#00c9a7] mr-auto">{syncStatus}</span>
+        )}
+        {onSync && (
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-50"
+            style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+          >
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Запуск..." : "Синхронизировать"}
+          </button>
+        )}
         <button
           onClick={onCheck}
           disabled={checking}
@@ -724,10 +745,13 @@ function IntegrationsTab() {
   const { data: saved, isLoading } = useIntegrations();
   const saveMutation = useSaveIntegrations();
   const checkMutation = useCheckIntegration();
+  const syncOneDenta = useSyncOneDenta();
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [checkingService, setCheckingService] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
   const [saveError, setSaveError] = useState("");
 
@@ -762,6 +786,16 @@ function IntegrationsTab() {
     }
   }
 
+  async function handleSyncOneDenta() {
+    setSyncStatus("");
+    try {
+      await syncOneDenta.mutateAsync();
+      setSyncStatus("Синхронизация запущена — данные обновятся в течение нескольких минут");
+    } catch {
+      setSyncStatus("Не удалось запустить синхронизацию");
+    }
+  }
+
   if (isLoading) {
     return <div className="text-center text-text-muted py-8 text-[13px]">Загрузка настроек...</div>;
   }
@@ -772,17 +806,25 @@ function IntegrationsTab() {
 
       <KnowledgeBaseCard />
 
-      {INTEGRATIONS.map((cfg) => (
-        <IntegrationCard
-          key={cfg.service}
-          config={cfg}
-          values={values}
-          onChange={handleChange}
-          onCheck={() => handleCheck(cfg.service)}
-          checkResult={checkResults[cfg.service] ?? null}
-          checking={checkingService === cfg.service}
-        />
-      ))}
+      {INTEGRATIONS.map((cfg) => {
+        // Единая ручная синхронизация с 1Denta — только у владельца.
+        // Остальная синхронизация происходит автоматически раз в час.
+        const showSync = cfg.service === "one_denta" && isOwner;
+        return (
+          <IntegrationCard
+            key={cfg.service}
+            config={cfg}
+            values={values}
+            onChange={handleChange}
+            onCheck={() => handleCheck(cfg.service)}
+            checkResult={checkResults[cfg.service] ?? null}
+            checking={checkingService === cfg.service}
+            onSync={showSync ? handleSyncOneDenta : undefined}
+            syncing={showSync && syncOneDenta.isPending}
+            syncStatus={showSync ? syncStatus : undefined}
+          />
+        );
+      })}
 
       <div className="flex flex-col gap-3">
         <StatusBanner success={saveSuccess} error={saveError} />
