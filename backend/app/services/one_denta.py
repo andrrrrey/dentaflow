@@ -24,6 +24,127 @@ _cached_token: str | None = None
 _auth_locked_until: float = 0.0  # epoch seconds; don't retry auth before this time
 _resources_cache: dict = {"data": [], "ts": None}  # 10-min in-process cache
 
+# Cross-process shared state via Redis. The deployment runs ~8 processes
+# (uvicorn workers + celery workers + beat), each with its own module globals.
+# Without sharing, each process authenticates independently and can burst
+# /api/v1/auth calls, tripping 1Denta's login throttle (HTTP 423). We share the
+# JWT and the auth-lock through Redis so the whole cluster logs in ~once.
+_REDIS_TOKEN_KEY = "1denta:jwt"
+_REDIS_LOCK_KEY = "1denta:auth_locked_until"
+_TOKEN_TTL_SECONDS = 3000  # ~50 min; JWT is refreshed on 401 anyway
+_AUTH_LOCK_SECONDS = 1800  # 30 min backoff after a 423 lock
+
+
+async def _redis_client():
+    """Best-effort Redis client; returns None if Redis is unavailable."""
+    try:
+        import redis.asyncio as aioredis
+
+        return aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    except Exception:
+        return None
+
+
+async def _shared_get_token() -> str | None:
+    r = await _redis_client()
+    if r is None:
+        return None
+    try:
+        return await r.get(_REDIS_TOKEN_KEY)
+    except Exception:
+        return None
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def _shared_set_token(token: str) -> None:
+    r = await _redis_client()
+    if r is None:
+        return
+    try:
+        await r.setex(_REDIS_TOKEN_KEY, _TOKEN_TTL_SECONDS, token)
+    except Exception:
+        pass
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def _shared_clear_token() -> None:
+    r = await _redis_client()
+    if r is None:
+        return
+    try:
+        await r.delete(_REDIS_TOKEN_KEY)
+    except Exception:
+        pass
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def _shared_get_lock_until() -> float:
+    r = await _redis_client()
+    if r is None:
+        return 0.0
+    try:
+        val = await r.get(_REDIS_LOCK_KEY)
+        return float(val) if val else 0.0
+    except Exception:
+        return 0.0
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def _shared_set_lock_until(until: float) -> None:
+    r = await _redis_client()
+    if r is None:
+        return
+    try:
+        # TTL so the key self-clears once the backoff window passes
+        await r.setex(_REDIS_LOCK_KEY, _AUTH_LOCK_SECONDS, str(until))
+    except Exception:
+        pass
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def _shared_clear_lock() -> None:
+    r = await _redis_client()
+    if r is None:
+        return
+    try:
+        await r.delete(_REDIS_LOCK_KEY)
+    except Exception:
+        pass
+    finally:
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
+async def one_denta_auth_locked_for() -> int:
+    """Return remaining seconds of the shared/local 1Denta auth lock (0 if not locked)."""
+    import time
+
+    until = max(_auth_locked_until, await _shared_get_lock_until())
+    remaining = int(until - time.time())
+    return remaining if remaining > 0 else 0
+
 
 def parse_birthdate(value: str | None) -> date | None:
     """Parse a 1Denta birth date which may arrive as DD.MM.YYYY or ISO.
@@ -460,11 +581,17 @@ class OneDentaService:
     # ------------------------------------------------------------------
 
     async def _authenticate(self) -> str:
-        """POST /api/v1/auth → return JWT token."""
+        """POST /api/v1/auth → return JWT token.
+
+        Respects a cluster-wide auth lock (via Redis) so concurrent processes
+        don't each hammer /api/v1/auth after a 423 lock. Stores the fresh JWT
+        in Redis so the whole cluster reuses one token.
+        """
         global _auth_locked_until
         import time
-        if time.time() < _auth_locked_until:
-            wait = int(_auth_locked_until - time.time())
+        locked_until = max(_auth_locked_until, await _shared_get_lock_until())
+        if time.time() < locked_until:
+            wait = int(locked_until - time.time())
             raise RuntimeError(f"1Denta auth locked for {wait}s (account temporarily blocked by 1Denta)")
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -473,12 +600,15 @@ class OneDentaService:
                 headers={"Content-Type": "application/json"},
             )
             if response.status_code == 423:
-                _auth_locked_until = time.time() + 1800  # don't retry for 30 min
+                _auth_locked_until = time.time() + _AUTH_LOCK_SECONDS  # don't retry for 30 min
+                await _shared_set_lock_until(_auth_locked_until)
                 logger.error("1Denta: account locked (423) — will not retry auth for 30 min")
                 response.raise_for_status()
             response.raise_for_status()
             token = response.json()["token"]
             _auth_locked_until = 0.0
+            await _shared_clear_lock()
+            await _shared_set_token(token)
             logger.info("1Denta: obtained new JWT token")
             return token
 
@@ -496,6 +626,9 @@ class OneDentaService:
         _retry: bool = True,
     ) -> Any:
         global _cached_token
+        if _cached_token is None:
+            # Prefer a token already obtained by another process (shared via Redis)
+            _cached_token = await _shared_get_token()
         if _cached_token is None:
             _cached_token = await self._authenticate()
 
@@ -638,6 +771,11 @@ class OneDentaService:
         services = v.get("services", [])
         service_name = services[0]["name"] if services else ""
         client_val = v.get("client")
+        # 1Denta embeds the client card in the visit as `clientData`. We surface
+        # it so appointment sync can create/show a patient even when the client
+        # hasn't been imported into the local patients table yet (первичные
+        # пациенты) — otherwise they render as "Неизвестный пациент".
+        client_data = v.get("clientData") or {}
         resource_val = v.get("resourceId")
         resource_obj = v.get("resource") or {}
         # 1denta uses "title" for resource/doctor name, "name" as fallback
@@ -688,6 +826,11 @@ class OneDentaService:
         return {
             "external_id": str(v["id"]),
             "patient_external_id": str(client_val) if client_val is not None else None,
+            "patient_name": client_data.get("name") or "",
+            "patient_phone": client_data.get("phone") or "",
+            "patient_birth_date": client_data.get("birthDate"),
+            "patient_type": client_data.get("type"),
+            "patient_sex": client_data.get("sex", 0),
             "doctor_id": str(resource_val) if resource_val is not None else "",
             "doctor_name": doctor_name_val,
             "service": service_name,
