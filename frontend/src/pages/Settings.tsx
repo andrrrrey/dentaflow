@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { format, formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import {
@@ -12,9 +14,11 @@ import {
   useSaveIntegrations,
   useCheckIntegration,
   useSyncOneDenta,
+  useOneDentaSyncStatus,
   useKnowledgeBaseFiles,
   useUploadKbFile,
   useDeleteKbFile,
+  type OneDentaSyncStatus,
 } from "../api/integrations";
 import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
 import { usePipelineStages } from "../api/pipelineStages";
@@ -553,6 +557,7 @@ function IntegrationCard({
   onSync,
   syncing,
   syncStatus,
+  syncInfo,
 }: {
   config: IntegrationCardConfig;
   values: Record<string, string>;
@@ -563,6 +568,7 @@ function IntegrationCard({
   onSync?: () => void;
   syncing?: boolean;
   syncStatus?: string;
+  syncInfo?: ReactNode;
 }) {
   return (
     <Card>
@@ -615,6 +621,15 @@ function IntegrationCard({
           )
         )}
       </div>
+
+      {syncInfo && (
+        <div
+          className="mt-3 p-3 rounded-xl text-[12px]"
+          style={{ background: "rgba(91,76,245,0.06)", border: "1px solid rgba(91,76,245,0.12)" }}
+        >
+          {syncInfo}
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-2 mt-3">
         {syncStatus && (
@@ -739,6 +754,69 @@ function AutoLeadCard({
   );
 }
 
+/* ---------- 1Denta sync status ---------- */
+
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return format(new Date(iso), "d MMM, HH:mm", { locale: ru });
+  } catch {
+    return "—";
+  }
+}
+
+function fmtRelative(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return formatDistanceToNow(new Date(iso), { locale: ru, addSuffix: true });
+  } catch {
+    return "";
+  }
+}
+
+function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }) {
+  if (!status || !status.last_sync_at) {
+    return (
+      <div className="text-text-muted">
+        Синхронизация ещё не выполнялась. Данные обновляются автоматически раз в час.
+      </div>
+    );
+  }
+
+  const r = status.result;
+  const dirCount = r?.directories
+    ? Object.values(r.directories).reduce((s, n) => s + (Number(n) || 0), 0)
+    : null;
+  const pat = r?.patients;
+  const appt = r?.appointments;
+
+  const summaryParts: string[] = [];
+  if (dirCount !== null) summaryParts.push(`справочники ${dirCount}`);
+  if (pat) summaryParts.push(`пациенты +${pat.created ?? 0}/~${pat.updated ?? 0}`);
+  if (appt) summaryParts.push(`записи +${appt.created ?? 0}/~${appt.updated ?? 0}`);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <RefreshCw size={12} className="text-accent2 flex-shrink-0" />
+        <span className="text-text-main font-semibold">
+          Последняя синхронизация: {fmtRelative(status.last_sync_at)}
+        </span>
+        <span className="text-text-muted">({fmtDateTime(status.last_sync_at)})</span>
+        {status.ok === false && (
+          <span className="text-[#f44b6e] font-semibold">— с ошибкой</span>
+        )}
+      </div>
+      <div className="text-text-muted">
+        Следующая ≈ {fmtDateTime(status.next_sync_at)}
+      </div>
+      <div className="text-text-muted">
+        Синхронизировано: {summaryParts.length ? summaryParts.join(" · ") : "—"}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Integrations tab ---------- */
 
 function IntegrationsTab() {
@@ -746,6 +824,7 @@ function IntegrationsTab() {
   const saveMutation = useSaveIntegrations();
   const checkMutation = useCheckIntegration();
   const syncOneDenta = useSyncOneDenta();
+  const { data: oneDentaStatus } = useOneDentaSyncStatus();
   const isOwner = useAuthStore((s) => s.user?.role) === "owner";
 
   const [values, setValues] = useState<Record<string, string>>({});
@@ -809,7 +888,8 @@ function IntegrationsTab() {
       {INTEGRATIONS.map((cfg) => {
         // Единая ручная синхронизация с 1Denta — только у владельца.
         // Остальная синхронизация происходит автоматически раз в час.
-        const showSync = cfg.service === "one_denta" && isOwner;
+        const isOneDenta = cfg.service === "one_denta";
+        const showSync = isOneDenta && isOwner;
         return (
           <IntegrationCard
             key={cfg.service}
@@ -822,6 +902,7 @@ function IntegrationsTab() {
             onSync={showSync ? handleSyncOneDenta : undefined}
             syncing={showSync && syncOneDenta.isPending}
             syncStatus={showSync ? syncStatus : undefined}
+            syncInfo={isOneDenta ? <OneDentaSyncInfo status={oneDentaStatus} /> : undefined}
           />
         );
       })}

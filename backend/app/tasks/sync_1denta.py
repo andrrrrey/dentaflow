@@ -19,6 +19,51 @@ logger = logging.getLogger(__name__)
 from app.tasks.loop import run_async as _run_async  # noqa: E402
 
 
+# Redis keys for surfacing the last-sync status in Settings → 1Denta (CRM).
+_REDIS_LAST_SYNC_KEY = "1denta:last_sync"
+_REDIS_LAST_HOURLY_KEY = "1denta:last_hourly_sync"
+_SYNC_STATUS_TTL = 30 * 24 * 3600  # 30 days; self-clears but survives restarts
+
+
+async def _record_1denta_sync_async(
+    trigger: str,
+    result: dict | None,
+    ok: bool = True,
+    error: str | None = None,
+) -> None:
+    """Persist the outcome of a 1Denta sync run to Redis (best-effort).
+
+    Read back by GET /integrations/sync-1denta/status to show the clinic owner
+    when the last sync ran, when the next one is due and what was synced.
+    """
+    import json
+
+    from app.config import settings
+
+    finished_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "finished_at": finished_at,
+        "trigger": trigger,
+        "ok": ok,
+        "result": result,
+        "error": error,
+    }
+    try:
+        import redis.asyncio as aioredis
+
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await r.setex(_REDIS_LAST_SYNC_KEY, _SYNC_STATUS_TTL, json.dumps(payload, ensure_ascii=False))
+            # Track the last *automatic hourly* run separately so "next sync"
+            # is estimated from the hourly cadence, not from manual/nightly runs.
+            if trigger == "hourly" and ok:
+                await r.setex(_REDIS_LAST_HOURLY_KEY, _SYNC_STATUS_TTL, finished_at)
+        finally:
+            await r.aclose()
+    except Exception:
+        logger.warning("Failed to record 1Denta sync status in Redis", exc_info=True)
+
+
 async def _sync_patients_async() -> dict:
     from sqlalchemy import select
     from app.database import async_session_factory
@@ -624,13 +669,16 @@ def sync_hourly(self):
             "sync_hourly complete: dirs=%s patients=%s appointments=%s",
             dir_result, pat_result, appt_result,
         )
-        return {
+        result = {
             "directories": dir_result,
             "patients": pat_result,
             "appointments": appt_result,
         }
+        _run_async(_record_1denta_sync_async("hourly", result, ok=True))
+        return result
     except Exception as exc:
         logger.exception("sync_hourly failed")
+        _run_async(_record_1denta_sync_async("hourly", None, ok=False, error=str(exc)))
         raise self.retry(exc=exc, countdown=300)
 
 
@@ -648,15 +696,18 @@ def sync_full_daily(self):
             "sync_full_daily complete: dirs=%s patients=%s appointments=%s calls=%s marketing=%s",
             dir_result, pat_result, appt_result, calls_result, marketing_result,
         )
-        return {
+        result = {
             "directories": dir_result,
             "patients": pat_result,
             "appointments": appt_result,
             "calls": calls_result,
             "marketing": marketing_result,
         }
+        _run_async(_record_1denta_sync_async("daily", result, ok=True))
+        return result
     except Exception as exc:
         logger.exception("sync_full_daily failed")
+        _run_async(_record_1denta_sync_async("daily", None, ok=False, error=str(exc)))
         raise self.retry(exc=exc, countdown=300)
 
 
