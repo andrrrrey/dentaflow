@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Loader2, Play, Send, Trash2, Plus, Mic, Square } from "lucide-react";
+import { Loader2, Play, Send, Trash2, Plus, Mic, Square, Phone } from "lucide-react";
 import {
   useTtsVoices,
   useTtsTest,
@@ -12,6 +12,8 @@ import {
   useScriptCorrections,
   useAddScriptCorrection,
   useDeleteScriptCorrection,
+  useTestCall,
+  useCallStatus,
   useCampaigns,
   useCampaignItems,
   useCreateCampaign,
@@ -202,6 +204,85 @@ const VOICE_STATE_LABEL: Record<VoiceState, string> = {
   speaking: "🔊 Говорит ИИ…",
 };
 
+/* ---------- Тестовый звонок на телефон ---------- */
+
+const CALL_STATUS_LABELS: Record<string, string> = {
+  pending: "Подготовка…",
+  ringing: "Звоним…",
+  active: "Идёт разговор…",
+  completed: "Завершён",
+  failed: "Ошибка",
+};
+function callStatusLabel(st?: string): string {
+  return (st && CALL_STATUS_LABELS[st]) || (st ? st : "Инициируем звонок…");
+}
+
+
+function TestCallCard() {
+  const scenarios = useScenarios();
+  const testCall = useTestCall();
+  const [phone, setPhone] = useState("");
+  const [scenarioId, setScenarioId] = useState("default");
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const status = useCallStatus(activeCallId);
+  const scen = scenarios.data ?? [];
+  const err = (testCall.error as any)?.response?.data?.detail as string | undefined;
+  const inputCls =
+    "rounded-xl border border-[rgba(91,76,245,0.18)] p-2.5 text-[13px] outline-none focus:border-accent2";
+  return (
+    <Card className="max-w-[640px]">
+      <h3 className="text-sm font-extrabold mb-1">Тестовый звонок на телефон</h3>
+      <p className="text-[12px] text-text-muted mb-3">
+        Робот позвонит на указанный номер, поздоровается и проведёт диалог по сценарию.
+        Нужны настроенный SIP-транк Novofon и AMI-пароль (Интеграции → Novofon).
+      </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-3 flex-wrap items-center">
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+7 900 000-00-00"
+            className={`flex-1 min-w-[200px] ${inputCls}`}
+          />
+          <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className={inputCls}>
+            {scen.length === 0 && <option value="default">default</option>}
+            {scen.map((sc) => (
+              <option key={sc.id} value={sc.id}>{sc.name}</option>
+            ))}
+          </select>
+          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
+            {testCall.isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+            <span className="ml-1">Позвонить</span>
+          </Button>
+        </div>
+        {testCall.isSuccess && (
+          <div className="text-[12px] text-[#0a8f5b]">
+            Звонок инициирован — ожидайте вызова на {phone}.
+            {testCall.data?.greeting ? ` Робот начнёт с фразы: «${testCall.data.greeting}»` : ""}
+          </div>
+        )}
+        {activeCallId && (
+          <div className="rounded-xl border border-[rgba(91,76,245,0.12)] p-3 max-h-[320px] overflow-y-auto flex flex-col gap-2" style={{ background: "rgba(255,255,255,0.5)" }}>
+            <div className="text-[11px] text-text-muted uppercase tracking-wider">{callStatusLabel(status.data?.status)}</div>
+            {(status.data?.transcript ?? []).length === 0 && (
+              <div className="text-[12px] text-text-muted">Ожидаем начало разговора…</div>
+            )}
+            {(status.data?.transcript ?? []).map((l, i) => (
+              <div key={i} className={`text-[13px] ${l.role === "robot" ? "text-accent2" : l.role === "client" ? "text-text-main" : "text-text-muted italic"}`}>
+                <b>{l.role === "robot" ? "Робот" : l.role === "client" ? "Пациент" : "—"}:</b> {l.text}
+              </div>
+            ))}
+            {status.data?.summary && (
+              <div className="text-[12px] text-text-muted mt-1 pt-2 border-t border-[rgba(0,0,0,0.06)]">Итог: {status.data.summary}</div>
+            )}
+          </div>
+        )}
+        {err && <div className="text-[12px] text-[#f44b6e]">{err}</div>}
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Тест диалога ---------- */
 
 function DialogTab() {
@@ -269,6 +350,8 @@ function DialogTab() {
   const voiceActive = voice.state !== "idle";
 
   return (
+    <div className="flex flex-col gap-[18px]">
+    <TestCallCard />
     <Card className="max-w-[640px]">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -363,6 +446,7 @@ function DialogTab() {
         <div className="text-[12px] text-[#f44b6e] mt-2">{mode === "text" ? error : voice.error}</div>
       )}
     </Card>
+    </div>
   );
 }
 

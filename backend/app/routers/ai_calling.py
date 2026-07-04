@@ -25,6 +25,7 @@ from app.models.user import User
 from pydantic import BaseModel
 from datetime import datetime
 from app.services import ai_calling_service
+from app.services.asterisk_ami import AsteriskAMI, AMIError
 from app.services.integrations_service import get_raw_value
 from app.utils.security import decode_token
 
@@ -416,3 +417,61 @@ async def campaign_control(
     if campaign is None:
         raise HTTPException(status_code=404, detail="Кампания не найдена")
     return _campaign_dict(campaign)
+
+
+# ── Тестовый звонок на реальный телефон ──────────────────────────────────────
+# Разовый звонок роботом на указанный номер: aicallrobot создаёт сессию диалога,
+# Asterisk (AMI Originate) звонит, при ответе робот здоровается и ведёт диалог.
+# Требует настроенного SIP-транка Novofon и AMI-пароля (см. Интеграции → Novofon).
+
+class TestCallRequest(BaseModel):
+    phone: str
+    scenario_id: str = "default"
+
+
+@router.post("/test-call")
+async def test_call(
+    body: TestCallRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner")),
+):
+    phone = ai_calling_service.normalize_phone(body.phone)
+    if not phone:
+        raise HTTPException(status_code=400, detail="Укажите корректный номер телефона")
+
+    await _sync_credentials(db)
+    caller_id = await get_raw_value(db, "novofon_caller_id")
+    ami_password = await get_raw_value(db, "novofon_ami_password")
+
+    start = await _proxy(
+        "POST",
+        "/api/v1/calls/start",
+        json={"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v2"},
+    )
+    call_id = (start or {}).get("call_id") if isinstance(start, dict) else None
+    if not call_id:
+        raise HTTPException(status_code=502, detail="aicallrobot не создал сессию звонка")
+
+    try:
+        ok = await AsteriskAMI(password=ami_password or None).originate(
+            phone=phone, call_id=call_id, caller_id=caller_id or None
+        )
+    except AMIError as e:
+        raise HTTPException(status_code=502, detail=f"Asterisk/AMI недоступен: {e}")
+
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Звонок не инициирован (Originate отклонён). Проверьте регистрацию "
+            "SIP-транка Novofon, AMI-пароль и что исходящие включены.",
+        )
+    return {"call_id": call_id, "status": "calling", "greeting": (start or {}).get("greeting")}
+
+
+@router.get("/calls/{call_id}")
+async def call_status(
+    call_id: str,
+    _user: User = Depends(role_required("owner")),
+):
+    """Статус и живой транскрипт звонка (для тестового звонка). Проксирует aicallrobot."""
+    return await _proxy("GET", f"/api/v1/calls/{call_id}")
