@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 import logging
 import uuid
 from datetime import datetime, time, timezone
@@ -24,6 +25,14 @@ from app.models.patient_segment import PatientSegment, PatientSegmentMember
 logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = ("scheduled", "running", "waiting_window", "paused")
+
+
+def normalize_phone(phone: str) -> str:
+    """Приводит номер к набираемому виду: только цифры, 8XXXXXXXXXX → 7XXXXXXXXXX."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    return digits
 
 
 # ---------------------------------------------------------------------------

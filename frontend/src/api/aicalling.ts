@@ -249,3 +249,20 @@ export function useCampaignControl() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-calling", "campaigns"] }),
   });
 }
+
+/* ---------- Тестовый звонок на телефон ---------- */
+
+export interface TestCallResponse {
+  call_id: string;
+  status: string;
+  greeting?: string;
+}
+
+export function useTestCall() {
+  return useMutation<TestCallResponse, Error, { phone: string; scenario_id?: string }>({
+    mutationFn: async (body) => {
+      const { data } = await api.post("/ai-calling/test-call", body);
+      return data;
+    },
+  });
+}

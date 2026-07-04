@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Loader2, Play, Send, Trash2, Plus, Mic, Square } from "lucide-react";
+import { Loader2, Play, Send, Trash2, Plus, Mic, Square, Phone } from "lucide-react";
 import {
   useTtsVoices,
   useTtsTest,
@@ -12,6 +12,7 @@ import {
   useScriptCorrections,
   useAddScriptCorrection,
   useDeleteScriptCorrection,
+  useTestCall,
   useCampaigns,
   useCampaignItems,
   useCreateCampaign,
@@ -202,6 +203,55 @@ const VOICE_STATE_LABEL: Record<VoiceState, string> = {
   speaking: "🔊 Говорит ИИ…",
 };
 
+/* ---------- Тестовый звонок на телефон ---------- */
+
+function TestCallCard() {
+  const scenarios = useScenarios();
+  const testCall = useTestCall();
+  const [phone, setPhone] = useState("");
+  const [scenarioId, setScenarioId] = useState("default");
+  const scen = scenarios.data ?? [];
+  const err = (testCall.error as any)?.response?.data?.detail as string | undefined;
+  const inputCls =
+    "rounded-xl border border-[rgba(91,76,245,0.18)] p-2.5 text-[13px] outline-none focus:border-accent2";
+  return (
+    <Card className="max-w-[640px]">
+      <h3 className="text-sm font-extrabold mb-1">Тестовый звонок на телефон</h3>
+      <p className="text-[12px] text-text-muted mb-3">
+        Робот позвонит на указанный номер, поздоровается и проведёт диалог по сценарию.
+        Нужны настроенный SIP-транк Novofon и AMI-пароль (Интеграции → Novofon).
+      </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-3 flex-wrap items-center">
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+7 900 000-00-00"
+            className={`flex-1 min-w-[200px] ${inputCls}`}
+          />
+          <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className={inputCls}>
+            {scen.length === 0 && <option value="default">default</option>}
+            {scen.map((sc) => (
+              <option key={sc.id} value={sc.id}>{sc.name}</option>
+            ))}
+          </select>
+          <Button onClick={() => testCall.mutate({ phone, scenario_id: scenarioId })} disabled={testCall.isPending || !phone.trim()}>
+            {testCall.isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+            <span className="ml-1">Позвонить</span>
+          </Button>
+        </div>
+        {testCall.isSuccess && (
+          <div className="text-[12px] text-[#0a8f5b]">
+            Звонок инициирован — ожидайте вызова на {phone}.
+            {testCall.data?.greeting ? ` Робот начнёт с фразы: «${testCall.data.greeting}»` : ""}
+          </div>
+        )}
+        {err && <div className="text-[12px] text-[#f44b6e]">{err}</div>}
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Тест диалога ---------- */
 
 function DialogTab() {
@@ -269,6 +319,8 @@ function DialogTab() {
   const voiceActive = voice.state !== "idle";
 
   return (
+    <div className="flex flex-col gap-[18px]">
+    <TestCallCard />
     <Card className="max-w-[640px]">
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div className="flex items-center gap-3">
@@ -363,6 +415,7 @@ function DialogTab() {
         <div className="text-[12px] text-[#f44b6e] mt-2">{mode === "text" ? error : voice.error}</div>
       )}
     </Card>
+    </div>
   );
 }
 
