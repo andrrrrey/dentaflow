@@ -2,9 +2,10 @@
 # ──────────────────────────────────────────────────
 # DentaFlow — обновление
 #
-# ./update.sh           — всё (бэк + фронт)
-# ./update.sh back      — только бэкенд + celery
+# ./update.sh           — всё (бэк + aicallrobot + asterisk + фронт)
+# ./update.sh back      — бэкенд + celery + aicallrobot + asterisk
 # ./update.sh front     — только фронтенд
+# ./update.sh asterisk  — только медиасервер Asterisk (ИИ-обзвон)
 # ──────────────────────────────────────────────────
 set -e
 cd "$(dirname "$0")"
@@ -16,14 +17,23 @@ MODE="${1:-all}"
 echo "→ git pull..."
 git pull origin main
 
+# ── Только Asterisk (медиасервер ИИ-обзвона) ──────
+if [ "$MODE" = "asterisk" ]; then
+  echo "→ Пересборка и перезапуск Asterisk (ИИ обзвон)..."
+  $COMPOSE build asterisk
+  $COMPOSE up -d --no-deps --force-recreate asterisk
+  echo "✓ Asterisk обновлён."
+  exit 0
+fi
+
 # ── Бэкенд ────────────────────────────────────────
 if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
-  echo "→ Пересборка бэкенда и aicallrobot (ИИ обзвон)..."
-  $COMPOSE build backend aicallrobot
+  echo "→ Пересборка бэкенда, aicallrobot и asterisk (ИИ обзвон)..."
+  $COMPOSE build backend aicallrobot asterisk
 
-  echo "→ Запуск aicallrobot, бэкенда и celery..."
+  echo "→ Запуск aicallrobot, asterisk, бэкенда и celery..."
   $COMPOSE up -d --no-deps --remove-orphans --force-recreate \
-    aicallrobot backend celery_worker celery_worker_segments celery_beat
+    aicallrobot asterisk backend celery_worker celery_worker_segments celery_beat
 
   echo "→ Перезапуск nginx..."
   $COMPOSE restart nginx

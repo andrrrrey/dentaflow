@@ -25,6 +25,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "novofon_sip_password",
         "novofon_sip_server",
         "novofon_caller_id",
+        "novofon_ami_password",
     ],
     "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
     "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
@@ -52,7 +53,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
 ALL_KEYS = [k for keys in INTEGRATION_KEYS.values() for k in keys]
 
 MASKED_KEYS = {
-    "novofon_api_key", "novofon_webhook_secret", "novofon_sip_password",
+    "novofon_api_key", "novofon_webhook_secret", "novofon_sip_password", "novofon_ami_password",
     "one_denta_password",
     "openai_api_key",
     "yandex_api_key",
