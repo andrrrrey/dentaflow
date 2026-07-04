@@ -13,6 +13,7 @@ import {
   useAddScriptCorrection,
   useDeleteScriptCorrection,
   useTestCall,
+  useCallStatus,
   useCampaigns,
   useCampaignItems,
   useCreateCampaign,
@@ -205,11 +206,25 @@ const VOICE_STATE_LABEL: Record<VoiceState, string> = {
 
 /* ---------- Тестовый звонок на телефон ---------- */
 
+const CALL_STATUS_LABELS: Record<string, string> = {
+  pending: "Подготовка…",
+  ringing: "Звоним…",
+  active: "Идёт разговор…",
+  completed: "Завершён",
+  failed: "Ошибка",
+};
+function callStatusLabel(st?: string): string {
+  return (st && CALL_STATUS_LABELS[st]) || (st ? st : "Инициируем звонок…");
+}
+
+
 function TestCallCard() {
   const scenarios = useScenarios();
   const testCall = useTestCall();
   const [phone, setPhone] = useState("");
   const [scenarioId, setScenarioId] = useState("default");
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const status = useCallStatus(activeCallId);
   const scen = scenarios.data ?? [];
   const err = (testCall.error as any)?.response?.data?.detail as string | undefined;
   const inputCls =
@@ -235,7 +250,7 @@ function TestCallCard() {
               <option key={sc.id} value={sc.id}>{sc.name}</option>
             ))}
           </select>
-          <Button onClick={() => testCall.mutate({ phone, scenario_id: scenarioId })} disabled={testCall.isPending || !phone.trim()}>
+          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
             {testCall.isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
             <span className="ml-1">Позвонить</span>
           </Button>
@@ -244,6 +259,22 @@ function TestCallCard() {
           <div className="text-[12px] text-[#0a8f5b]">
             Звонок инициирован — ожидайте вызова на {phone}.
             {testCall.data?.greeting ? ` Робот начнёт с фразы: «${testCall.data.greeting}»` : ""}
+          </div>
+        )}
+        {activeCallId && (
+          <div className="rounded-xl border border-[rgba(91,76,245,0.12)] p-3 max-h-[320px] overflow-y-auto flex flex-col gap-2" style={{ background: "rgba(255,255,255,0.5)" }}>
+            <div className="text-[11px] text-text-muted uppercase tracking-wider">{callStatusLabel(status.data?.status)}</div>
+            {(status.data?.transcript ?? []).length === 0 && (
+              <div className="text-[12px] text-text-muted">Ожидаем начало разговора…</div>
+            )}
+            {(status.data?.transcript ?? []).map((l, i) => (
+              <div key={i} className={`text-[13px] ${l.role === "robot" ? "text-accent2" : l.role === "client" ? "text-text-main" : "text-text-muted italic"}`}>
+                <b>{l.role === "robot" ? "Робот" : l.role === "client" ? "Пациент" : "—"}:</b> {l.text}
+              </div>
+            ))}
+            {status.data?.summary && (
+              <div className="text-[12px] text-text-muted mt-1 pt-2 border-t border-[rgba(0,0,0,0.06)]">Итог: {status.data.summary}</div>
+            )}
           </div>
         )}
         {err && <div className="text-[12px] text-[#f44b6e]">{err}</div>}

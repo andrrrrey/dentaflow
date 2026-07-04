@@ -266,3 +266,33 @@ export function useTestCall() {
     },
   });
 }
+
+export interface CallTranscriptLine {
+  role: string; // robot | client | system
+  text: string;
+  timestamp?: number;
+}
+export interface CallStatus {
+  call_id: string;
+  status: string; // active | ringing | completed | failed ...
+  transcript: CallTranscriptLine[];
+  client_status?: string;
+  summary?: string;
+  duration?: number | null;
+}
+
+export function useCallStatus(callId: string | null) {
+  return useQuery<CallStatus>({
+    queryKey: ["ai-calling", "call-status", callId],
+    queryFn: async () => {
+      const { data } = await api.get(`/ai-calling/calls/${callId}`);
+      return data;
+    },
+    enabled: !!callId,
+    // Поллим, пока звонок не завершится.
+    refetchInterval: (query) => {
+      const st = query.state.data?.status;
+      return st && ["completed", "failed"].includes(st) ? false : 1500;
+    },
+  });
+}

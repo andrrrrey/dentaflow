@@ -466,3 +466,12 @@ async def test_call(
             "SIP-транка Novofon, AMI-пароль и что исходящие включены.",
         )
     return {"call_id": call_id, "status": "calling", "greeting": (start or {}).get("greeting")}
+
+
+@router.get("/calls/{call_id}")
+async def call_status(
+    call_id: str,
+    _user: User = Depends(role_required("owner")),
+):
+    """Статус и живой транскрипт звонка (для тестового звонка). Проксирует aicallrobot."""
+    return await _proxy("GET", f"/api/v1/calls/{call_id}")
