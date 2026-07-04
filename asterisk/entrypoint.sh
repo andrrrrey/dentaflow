@@ -37,13 +37,34 @@ if [ -n "$BACKEND_URL" ] && [ -n "$INTERNAL_API_TOKEN" ]; then
     done
 fi
 
-EXTERNAL_IP=${EXTERNAL_IP:-}
+# 2) CallerID → только цифры (для From/CallerID; иначе Novofon сбрасывает cause 16).
+CALLER_ID_DIGITS=$(echo "$CALLER_ID" | tr -cd '0-9')
+
+# 3) Публичный IP для NAT (SDP/Contact должны нести внешний IP, а не адрес контейнера).
+if [ -z "$EXTERNAL_IP" ]; then
+    EXTERNAL_IP=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || true)
+fi
+if [ -n "$EXTERNAL_IP" ]; then
+    NAT_CONFIG="external_media_address=$EXTERNAL_IP
+external_signaling_address=$EXTERNAL_IP
+local_net=172.16.0.0/12
+local_net=10.0.0.0/8
+local_net=192.168.0.0/16"
+    echo "[entrypoint] NAT: внешний IP = $EXTERNAL_IP"
+else
+    NAT_CONFIG=""
+    echo "[entrypoint] ВНИМАНИЕ: EXTERNAL_IP не задан и не определился — звук может не пойти (NAT). Задайте EXTERNAL_IP в .env."
+fi
+
 AMI_PASSWORD=${AMI_PASSWORD:-}
-export SIP_LOGIN SIP_PASSWORD SIP_SERVER CALLER_ID EXTERNAL_IP AMI_PASSWORD
+export SIP_LOGIN SIP_PASSWORD SIP_SERVER CALLER_ID CALLER_ID_DIGITS EXTERNAL_IP NAT_CONFIG AMI_PASSWORD
 
 if [ -z "$SIP_SERVER" ] || [ -z "$SIP_LOGIN" ]; then
     echo "[entrypoint] ВНИМАНИЕ: SIP-настройки Novofon не заданы (ни env, ни админка)."
     echo "[entrypoint] Транк не зарегистрируется. Заполните раздел «Интеграции → Novofon»."
+fi
+if [ -z "$CALLER_ID_DIGITS" ]; then
+    echo "[entrypoint] ВНИМАНИЕ: CallerID (исходящий номер) пуст — Novofon отклонит исходящие. Заполните «Исходящий номер» в админке."
 fi
 if [ -z "$AMI_PASSWORD" ]; then
     echo "[entrypoint] ВНИМАНИЕ: AMI_PASSWORD не задан — оркестратор не сможет инициировать звонки."
@@ -51,6 +72,6 @@ fi
 
 envsubst < /etc/asterisk/pjsip.conf.template   > /etc/asterisk/pjsip.conf
 envsubst < /etc/asterisk/manager.conf.template > /etc/asterisk/manager.conf
-echo "[entrypoint] Конфиги отрендерены (server=$SIP_SERVER login=$SIP_LOGIN, AMI=on)."
+echo "[entrypoint] Конфиги отрендерены (server=$SIP_SERVER login=$SIP_LOGIN callerid=$CALLER_ID_DIGITS ext_ip=$EXTERNAL_IP, AMI=on)."
 
 exec asterisk -f -vvvg
