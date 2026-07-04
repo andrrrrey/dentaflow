@@ -42,11 +42,11 @@ disallow=all
 allow=alaw,ulaw
 outbound_auth=novofon_auth
 aors=novofon_aor
-; From/CallerID = реальный номер клиники (из админки), НЕ SIP-логин — иначе Novofon
-; принимает вызов и сразу сбрасывает (cause 16).
-from_user=${CALLER_ID_DIGITS}
+; Novofon аутентифицирует исходящий INVITE по SIP-логину в From — если сюда
+; поставить номер, Novofon перестаёт отвечать на INVITE. Отображаемый CallerID
+; (какой номер видит вызываемый) задаётся в кабинете Novofon, не здесь.
+from_user=${SIP_LOGIN}
 from_domain=${SIP_SERVER}
-callerid=${CALLER_ID_DIGITS}
 ; NAT: симметричный RTP + доверие rport/Contact.
 rtp_symmetric=yes
 force_rport=yes
