@@ -43,8 +43,9 @@ class AsteriskAMI:
         context: str = "ai-outbound",
         trunk: str = "novofon",
         timeout_ms: int = 30000,
-    ) -> bool:
-        """Инициирует исходящий звонок пациенту. Возвращает True, если AMI принял Originate.
+    ) -> tuple[bool, str]:
+        """Инициирует исходящий звонок пациенту. Возвращает (ok, message) — где
+        message несёт причину отказа от Asterisk, если Originate отклонён.
 
         Канал: PJSIP/<phone>@<trunk>. При ответе пациента Asterisk выполняет
         контекст ``ai-outbound`` и приложение AudioSocket с ${CALL_ID}.
@@ -62,9 +63,11 @@ class AsteriskAMI:
         if caller_id:
             action["CallerID"] = caller_id
 
-        return await self._run_action(action)
+        resp = await self._run_action(action)
+        ok = resp.get("Response") == "Success"
+        return ok, resp.get("Message", "")
 
-    async def _run_action(self, action: dict) -> bool:
+    async def _run_action(self, action: dict) -> dict:
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port), timeout=10.0
@@ -92,10 +95,9 @@ class AsteriskAMI:
             except Exception:  # noqa: BLE001
                 pass
 
-            ok = resp.get("Response") == "Success"
-            if not ok:
+            if resp.get("Response") != "Success":
                 logger.warning("AMI %s rejected: %s", action.get("Action"), resp.get("Message"))
-            return ok
+            return resp
         finally:
             writer.close()
             try:
