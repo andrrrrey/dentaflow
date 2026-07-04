@@ -12,6 +12,7 @@ if [ -n "$BACKEND_URL" ] && [ -n "$INTERNAL_API_TOKEN" ]; then
         SIP_PASSWORD=${SIP_PASSWORD:-$(echo "$JSON" | jq -r '.sip_password // empty')}
         SIP_SERVER=${SIP_SERVER:-$(echo "$JSON" | jq -r '.sip_server // empty')}
         CALLER_ID=${CALLER_ID:-$(echo "$JSON" | jq -r '.caller_id // empty')}
+        AMI_PASSWORD=${AMI_PASSWORD:-$(echo "$JSON" | jq -r '.ami_password // empty')}
     fi
 fi
 

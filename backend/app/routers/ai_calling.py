@@ -98,6 +98,7 @@ async def internal_novofon_sip(
         "sip_password": await get_raw_value(db, "novofon_sip_password"),
         "sip_server": await get_raw_value(db, "novofon_sip_server"),
         "caller_id": await get_raw_value(db, "novofon_caller_id"),
+        "ami_password": await get_raw_value(db, "novofon_ami_password"),
     }
 
 

@@ -134,6 +134,7 @@ async def _place_call(item_id: str) -> dict:
 
         await _sync_credentials(db)
         caller_id = await get_raw_value(db, "novofon_caller_id")
+        ami_password = await get_raw_value(db, "novofon_ami_password")
 
     # 1. Создаём сессию диалога в aicallrobot.
     call_id = None
@@ -153,7 +154,7 @@ async def _place_call(item_id: str) -> dict:
 
     # 2. Инициируем телефонный вызов через Asterisk (AMI).
     try:
-        ok = await AsteriskAMI().originate(phone=phone, call_id=call_id, caller_id=caller_id or None)
+        ok = await AsteriskAMI(password=ami_password or None).originate(phone=phone, call_id=call_id, caller_id=caller_id or None)
     except AMIError as exc:
         logger.error("AMI originate failed: %s", exc)
         ok = False

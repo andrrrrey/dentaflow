@@ -401,6 +401,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "novofon_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-пользователя" },
       { key: "novofon_sip_server", label: "SIP-сервер", placeholder: "Например, sip.novofon.com" },
       { key: "novofon_caller_id", label: "Исходящий номер (CallerID)", placeholder: "Номер, который видит пациент" },
+      { key: "novofon_ami_password", label: "AMI-пароль (ИИ-обзвон, любой секрет)", type: "password", placeholder: "Придумайте пароль — общий для сервера и Asterisk" },
     ],
   },
   {

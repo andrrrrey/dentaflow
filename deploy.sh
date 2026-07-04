@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────
 # DentaFlow deploy
 #
-# ./deploy.sh           — бэкенд + фронтенд (~2-3 мин)
+# ./deploy.sh           — бэкенд + aicallrobot + asterisk + фронтенд (~2-3 мин)
 # ./deploy.sh --fast    — бэкенд + фронтенд без tsc (~1 мин)
 # ./deploy.sh --back    — только бэкенд (~30 сек)
 # ./deploy.sh --front   — только фронтенд
@@ -27,8 +27,8 @@ if [ $FRONT_ONLY -eq 0 ]; then
   echo "→ Backend build (образ собирается один раз)..."
   # Собираем образ один раз через backend, остальные сервисы используют тот же image.
   # aicallrobot (ИИ обзвон) — отдельный образ, собираем его явно.
-  $COMPOSE build backend aicallrobot
-  $COMPOSE up -d --remove-orphans aicallrobot backend celery_worker celery_beat telegram_bot
+  $COMPOSE build backend aicallrobot asterisk
+  $COMPOSE up -d --remove-orphans aicallrobot asterisk backend celery_worker celery_beat telegram_bot
 fi
 
 # ── Frontend ───────────────────────────────────────────
