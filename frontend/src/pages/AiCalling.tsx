@@ -222,7 +222,7 @@ function TestCallCard() {
   const scenarios = useScenarios();
   const testCall = useTestCall();
   const [phone, setPhone] = useState("");
-  const [scenarioId, setScenarioId] = useState("default");
+  const [scenarioId, setScenarioId] = useState("dental_test");
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const status = useCallStatus(activeCallId);
   const scen = scenarios.data ?? [];

@@ -142,7 +142,7 @@ async def _place_call(item_id: str) -> dict:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.AICALLROBOT_URL}/api/v1/calls/start",
-                json={"phone_number": phone, "scenario_id": scenario_id, "algo_version": "v2"},
+                json={"phone_number": phone, "scenario_id": scenario_id, "algo_version": "v1"},
             )
             resp.raise_for_status()
             call_id = resp.json().get("call_id")
