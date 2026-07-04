@@ -453,7 +453,7 @@ async def test_call(
         raise HTTPException(status_code=502, detail="aicallrobot не создал сессию звонка")
 
     try:
-        ok = await AsteriskAMI(password=ami_password or None).originate(
+        ok, reason = await AsteriskAMI(password=ami_password or None).originate(
             phone=phone, call_id=call_id, caller_id=caller_id or None
         )
     except AMIError as e:
@@ -462,8 +462,12 @@ async def test_call(
     if not ok:
         raise HTTPException(
             status_code=502,
-            detail="Звонок не инициирован (Originate отклонён). Проверьте регистрацию "
-            "SIP-транка Novofon, AMI-пароль и что исходящие включены.",
+            detail=(
+                "Звонок не инициирован (Originate отклонён"
+                + (f": {reason}" if reason else "")
+                + "). Обычно причина — SIP-транк Novofon не зарегистрирован. "
+                "Проверьте: pjsip show registrations = Registered, AMI-пароль, исходящие в Novofon."
+            ),
         )
     return {"call_id": call_id, "status": "calling", "greeting": (start or {}).get("greeting")}
 

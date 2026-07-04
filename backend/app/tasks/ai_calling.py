@@ -154,7 +154,7 @@ async def _place_call(item_id: str) -> dict:
 
     # 2. Инициируем телефонный вызов через Asterisk (AMI).
     try:
-        ok = await AsteriskAMI(password=ami_password or None).originate(phone=svc.normalize_phone(phone), call_id=call_id, caller_id=caller_id or None)
+        ok, _reason = await AsteriskAMI(password=ami_password or None).originate(phone=svc.normalize_phone(phone), call_id=call_id, caller_id=caller_id or None)
     except AMIError as exc:
         logger.error("AMI originate failed: %s", exc)
         ok = False
