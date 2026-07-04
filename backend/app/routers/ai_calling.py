@@ -446,7 +446,7 @@ async def test_call(
     start = await _proxy(
         "POST",
         "/api/v1/calls/start",
-        json={"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v2"},
+        json={"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v1"},
     )
     call_id = (start or {}).get("call_id") if isinstance(start, dict) else None
     if not call_id:
