@@ -3,17 +3,38 @@
 # (источник истины — БД, раздел «Интеграции»), с фоллбэком на переменные окружения.
 set -e
 
-# 1) Пытаемся забрать SIP-настройки из backend (внутренний эндпоинт по общему секрету).
+SIP_ENDPOINT="/api/v1/ai-calling/internal/novofon-sip"
+
+# 1) Тянем SIP-настройки из backend. Повторяем, пока backend не готов и не отдаст
+#    их (гонка старта контейнеров + backend может быть ещё в миграциях).
+if [ -z "$INTERNAL_API_TOKEN" ]; then
+    echo "[entrypoint] INTERNAL_API_TOKEN пуст в контейнере — задайте его в .env и пересоздайте контейнер."
+fi
+
 if [ -n "$BACKEND_URL" ] && [ -n "$INTERNAL_API_TOKEN" ]; then
-    JSON=$(curl -sf -H "X-Internal-Token: $INTERNAL_API_TOKEN" \
-        "$BACKEND_URL/api/v1/ai-calling/internal/novofon-sip" || true)
-    if [ -n "$JSON" ]; then
-        SIP_LOGIN=${SIP_LOGIN:-$(echo "$JSON" | jq -r '.sip_login // empty')}
-        SIP_PASSWORD=${SIP_PASSWORD:-$(echo "$JSON" | jq -r '.sip_password // empty')}
-        SIP_SERVER=${SIP_SERVER:-$(echo "$JSON" | jq -r '.sip_server // empty')}
-        CALLER_ID=${CALLER_ID:-$(echo "$JSON" | jq -r '.caller_id // empty')}
-        AMI_PASSWORD=${AMI_PASSWORD:-$(echo "$JSON" | jq -r '.ami_password // empty')}
-    fi
+    i=1
+    while [ "$i" -le 20 ]; do
+        CODE=$(curl -s -o /tmp/novofon_sip.json -w "%{http_code}" \
+            -H "X-Internal-Token: $INTERNAL_API_TOKEN" \
+            "$BACKEND_URL$SIP_ENDPOINT" 2>/dev/null || echo "000")
+        if [ "$CODE" = "200" ]; then
+            JSON=$(cat /tmp/novofon_sip.json)
+            SIP_LOGIN=${SIP_LOGIN:-$(echo "$JSON" | jq -r '.sip_login // empty')}
+            SIP_PASSWORD=${SIP_PASSWORD:-$(echo "$JSON" | jq -r '.sip_password // empty')}
+            SIP_SERVER=${SIP_SERVER:-$(echo "$JSON" | jq -r '.sip_server // empty')}
+            CALLER_ID=${CALLER_ID:-$(echo "$JSON" | jq -r '.caller_id // empty')}
+            AMI_PASSWORD=${AMI_PASSWORD:-$(echo "$JSON" | jq -r '.ami_password // empty')}
+            echo "[entrypoint] Настройки получены из админки (HTTP 200)."
+            break
+        elif [ "$CODE" = "403" ]; then
+            echo "[entrypoint] backend вернул 403: INTERNAL_API_TOKEN в контейнере asterisk и в backend не совпадают. Перезапустите backend с тем же токеном из .env."
+            break
+        else
+            echo "[entrypoint] backend недоступен/не готов (HTTP $CODE), попытка $i/20…"
+            i=$((i + 1))
+            sleep 2
+        fi
+    done
 fi
 
 EXTERNAL_IP=${EXTERNAL_IP:-}
