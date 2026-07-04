@@ -1,16 +1,14 @@
 ; PJSIP-конфиг для исходящего ИИ-обзвона через Novofon (регистрация по логину/паролю).
-; Рендерится из этого шаблона entrypoint.sh — переменные подставляются из админки
-; DentaFlow (раздел «Интеграции → Novofon») или из env.
+; Рендерится entrypoint.sh: подставляются SIP-настройки из админки DentaFlow + NAT.
 ;
-; Плейсхолдеры: ${SIP_SERVER} ${SIP_LOGIN} ${SIP_PASSWORD} ${CALLER_ID} ${EXTERNAL_IP}
+; Подставляемые значения: SIP_SERVER, SIP_LOGIN, SIP_PASSWORD, CALLER_ID_DIGITS,
+; NAT_CONFIG (external_*/local_net — если задан EXTERNAL_IP).
 
 [transport-udp]
 type=transport
 protocol=udp
 bind=0.0.0.0
-; За NAT раскомментируйте (EXTERNAL_IP задаётся переменной окружения):
-; external_media_address=${EXTERNAL_IP}
-; external_signaling_address=${EXTERNAL_IP}
+${NAT_CONFIG}
 
 ; --- Аутентификация на Novofon ---
 [novofon_auth]
@@ -44,12 +42,18 @@ disallow=all
 allow=alaw,ulaw
 outbound_auth=novofon_auth
 aors=novofon_aor
-from_user=${SIP_LOGIN}
+; From/CallerID = реальный номер клиники (из админки), НЕ SIP-логин — иначе Novofon
+; принимает вызов и сразу сбрасывает (cause 16).
+from_user=${CALLER_ID_DIGITS}
 from_domain=${SIP_SERVER}
-; CallerID, который видит пациент (купленный номер Novofon).
-callerid=${CALLER_ID}
+callerid=${CALLER_ID_DIGITS}
+; NAT: симметричный RTP + доверие rport/Contact.
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+direct_media=no
 
-; Доверяем входящим SIP-пакетам с сервера Novofon (для ответов на наши вызовы).
+; Доверяем входящим SIP-пакетам с сервера Novofon (ответы на наши вызовы).
 [novofon_identify]
 type=identify
 endpoint=novofon
