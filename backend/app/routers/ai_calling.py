@@ -454,7 +454,8 @@ async def test_call(
 
     try:
         ok, reason = await AsteriskAMI(password=ami_password or None).originate(
-            phone=phone, call_id=call_id, caller_id=caller_id or None
+            phone=phone, call_id=call_id,
+            caller_id=ai_calling_service.normalize_phone(caller_id) or None,
         )
     except AMIError as e:
         raise HTTPException(status_code=502, detail=f"Asterisk/AMI недоступен: {e}")

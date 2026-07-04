@@ -81,13 +81,20 @@ class AsteriskAMI:
                 "Action": "Login",
                 "Username": self.username,
                 "Secret": self.password,
+                "Events": "off",  # не хотим поток событий — только ответы на действия
             })
             login_resp = await self._read_response(reader)
             if login_resp.get("Response") != "Success":
                 raise AMIError(f"AMI login failed: {login_resp.get('Message', login_resp)}")
 
             await self._send(writer, action)
+            # Пропускаем возможные событийные блоки (Event без Response),
+            # чтобы прочитать именно ответ на действие.
             resp = await self._read_response(reader)
+            for _ in range(10):
+                if "Response" in resp or not resp:
+                    break
+                resp = await self._read_response(reader)
 
             # Logoff politely; ignore its response.
             try:
