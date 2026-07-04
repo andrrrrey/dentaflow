@@ -10,7 +10,8 @@ from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.api.routes import router, kb_service
+from app.api.routes import router, kb_service, call_manager
+from app.services.audiosocket_bridge import AudioSocketServer
 
 
 @asynccontextmanager
@@ -38,9 +39,25 @@ async def lifespan(app: FastAPI):
     import asyncio
     asyncio.create_task(kb_service.warmup())
 
+    # AudioSocket-мост: принимает звонки от Asterisk и заворачивает их в
+    # существующий WS-пайплайн диалога (/ws/audio/{call_id}).
+    audiosocket_server = AudioSocketServer(
+        host=settings.audiosocket_host,
+        port=settings.audiosocket_port,
+        ws_base_url=settings.internal_ws_base_url,
+        call_manager=call_manager,
+    )
+    try:
+        await audiosocket_server.start()
+    except Exception as exc:  # noqa: BLE001 — сервис должен подняться и без моста
+        logger.error(f"Не удалось запустить AudioSocket-сервер: {exc}")
+        audiosocket_server = None
+
     yield
 
     # Shutdown
+    if audiosocket_server is not None:
+        await audiosocket_server.stop()
     logger.info("Shutting down AI Robot")
 
 

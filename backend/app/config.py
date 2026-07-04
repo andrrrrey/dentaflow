@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     # AI-обзвон (aicallrobot) — отдельный сервис, к которому проксирует бэкенд.
     AICALLROBOT_URL: str = "http://aicallrobot:8000"
 
+    # Asterisk AMI (для Originate исходящих звонков ИИ-обзвона).
+    AMI_HOST: str = "asterisk"
+    AMI_PORT: int = 5038
+    AMI_USERNAME: str = "dentaflow"
+    AMI_PASSWORD: str = ""
+
+    # Общий секрет для внутренних сервис-сервисных запросов внутри docker-сети
+    # (например, entrypoint контейнера Asterisk тянет SIP-настройки Novofon из
+    # админки). Наружу (через nginx) этот эндпоинт не публикуется.
+    INTERNAL_API_TOKEN: str = ""
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 

@@ -142,3 +142,110 @@ export function useDeleteScriptCorrection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-calling", "script-corrections"] }),
   });
 }
+
+/* ---------- Кампании обзвона ---------- */
+
+export interface Campaign {
+  id: string;
+  name: string;
+  segment_key: string;
+  scenario_id: string;
+  status:
+    | "scheduled"
+    | "running"
+    | "waiting_window"
+    | "paused"
+    | "completed"
+    | "cancelled"
+    | "failed";
+  max_concurrent: number;
+  scheduled_at: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  timezone: string;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  progress: number;
+  started_at: string | null;
+  ended_at: string | null;
+  error: string | null;
+  created_at: string | null;
+}
+
+export interface CampaignItem {
+  id: string;
+  patient_id: string | null;
+  phone: string;
+  status: "pending" | "calling" | "done" | "no_answer" | "failed" | "cancelled";
+  outcome: string | null;
+  summary: string | null;
+  duration_sec: number | null;
+  attempts: number;
+  updated_at: string | null;
+}
+
+export interface CampaignCreateRequest {
+  name: string;
+  segment_key: string;
+  scenario_id?: string;
+  max_concurrent?: number;
+  scheduled_at?: string | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  timezone?: string;
+}
+
+function campaignsActive(items: Campaign[]): boolean {
+  return items.some((c) =>
+    ["scheduled", "running", "waiting_window"].includes(c.status),
+  );
+}
+
+export function useCampaigns() {
+  return useQuery<{ items: Campaign[] }>({
+    queryKey: ["ai-calling", "campaigns"],
+    queryFn: async () => {
+      const { data } = await api.get("/ai-calling/campaigns");
+      return data;
+    },
+    // Адаптивный polling: чаще, пока есть активные кампании.
+    refetchInterval: (query) =>
+      campaignsActive(query.state.data?.items ?? []) ? 3000 : false,
+  });
+}
+
+export function useCampaignItems(campaignId: string | null) {
+  return useQuery<{ items: CampaignItem[] }>({
+    queryKey: ["ai-calling", "campaign-items", campaignId],
+    queryFn: async () => {
+      const { data } = await api.get(`/ai-calling/campaigns/${campaignId}/items`);
+      return data;
+    },
+    enabled: !!campaignId,
+    refetchInterval: 4000,
+  });
+}
+
+export function useCreateCampaign() {
+  const qc = useQueryClient();
+  return useMutation<Campaign, Error, CampaignCreateRequest>({
+    mutationFn: async (body) => {
+      const { data } = await api.post("/ai-calling/campaigns", body);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-calling", "campaigns"] }),
+  });
+}
+
+export function useCampaignControl() {
+  const qc = useQueryClient();
+  return useMutation<Campaign, Error, { id: string; action: "start" | "pause" | "resume" | "cancel" }>({
+    mutationFn: async ({ id, action }) => {
+      const { data } = await api.post(`/ai-calling/campaigns/${id}/control`, { action });
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-calling", "campaigns"] }),
+  });
+}

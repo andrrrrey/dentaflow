@@ -1,0 +1,56 @@
+; PJSIP-конфиг для исходящего ИИ-обзвона через Novofon (регистрация по логину/паролю).
+; Рендерится из этого шаблона entrypoint.sh — переменные подставляются из админки
+; DentaFlow (раздел «Интеграции → Novofon») или из env.
+;
+; Плейсхолдеры: ${SIP_SERVER} ${SIP_LOGIN} ${SIP_PASSWORD} ${CALLER_ID} ${EXTERNAL_IP}
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0
+; За NAT раскомментируйте (EXTERNAL_IP задаётся переменной окружения):
+; external_media_address=${EXTERNAL_IP}
+; external_signaling_address=${EXTERNAL_IP}
+
+; --- Аутентификация на Novofon ---
+[novofon_auth]
+type=auth
+auth_type=userpass
+username=${SIP_LOGIN}
+password=${SIP_PASSWORD}
+
+; --- Регистрация транка (исходящее соединение, NAT-friendly) ---
+[novofon_reg]
+type=registration
+transport=transport-udp
+outbound_auth=novofon_auth
+server_uri=sip:${SIP_SERVER}
+client_uri=sip:${SIP_LOGIN}@${SIP_SERVER}
+retry_interval=60
+forbidden_retry_interval=300
+expiration=300
+
+; --- AOR/endpoint транка для исходящих вызовов ---
+[novofon_aor]
+type=aor
+contact=sip:${SIP_SERVER}
+qualify_frequency=60
+
+[novofon]
+type=endpoint
+transport=transport-udp
+context=ai-outbound
+disallow=all
+allow=alaw,ulaw
+outbound_auth=novofon_auth
+aors=novofon_aor
+from_user=${SIP_LOGIN}
+from_domain=${SIP_SERVER}
+; CallerID, который видит пациент (купленный номер Novofon).
+callerid=${CALLER_ID}
+
+; Доверяем входящим SIP-пакетам с сервера Novofon (для ответов на наши вызовы).
+[novofon_identify]
+type=identify
+endpoint=novofon
+match=${SIP_SERVER}
