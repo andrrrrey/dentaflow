@@ -42,11 +42,15 @@ disallow=all
 allow=alaw,ulaw
 outbound_auth=novofon_auth
 aors=novofon_aor
-; Novofon аутентифицирует исходящий INVITE по SIP-логину в From — если сюда
-; поставить номер, Novofon перестаёт отвечать на INVITE. Отображаемый CallerID
-; (какой номер видит вызываемый) задаётся в кабинете Novofon, не здесь.
+; From = SIP-логин (нужен для авторизации; с номером в From Novofon не отвечает).
 from_user=${SIP_LOGIN}
 from_domain=${SIP_SERVER}
+; Novofon/Zadarma выбирает исходящий номер (CallerID) по заголовку
+; P-Asserted-Identity. Передаём в нём ваш подключённый номер из админки —
+; без него Novofon не может определить звонящего и отвечает «только из России».
+callerid=${CALLER_ID_DIGITS}
+trust_id_outbound=yes
+send_pai=yes
 ; NAT: симметричный RTP + доверие rport/Contact.
 rtp_symmetric=yes
 force_rport=yes
