@@ -9,9 +9,16 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=(settings.APP_ENV == "development"),
     pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=40,
+    # Pool is per-process. With backend (x2 workers) + celery workers + beat +
+    # telegram bot all sharing this image, large per-process pools quickly
+    # exhaust postgres' max_connections (default 100). Keep it modest.
+    pool_size=5,
+    max_overflow=10,
     pool_recycle=1800,
+    # Disable asyncpg's prepared-statement cache: after `alembic upgrade head`
+    # alters a table, cached statements on pooled connections raise
+    # InvalidCachedStatementError, which surfaces as intermittent DB errors.
+    connect_args={"statement_cache_size": 0},
 )
 
 async_session_factory = async_sessionmaker(
