@@ -162,22 +162,61 @@ class AudioSocketBridge:
             pass
 
     async def _pump_ws_to_asterisk(self, ws) -> None:
-        """Аудио робота (TTS из WS) → AudioSocket-кадры 0x10. JSON-сообщения игнорируем."""
-        async for message in ws:
-            if isinstance(message, bytes):
-                self._out_buffer.extend(message)
-                while len(self._out_buffer) >= FRAME_BYTES:
+        """Аудио робота (TTS из WS) → AudioSocket-кадры 0x10 РОВНО по 20 мс.
+
+        КРИТИЧНО: Asterisk проигрывает аудио из AudioSocket в реальном времени
+        (20 мс/кадр). Если вывалить всю фразу разом (TTS стримит быстрее реального
+        времени), очередь канала переполняется и Asterisk выбрасывает кадры —
+        каллер слышит лишь обрывок фразы. Поэтому наполняем буфер из WS в отдельной
+        задаче, а сливаем строго по одному кадру каждые 20 мс по монотонным часам.
+        """
+        loop = asyncio.get_event_loop()
+        producer_done = asyncio.Event()
+
+        async def _fill() -> None:
+            try:
+                async for message in ws:
+                    if isinstance(message, bytes):
+                        self._out_buffer.extend(message)
+                    else:
+                        # Барж-ин: клиент перебил робота — гасим ещё не сыгранный звук.
+                        try:
+                            if json.loads(message).get("type") == "interrupt":
+                                self._out_buffer.clear()
+                        except (ValueError, TypeError, AttributeError):
+                            pass
+            finally:
+                producer_done.set()
+
+        fill_task = asyncio.create_task(_fill())
+        frame_sec = FRAME_BYTES / (8000 * 2)  # 320 байт SLIN 8кГц = 0.02 с
+        next_deadline = loop.time()
+        try:
+            while True:
+                if len(self._out_buffer) >= FRAME_BYTES:
                     chunk = bytes(self._out_buffer[:FRAME_BYTES])
                     del self._out_buffer[:FRAME_BYTES]
                     self._writer.write(encode_frame(KIND_AUDIO, chunk))
-                await self._writer.drain()
-            # Текстовые JSON-кадры (recognition/response/phase/interrupt) для
-            # телефонии не нужны — диалог уже отыгрывается на стороне WS.
-        # Дослать остаток (выровняв до чётного числа байт = целые сэмплы).
+                    await self._writer.drain()
+                    next_deadline += frame_sec
+                    delay = next_deadline - loop.time()
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    elif delay < -0.1:
+                        next_deadline = loop.time()  # сильно отстали — сброс графика
+                elif producer_done.is_set():
+                    break
+                else:
+                    # Буфер пуст, но TTS ещё стримит — ждём данные, не копя задержку.
+                    next_deadline = loop.time()
+                    await asyncio.sleep(frame_sec / 2)
+        finally:
+            fill_task.cancel()
+        # Остаток меньше кадра — добить тишиной до полного кадра (чтобы не щёлкало).
         if self._out_buffer:
-            tail = bytes(self._out_buffer)
-            if len(tail) % 2:
-                tail += b"\x00"
+            tail = bytes(self._out_buffer[:FRAME_BYTES])
+            if len(tail) < FRAME_BYTES:
+                tail += b"\x00" * (FRAME_BYTES - len(tail))
             self._writer.write(encode_frame(KIND_AUDIO, tail))
             await self._writer.drain()
 
