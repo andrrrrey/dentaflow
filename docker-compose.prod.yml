@@ -3,6 +3,15 @@
 # Запуск: docker compose -f docker-compose.prod.yml up -d
 # ============================================================
 
+# Cap docker json-file logs so they can't fill the server disk.
+# Without this the *-json.log files grow without bound (especially the
+# chatty backend/celery services), which starves postgres of disk space.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   frontend:
     build:
@@ -12,6 +21,7 @@ services:
       - frontend_dist:/output
     command: sh -c "cp -rf /dist/. /output/ && echo 'Frontend deployed'"
     restart: "no"
+    logging: *default-logging
 
   nginx:
     image: nginx:alpine
@@ -26,6 +36,7 @@ services:
       - backend
       - frontend
     restart: always
+    logging: *default-logging
 
   backend:
     build: ./backend
@@ -39,6 +50,7 @@ services:
       - aicallrobot
     restart: always
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    logging: *default-logging
 
   aicallrobot:
     # ИИ обзвон (Тест TTS / Тест диалога / Скрипты диалога).
@@ -49,6 +61,7 @@ services:
     volumes:
       - aicallrobot_data:/app/data
       - aicallrobot_kb:/app/knowledge_base
+    logging: *default-logging
 
   asterisk:
     # Медиасервер ИИ-обзвона: исходящий SIP-транк до Novofon (регистрация) +
@@ -65,6 +78,7 @@ services:
       - backend
       - aicallrobot
     restart: always
+    logging: *default-logging
 
   celery_worker:
     image: dentaflow-backend:latest
@@ -76,6 +90,7 @@ services:
     # concurrency=4 so the nightly full sync (~150s) and the every-5-min
     # appointment sync don't block each other or the on-demand tasks.
     command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,ai,sync --concurrency=4
+    logging: *default-logging
 
   # Dedicated worker for the heavy base-analysis (patient segments) recompute.
   # Isolated on its own queue so the 1Denta syncs can never starve it.
@@ -87,6 +102,7 @@ services:
       - redis
     restart: always
     command: celery -A app.tasks.celery_app worker --loglevel=info -Q segments --concurrency=1
+    logging: *default-logging
 
   celery_beat:
     image: dentaflow-backend:latest
@@ -96,6 +112,7 @@ services:
       - redis
     restart: always
     command: celery -A app.tasks.celery_app beat --loglevel=info
+    logging: *default-logging
 
   telegram_bot:
     image: dentaflow-backend:latest
@@ -105,6 +122,7 @@ services:
       - redis
     restart: always
     command: python -m app.services.telegram_bot
+    logging: *default-logging
 
   postgres:
     image: postgres:15
@@ -115,12 +133,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
     restart: always
+    logging: *default-logging
 
 volumes:
   postgres_data:
