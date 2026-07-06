@@ -8,17 +8,27 @@ from loguru import logger
 
 @dataclass
 class AudioBuffer:
-    """Буфер аудиоданных с определением пауз и перебиваний."""
+    """Буфер аудиоданных с определением пауз и перебиваний.
+
+    VAD адаптивный: телефонная линия всегда несёт «комфортный шум» (звук идёт
+    непрерывно даже в тишине абонента), поэтому фиксированный порог не работает —
+    шум либо принимается за речь (пауза не находится, ASR не стартует), либо речь
+    тонет под порогом. Мы ведём бегущую оценку шумового пола и считаем речью только
+    энергию, заметно превышающую этот пол.
+    """
 
     sample_rate: int = 8000
-    silence_threshold: int = 500       # амплитуда тишины
-    pause_duration: float = 1.5        # пауза для определения конца реплики (сек)
+    silence_threshold: int = 350       # абсолютный минимум порога голоса
+    pause_duration: float = 1.0        # пауза = конец реплики (сек)
     interrupt_duration: float = 0.15   # порог для перебивания (сек)
+    noise_factor: float = 2.2          # речь = энергия выше шумового пола ×коэффициент
+    max_utterance_sec: float = 12.0    # страховка: форс ASR при бесконечной «речи»
 
     _buffer: bytearray = field(default_factory=bytearray)
     _last_voice_time: float = 0.0
     _speech_started: bool = False
-    _total_speech_ms: int = 0
+    _speech_start_time: float = 0.0
+    _noise_floor: float | None = None
 
     def add_chunk(self, chunk: bytes) -> dict:
         """
@@ -34,8 +44,16 @@ class AudioBuffer:
         self._buffer.extend(chunk)
         now = time.time()
 
-        # Простой VAD по амплитуде (2 байта на сэмпл, little-endian)
-        is_voice = self._detect_voice(chunk)
+        energy = self._chunk_energy(chunk)
+        # Адаптивный шумовой пол: быстро опускается к тишине, медленно поднимается.
+        if self._noise_floor is None:
+            self._noise_floor = energy
+        elif energy < self._noise_floor:
+            self._noise_floor = energy
+        else:
+            self._noise_floor = 0.995 * self._noise_floor + 0.005 * energy
+        threshold = max(self.silence_threshold, self._noise_floor * self.noise_factor)
+        is_voice = energy > threshold
 
         result = {
             "has_speech": False,
@@ -47,7 +65,8 @@ class AudioBuffer:
         if is_voice:
             if not self._speech_started:
                 self._speech_started = True
-                logger.debug("Speech started")
+                self._speech_start_time = now
+                logger.debug(f"Speech started (energy={energy:.0f}, floor={self._noise_floor:.0f})")
             self._last_voice_time = now
             result["has_speech"] = True
         elif self._speech_started:
@@ -57,18 +76,24 @@ class AudioBuffer:
                 self._speech_started = False
                 logger.debug(f"Pause detected after {silence_duration:.2f}s silence")
 
+        # Страховка от шумной линии: реплика тянется без паузы — форсируем распознавание.
+        if self._speech_started and (now - self._speech_start_time) >= self.max_utterance_sec:
+            result["pause_detected"] = True
+            self._speech_started = False
+            logger.debug("Max utterance length reached — forcing recognition")
+
         return result
 
-    def _detect_voice(self, chunk: bytes) -> bool:
-        """Простой VAD по среднему абсолютному значению амплитуды."""
+    def _chunk_energy(self, chunk: bytes) -> float:
+        """Средняя абсолютная амплитуда чанка (2 байта на сэмпл, little-endian)."""
         if len(chunk) < 2:
-            return False
-        samples = []
+            return 0.0
+        total = 0
+        count = 0
         for i in range(0, len(chunk) - 1, 2):
-            sample = int.from_bytes(chunk[i:i+2], byteorder="little", signed=True)
-            samples.append(abs(sample))
-        avg_amplitude = sum(samples) / len(samples) if samples else 0
-        return avg_amplitude > self.silence_threshold
+            total += abs(int.from_bytes(chunk[i:i + 2], byteorder="little", signed=True))
+            count += 1
+        return total / count if count else 0.0
 
     def get_audio(self) -> bytes:
         """Возвращает буфер и очищает его."""
