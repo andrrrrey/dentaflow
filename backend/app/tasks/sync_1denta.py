@@ -19,6 +19,51 @@ logger = logging.getLogger(__name__)
 from app.tasks.loop import run_async as _run_async  # noqa: E402
 
 
+# Redis keys for surfacing the last-sync status in Settings → 1Denta (CRM).
+_REDIS_LAST_SYNC_KEY = "1denta:last_sync"
+_REDIS_LAST_HOURLY_KEY = "1denta:last_hourly_sync"
+_SYNC_STATUS_TTL = 30 * 24 * 3600  # 30 days; self-clears but survives restarts
+
+
+async def _record_1denta_sync_async(
+    trigger: str,
+    result: dict | None,
+    ok: bool = True,
+    error: str | None = None,
+) -> None:
+    """Persist the outcome of a 1Denta sync run to Redis (best-effort).
+
+    Read back by GET /integrations/sync-1denta/status to show the clinic owner
+    when the last sync ran, when the next one is due and what was synced.
+    """
+    import json
+
+    from app.config import settings
+
+    finished_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "finished_at": finished_at,
+        "trigger": trigger,
+        "ok": ok,
+        "result": result,
+        "error": error,
+    }
+    try:
+        import redis.asyncio as aioredis
+
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await r.setex(_REDIS_LAST_SYNC_KEY, _SYNC_STATUS_TTL, json.dumps(payload, ensure_ascii=False))
+            # Track the last *automatic hourly* run separately so "next sync"
+            # is estimated from the hourly cadence, not from manual/nightly runs.
+            if trigger == "hourly" and ok:
+                await r.setex(_REDIS_LAST_HOURLY_KEY, _SYNC_STATUS_TTL, finished_at)
+        finally:
+            await r.aclose()
+    except Exception:
+        logger.warning("Failed to record 1Denta sync status in Redis", exc_info=True)
+
+
 async def _sync_patients_async() -> dict:
     from sqlalchemy import select
     from app.database import async_session_factory
@@ -156,6 +201,46 @@ async def _sync_appointments_async(
         patient_map = {row.external_id: row.id for row in patient_rows}
 
         now_utc = datetime.now(timezone.utc)
+
+        # Create minimal patient records for clients that appear in the schedule
+        # but aren't in the local patients table yet (первичные пациенты booked
+        # during the day, before the nightly patient sync). Without this they'd
+        # link to no patient and render as "Неизвестный пациент". The 1Denta
+        # visit embeds the client card as clientData, so we have their name here.
+        from app.services.one_denta import parse_birthdate
+
+        missing = {}  # external_id -> appointment data with clientData
+        for a_data, _ in valid:
+            pext = a_data.get("patient_external_id")
+            if not pext or pext in patient_map or pext in missing:
+                continue
+            if a_data.get("patient_name") or a_data.get("patient_phone"):
+                missing[pext] = a_data
+
+        for pext, a_data in missing.items():
+            sex_val = a_data.get("patient_sex", 0)
+            gender_val = "female" if sex_val == 2 else ("male" if sex_val == 1 else None)
+            new_patient = Patient(
+                external_id=pext,
+                name=a_data.get("patient_name") or "",
+                phone=a_data.get("patient_phone") or None,
+                is_new_patient=True,
+                patient_type=a_data.get("patient_type"),
+                gender=gender_val,
+                synced_at=now_utc,
+            )
+            bd = parse_birthdate(a_data.get("patient_birth_date"))
+            if bd is not None:
+                new_patient.birth_date = bd
+            session.add(new_patient)
+            patient_map[pext] = new_patient  # link via ORM object; id assigned on flush
+
+        if missing:
+            await session.flush()
+            # Replace ORM objects with their assigned ids for the link below
+            for pext in missing:
+                obj = patient_map[pext]
+                patient_map[pext] = obj.id if hasattr(obj, "id") else obj
 
         for a_data, ext_id in valid:
             patient_id = patient_map.get(a_data.get("patient_external_id"))
@@ -570,29 +655,68 @@ def sync_marketing(self):
         raise self.retry(exc=exc, countdown=60)
 
 
+@celery_app.task(name="app.tasks.sync_1denta.sync_hourly", bind=True, max_retries=2)
+def sync_hourly(self):
+    """Hourly sync with 1Denta: directories (doctors/services) + patients +
+    near-term appointments. Replaces the old every-5-min appointment sync and
+    the separate hourly directories sync, so 1Denta is queried ~once/hour and
+    the patient list stays current between nightly full syncs."""
+    # Track which stage is running so a failure names the culprit in the status.
+    stage = "Справочники"
+    try:
+        dir_result = _run_async(_sync_directories_async())
+        stage = "Пациенты"
+        pat_result = _run_async(_sync_patients_async())
+        stage = "Расписание"
+        appt_result = _run_async(_sync_appointments_async(days_back=7, days_forward=21))
+        logger.info(
+            "sync_hourly complete: dirs=%s patients=%s appointments=%s",
+            dir_result, pat_result, appt_result,
+        )
+        result = {
+            "directories": dir_result,
+            "patients": pat_result,
+            "appointments": appt_result,
+        }
+        _run_async(_record_1denta_sync_async("hourly", result, ok=True))
+        return result
+    except Exception as exc:
+        logger.exception("sync_hourly failed at stage %s", stage)
+        _run_async(_record_1denta_sync_async("hourly", None, ok=False, error=f"{stage}: {exc}"))
+        raise self.retry(exc=exc, countdown=300)
+
+
 @celery_app.task(name="app.tasks.sync_1denta.sync_full_daily", bind=True, max_retries=2)
 def sync_full_daily(self):
     """Nightly full sync with 1Denta and Novofon across all sections:
     Справочники, Пациенты, Расписание, Контроль звонков, Маркетинг."""
+    stage = "Справочники"
     try:
         dir_result = _run_async(_sync_directories_async())
+        stage = "Пациенты"
         pat_result = _run_async(_sync_patients_async())
+        stage = "Расписание"
         appt_result = _run_async(_sync_appointments_async(days_back=30, days_forward=90))
+        stage = "Контроль звонков"
         calls_result = _run_async(_sync_calls_async(days=30))
+        stage = "Маркетинг"
         marketing_result = _run_async(_sync_marketing_async())
         logger.info(
             "sync_full_daily complete: dirs=%s patients=%s appointments=%s calls=%s marketing=%s",
             dir_result, pat_result, appt_result, calls_result, marketing_result,
         )
-        return {
+        result = {
             "directories": dir_result,
             "patients": pat_result,
             "appointments": appt_result,
             "calls": calls_result,
             "marketing": marketing_result,
         }
+        _run_async(_record_1denta_sync_async("daily", result, ok=True))
+        return result
     except Exception as exc:
-        logger.exception("sync_full_daily failed")
+        logger.exception("sync_full_daily failed at stage %s", stage)
+        _run_async(_record_1denta_sync_async("daily", None, ok=False, error=f"{stage}: {exc}"))
         raise self.retry(exc=exc, countdown=300)
 
 

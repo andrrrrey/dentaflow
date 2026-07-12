@@ -45,6 +45,46 @@ export function useCheckIntegration() {
   });
 }
 
+export function useSyncOneDenta() {
+  return useMutation<{ status: string }, Error, void>({
+    mutationFn: async () => {
+      const { data } = await api.post("/integrations/sync-1denta");
+      return data;
+    },
+  });
+}
+
+export interface OneDentaSyncCounts {
+  created?: number;
+  updated?: number;
+  total?: number;
+}
+
+export interface OneDentaSyncStatus {
+  last_sync_at: string | null;
+  last_trigger: string | null;
+  ok: boolean | null;
+  error: string | null;
+  result: {
+    directories?: Record<string, number> | null;
+    patients?: OneDentaSyncCounts | null;
+    appointments?: OneDentaSyncCounts | null;
+  } | null;
+  next_sync_at: string | null;
+}
+
+export function useOneDentaSyncStatus() {
+  return useQuery<OneDentaSyncStatus>({
+    queryKey: ["one-denta-sync-status"],
+    queryFn: async () => {
+      const { data } = await api.get("/integrations/sync-1denta/status");
+      return data;
+    },
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+  });
+}
+
 // ---------- Knowledge Base ----------
 
 export function useKnowledgeBaseFiles() {

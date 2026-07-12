@@ -38,14 +38,13 @@ celery_app.conf.enable_utc = True
 
 # Beat schedule
 celery_app.conf.beat_schedule = {
-    # Frequent: appointments for the near-term window (today ±2 weeks)
-    "sync-1denta-appointments": {
-        "task": "app.tasks.sync_1denta.sync_appointments",
-        "schedule": 300.0,  # every 5 minutes
-    },
-    # Hourly: doctors / services directory
-    "sync-1denta-directories": {
-        "task": "app.tasks.sync_1denta.sync_directories",
+    # Hourly combined sync: directories (doctors/services) + patients +
+    # near-term appointments through one 1Denta login. Replaces the former
+    # every-5-min appointment sync and the separate hourly directories sync —
+    # the every-5-min cadence across ~8 processes was tripping 1Denta's login
+    # throttle (HTTP 423 "account temporarily blocked").
+    "sync-1denta-hourly": {
+        "task": "app.tasks.sync_1denta.sync_hourly",
         "schedule": 3600.0,  # every hour
     },
     # Nightly: full sync with 1Denta + Novofon across all sections —

@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { format, formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
-  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone,
+  Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone, RefreshCw,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -11,9 +13,12 @@ import {
   useIntegrations,
   useSaveIntegrations,
   useCheckIntegration,
+  useSyncOneDenta,
+  useOneDentaSyncStatus,
   useKnowledgeBaseFiles,
   useUploadKbFile,
   useDeleteKbFile,
+  type OneDentaSyncStatus,
 } from "../api/integrations";
 import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
 import { usePipelineStages } from "../api/pipelineStages";
@@ -554,6 +559,10 @@ function IntegrationCard({
   onCheck,
   checkResult,
   checking,
+  onSync,
+  syncing,
+  syncStatus,
+  syncInfo,
 }: {
   config: IntegrationCardConfig;
   values: Record<string, string>;
@@ -561,6 +570,10 @@ function IntegrationCard({
   onCheck: () => void;
   checkResult: { ok: boolean; message: string } | null;
   checking: boolean;
+  onSync?: () => void;
+  syncing?: boolean;
+  syncStatus?: string;
+  syncInfo?: ReactNode;
 }) {
   return (
     <Card>
@@ -614,7 +627,30 @@ function IntegrationCard({
         )}
       </div>
 
-      <div className="flex justify-end mt-3">
+      {syncInfo && (
+        <div
+          className="mt-3 p-3 rounded-xl text-[12px]"
+          style={{ background: "rgba(91,76,245,0.06)", border: "1px solid rgba(91,76,245,0.12)" }}
+        >
+          {syncInfo}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2 mt-3">
+        {syncStatus && (
+          <span className="text-[11px] font-semibold text-[#00c9a7] mr-auto">{syncStatus}</span>
+        )}
+        {onSync && (
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-50"
+            style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+          >
+            <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Запуск..." : "Синхронизировать"}
+          </button>
+        )}
         <button
           onClick={onCheck}
           disabled={checking}
@@ -723,16 +759,96 @@ function AutoLeadCard({
   );
 }
 
+/* ---------- 1Denta sync status ---------- */
+
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return format(new Date(iso), "d MMM, HH:mm", { locale: ru });
+  } catch {
+    return "—";
+  }
+}
+
+function fmtRelative(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return formatDistanceToNow(new Date(iso), { locale: ru, addSuffix: true });
+  } catch {
+    return "";
+  }
+}
+
+function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }) {
+  if (!status || !status.last_sync_at) {
+    return (
+      <div className="text-text-muted">
+        Синхронизация ещё не выполнялась. Данные обновляются автоматически раз в час.
+      </div>
+    );
+  }
+
+  const r = status.result;
+  const dirCount = r?.directories
+    ? Object.values(r.directories).reduce((s, n) => s + (Number(n) || 0), 0)
+    : null;
+  const pat = r?.patients;
+  const appt = r?.appointments;
+
+  const summaryParts: string[] = [];
+  if (dirCount !== null) summaryParts.push(`справочники ${dirCount}`);
+  if (pat) summaryParts.push(`пациенты +${pat.created ?? 0}/~${pat.updated ?? 0}`);
+  if (appt) summaryParts.push(`записи +${appt.created ?? 0}/~${appt.updated ?? 0}`);
+
+  const failed = status.ok === false;
+  const err = status.error ?? "";
+  const isLocked = /423|locked|temporarily blocked|заблокир/i.test(err);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <RefreshCw size={12} className="text-accent2 flex-shrink-0" />
+        <span className="text-text-main font-semibold">
+          Последняя синхронизация: {fmtRelative(status.last_sync_at)}
+        </span>
+        <span className="text-text-muted">({fmtDateTime(status.last_sync_at)})</span>
+        {failed && <span className="text-[#f44b6e] font-semibold">— с ошибкой</span>}
+      </div>
+
+      {failed && (
+        <div className="text-[#f44b6e] break-words">
+          {isLocked
+            ? "Аккаунт 1Denta временно заблокирован из-за частых попыток входа — подождите 15–30 минут и попробуйте снова."
+            : err
+              ? `Ошибка: ${err}`
+              : "Синхронизация завершилась с ошибкой. Подробности — в логах сервера."}
+        </div>
+      )}
+
+      <div className="text-text-muted">
+        Следующая ≈ {fmtDateTime(status.next_sync_at)}
+      </div>
+      <div className="text-text-muted">
+        Синхронизировано: {summaryParts.length ? summaryParts.join(" · ") : "—"}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Integrations tab ---------- */
 
 function IntegrationsTab() {
   const { data: saved, isLoading } = useIntegrations();
   const saveMutation = useSaveIntegrations();
   const checkMutation = useCheckIntegration();
+  const syncOneDenta = useSyncOneDenta();
+  const { data: oneDentaStatus } = useOneDentaSyncStatus();
+  const isOwner = useAuthStore((s) => s.user?.role) === "owner";
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [checkResults, setCheckResults] = useState<Record<string, { ok: boolean; message: string }>>({});
   const [checkingService, setCheckingService] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
   const [saveError, setSaveError] = useState("");
 
@@ -767,6 +883,16 @@ function IntegrationsTab() {
     }
   }
 
+  async function handleSyncOneDenta() {
+    setSyncStatus("");
+    try {
+      await syncOneDenta.mutateAsync();
+      setSyncStatus("Синхронизация запущена — данные обновятся в течение нескольких минут");
+    } catch {
+      setSyncStatus("Не удалось запустить синхронизацию");
+    }
+  }
+
   if (isLoading) {
     return <div className="text-center text-text-muted py-8 text-[13px]">Загрузка настроек...</div>;
   }
@@ -777,17 +903,27 @@ function IntegrationsTab() {
 
       <KnowledgeBaseCard />
 
-      {INTEGRATIONS.map((cfg) => (
-        <IntegrationCard
-          key={cfg.service}
-          config={cfg}
-          values={values}
-          onChange={handleChange}
-          onCheck={() => handleCheck(cfg.service)}
-          checkResult={checkResults[cfg.service] ?? null}
-          checking={checkingService === cfg.service}
-        />
-      ))}
+      {INTEGRATIONS.map((cfg) => {
+        // Единая ручная синхронизация с 1Denta — только у владельца.
+        // Остальная синхронизация происходит автоматически раз в час.
+        const isOneDenta = cfg.service === "one_denta";
+        const showSync = isOneDenta && isOwner;
+        return (
+          <IntegrationCard
+            key={cfg.service}
+            config={cfg}
+            values={values}
+            onChange={handleChange}
+            onCheck={() => handleCheck(cfg.service)}
+            checkResult={checkResults[cfg.service] ?? null}
+            checking={checkingService === cfg.service}
+            onSync={showSync ? handleSyncOneDenta : undefined}
+            syncing={showSync && syncOneDenta.isPending}
+            syncStatus={showSync ? syncStatus : undefined}
+            syncInfo={isOneDenta ? <OneDentaSyncInfo status={oneDentaStatus} /> : undefined}
+          />
+        );
+      })}
 
       <div className="flex flex-col gap-3">
         <StatusBanner success={saveSuccess} error={saveError} />
