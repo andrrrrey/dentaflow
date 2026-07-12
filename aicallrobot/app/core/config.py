@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Scenarios
     scenarios_dir: str = "/app/scenarios"
-    default_scenario: str = "default"
+    default_scenario: str = "plan_unfinished"
 
     # SpeechKit endpoints
     speechkit_tts_url: str = "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize"

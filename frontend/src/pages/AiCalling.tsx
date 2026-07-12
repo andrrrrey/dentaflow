@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import { Loader2, Play, Send, Trash2, Plus, Mic, Square, Phone } from "lucide-react";
+import { Loader2, Play, Send, Trash2, Plus, Mic, Square, Phone, FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useTtsVoices,
   useTtsTest,
@@ -9,6 +9,7 @@ import {
   useDialogTurn,
   useDialogDeleteSession,
   useScenarios,
+  useScenarioDetail,
   useScriptCorrections,
   useAddScriptCorrection,
   useDeleteScriptCorrection,
@@ -16,9 +17,12 @@ import {
   useCallStatus,
   useCampaigns,
   useCampaignItems,
+  useCampaignItemTranscript,
+  fetchCampaignItemRecording,
   useCreateCampaign,
   useCampaignControl,
   type Campaign,
+  type CampaignItem,
 } from "../api/aicalling";
 import { useSegments } from "../api/segments";
 import Pill from "../components/ui/Pill";
@@ -93,6 +97,46 @@ function Transcript({ messages, empty }: { messages: ChatLike[]; empty: string }
 }
 
 interface ChatLike { role: "robot" | "user" | "system"; text: string; meta?: string; }
+
+/* Переиспользуемый выбор голоса / амплуа / скорости TTS. */
+function VoiceControls({
+  voices, voice, setVoice, role, setRole, speed, setSpeed,
+}: {
+  voices?: { id: string; roles: { id: string; label: string }[] }[];
+  voice: string; setVoice: (v: string) => void;
+  role: string; setRole: (v: string) => void;
+  speed: string; setSpeed: (v: string) => void;
+}) {
+  const selectedVoice = (voices ?? []).find((v) => v.id === voice) ?? voices?.[0];
+  const cls = "rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none bg-white";
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] font-semibold text-text-muted">Голос</label>
+        <select value={voice} onChange={(e) => { setVoice(e.target.value); setRole(""); }} className={cls}>
+          {(voices ?? [{ id: voice, roles: [] }]).map((v) => (
+            <option key={v.id} value={v.id}>{v.id}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] font-semibold text-text-muted">Амплуа</label>
+        <select value={role} onChange={(e) => setRole(e.target.value)} className={cls}>
+          <option value="">по умолчанию</option>
+          {(selectedVoice?.roles ?? []).map((r) => (
+            <option key={r.id} value={r.id}>{r.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] font-semibold text-text-muted">Скорость</label>
+        <select value={speed} onChange={(e) => setSpeed(e.target.value)} className={cls}>
+          {["0.8", "1.0", "1.2", "1.5"].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- Тест TTS ---------- */
 
@@ -221,8 +265,12 @@ function callStatusLabel(st?: string): string {
 function TestCallCard() {
   const scenarios = useScenarios();
   const testCall = useTestCall();
+  const { data: voices } = useTtsVoices();
   const [phone, setPhone] = useState("");
-  const [scenarioId, setScenarioId] = useState("dental_test");
+  const [scenarioId, setScenarioId] = useState("plan_unfinished");
+  const [tVoice, setTVoice] = useState("alena");
+  const [tRole, setTRole] = useState("");
+  const [tSpeed, setTSpeed] = useState("1.0");
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const status = useCallStatus(activeCallId);
   const scen = scenarios.data ?? [];
@@ -250,11 +298,17 @@ function TestCallCard() {
               <option key={sc.id} value={sc.id}>{sc.name}</option>
             ))}
           </select>
-          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
+          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId, tts_voice: tVoice, tts_role: tRole || undefined, tts_speed: parseFloat(tSpeed) || undefined }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
             {testCall.isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
             <span className="ml-1">Позвонить</span>
           </Button>
         </div>
+        <VoiceControls
+          voices={voices}
+          voice={tVoice} setVoice={setTVoice}
+          role={tRole} setRole={setTRole}
+          speed={tSpeed} setSpeed={setTSpeed}
+        />
         {testCall.isSuccess && (
           <div className="text-[12px] text-[#0a8f5b]">
             Звонок инициирован — ожидайте вызова на {phone}.
@@ -302,6 +356,7 @@ function DialogTab() {
   const voice = useVoiceDialog();
   const { data: voices } = useTtsVoices();
   const [vVoice, setVVoice] = useState("alena");
+  const [vRole, setVRole] = useState("");
   const [vSpeed, setVSpeed] = useState("1.0");
 
   async function handleStart() {
@@ -390,7 +445,7 @@ function DialogTab() {
             <Square size={14} /> Завершить
           </Button>
         ) : (
-          <Button onClick={() => voice.start({ voice: vVoice, speed: parseFloat(vSpeed) })} disabled={voice.state === "connecting"}>
+          <Button onClick={() => voice.start({ voice: vVoice, role: vRole || undefined, speed: parseFloat(vSpeed) })} disabled={voice.state === "connecting"}>
             {voice.state === "connecting" ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
             Начать голосом
           </Button>
@@ -398,23 +453,13 @@ function DialogTab() {
       </div>
 
       {mode === "voice" && !voiceActive && (
-        <div className="grid grid-cols-2 gap-3 mb-3 max-w-[360px]">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-text-muted">Голос</label>
-            <select value={vVoice} onChange={(e) => setVVoice(e.target.value)}
-              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none">
-              {(voices ?? [{ id: "alena", roles: [] }]).map((v) => (
-                <option key={v.id} value={v.id}>{v.id}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-text-muted">Скорость</label>
-            <select value={vSpeed} onChange={(e) => setVSpeed(e.target.value)}
-              className="rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none">
-              {["0.8", "1.0", "1.2", "1.5"].map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+        <div className="mb-3 max-w-[480px]">
+          <VoiceControls
+            voices={voices}
+            voice={vVoice} setVoice={setVVoice}
+            role={vRole} setRole={setVRole}
+            speed={vSpeed} setSpeed={setVSpeed}
+          />
         </div>
       )}
 
@@ -452,6 +497,53 @@ function DialogTab() {
 
 /* ---------- Скрипты диалога ---------- */
 
+function ScenarioRow({ id, name, description }: { id: string; name: string; description?: string }) {
+  const [open, setOpen] = useState(false);
+  const detail = useScenarioDetail(open ? id : null);
+  const d = detail.data;
+  return (
+    <div className="rounded-xl border border-[rgba(91,76,245,0.1)] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 text-left px-3 py-2 bg-[rgba(91,76,245,0.04)] border-none cursor-pointer"
+      >
+        <span className="text-[13px] font-semibold">{name || id}</span>
+        {description && <span className="text-[12px] text-text-muted truncate">— {description}</span>}
+        <span className="ml-auto text-[11px] text-accent2 font-semibold">{open ? "Скрыть" : "Читать скрипт"}</span>
+      </button>
+      {open && (
+        <div className="p-3 flex flex-col gap-3 bg-white">
+          {detail.isLoading && <div className="text-[12px] text-text-muted">Загрузка…</div>}
+          {d?.greeting && (
+            <div>
+              <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Приветствие</div>
+              <div className="text-[13px]">{d.greeting}</div>
+            </div>
+          )}
+          {d?.system_prompt && (
+            <div>
+              <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Полный скрипт (инструкция роботу)</div>
+              <pre className="text-[12.5px] whitespace-pre-wrap font-sans leading-relaxed bg-[rgba(91,76,245,0.03)] rounded-lg p-3">{d.system_prompt}</pre>
+            </div>
+          )}
+          {(d?.steps ?? []).length > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Шаги диалога</div>
+              <ol className="flex flex-col gap-1 list-decimal ml-4">
+                {d!.steps.map((s) => (
+                  <li key={s.id} className="text-[12.5px]">
+                    <span className="text-text-muted">{s.id}{s.is_final ? " (финал)" : ""}:</span> {s.greeting}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScriptsTab() {
   const { data: scenarios } = useScenarios();
   const { data: corrections } = useScriptCorrections();
@@ -477,13 +569,14 @@ function ScriptsTab() {
   return (
     <div className="flex flex-col gap-[18px] max-w-[720px]">
       <Card>
-        <h3 className="text-[14px] font-bold mb-2">Сценарии</h3>
-        <div className="flex flex-col gap-1.5">
+        <h3 className="text-[14px] font-bold mb-1">Скрипты диалога</h3>
+        <p className="text-[11.5px] text-text-muted mb-3">
+          Готовые скрипты по сегментам базы. Нажмите «Читать скрипт», чтобы увидеть полный текст.
+          Эти скрипты робот использует при реальном обзвоне и их можно выбрать в тестовом звонке.
+        </p>
+        <div className="flex flex-col gap-2">
           {(scenarios ?? []).map((s) => (
-            <div key={s.id} className="text-[13px] flex items-center gap-2">
-              <span className="font-semibold">{s.name || s.id}</span>
-              {s.description && <span className="text-text-muted">— {s.description}</span>}
-            </div>
+            <ScenarioRow key={s.id} id={s.id} name={s.name} description={s.description} />
           ))}
           {(scenarios ?? []).length === 0 && (
             <div className="text-[12px] text-text-muted">Сценарии не загружены.</div>
@@ -549,6 +642,20 @@ function ScriptsTab() {
 
 /* ---------- Кампании обзвона ---------- */
 
+const TIMEZONES: { id: string; label: string }[] = [
+  { id: "Europe/Kaliningrad", label: "Калининград (МСК−1)" },
+  { id: "Europe/Moscow", label: "Москва (МСК)" },
+  { id: "Europe/Samara", label: "Самара (МСК+1)" },
+  { id: "Asia/Yekaterinburg", label: "Екатеринбург (МСК+2)" },
+  { id: "Asia/Omsk", label: "Омск (МСК+3)" },
+  { id: "Asia/Krasnoyarsk", label: "Красноярск (МСК+4)" },
+  { id: "Asia/Irkutsk", label: "Иркутск (МСК+5)" },
+  { id: "Asia/Yakutsk", label: "Якутск (МСК+6)" },
+  { id: "Asia/Vladivostok", label: "Владивосток (МСК+7)" },
+  { id: "Asia/Magadan", label: "Магадан (МСК+8)" },
+  { id: "Asia/Kamchatka", label: "Камчатка (МСК+9)" },
+];
+
 const CAMP_STATUS: Record<Campaign["status"], { label: string; variant: "green" | "red" | "yellow" | "blue" | "gray" }> = {
   scheduled: { label: "Запланирована", variant: "blue" },
   running: { label: "Идёт обзвон", variant: "green" },
@@ -575,36 +682,163 @@ function campaignActions(status: Campaign["status"]): { label: string; action: "
   return [];
 }
 
+const ITEMS_PER_PAGE = 20;
+
+/* Модалка: запись звонка + транскрипт + вывод ИИ. */
+function CallDetailModal({ item, onClose }: { item: CampaignItem; onClose: () => void }) {
+  const { data, isLoading } = useCampaignItemTranscript(item.id);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioErr, setAudioErr] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const audioUrlRef = useRef<string | null>(null);
+
+  async function loadAudio() {
+    setAudioErr(null);
+    setAudioLoading(true);
+    try {
+      const url = await fetchCampaignItemRecording(item.id);
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = url;
+      setAudioUrl(url);
+    } catch {
+      setAudioErr("Запись недоступна");
+    } finally {
+      setAudioLoading(false);
+    }
+  }
+
+  const lines = data?.transcript ?? [];
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.35)" }} onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-[560px] w-full max-h-[85vh] overflow-y-auto p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-[16px] font-extrabold">Звонок · {item.phone}</div>
+            {data?.duration_sec != null && <div className="text-[11px] text-text-muted">Длительность: {data.duration_sec}с</div>}
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-main bg-transparent border-none cursor-pointer"><X size={18} /></button>
+        </div>
+
+        {/* Вывод ИИ */}
+        <div className="mb-3 p-3 rounded-xl bg-[rgba(91,76,245,0.05)]">
+          <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Вывод ИИ по звонку</div>
+          <div className="text-[13px]">{data?.summary || "—"}</div>
+        </div>
+
+        {/* Запись */}
+        <div className="mb-3">
+          <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Запись разговора</div>
+          {item.has_recording || data?.has_recording ? (
+            audioUrl ? (
+              <audio src={audioUrl} controls autoPlay className="w-full h-9" />
+            ) : (
+              <Button variant="secondary" size="sm" onClick={loadAudio} disabled={audioLoading}>
+                {audioLoading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Воспроизвести запись
+              </Button>
+            )
+          ) : (
+            <div className="text-[12px] text-text-muted">Запись недоступна.</div>
+          )}
+          {audioErr && <div className="text-[12px] text-[#f44b6e] mt-1">{audioErr}</div>}
+        </div>
+
+        {/* Транскрипт */}
+        <div>
+          <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">Транскрибация</div>
+          {isLoading && <div className="text-[12px] text-text-muted">Загрузка…</div>}
+          {!isLoading && lines.length === 0 && <div className="text-[12px] text-text-muted">Транскрипт недоступен.</div>}
+          <div className="flex flex-col gap-1.5">
+            {lines.map((l, i) => (
+              <div key={i} className={`text-[13px] ${l.role === "robot" ? "text-accent2" : l.role === "client" ? "text-text-main" : "text-text-muted italic"}`}>
+                <b>{l.role === "robot" ? "Робот" : l.role === "client" ? "Пациент" : "—"}:</b> {l.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CampaignItemsTable({ campaignId }: { campaignId: string }) {
   const items = useCampaignItems(campaignId);
   const rows = items.data?.items ?? [];
+  const [page, setPage] = useState(0);
+  const [detailItem, setDetailItem] = useState<CampaignItem | null>(null);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageRows = rows.slice(safePage * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE + ITEMS_PER_PAGE);
+
   if (!rows.length) return <div className="text-[12px] text-text-muted py-2">Пока нет данных по звонкам.</div>;
   return (
-    <table className="w-full text-left mt-2">
-      <thead>
-        <tr className="text-[11px] text-text-muted font-semibold uppercase tracking-wider">
-          <th className="pb-2">Телефон</th>
-          <th className="pb-2">Статус</th>
-          <th className="pb-2">Итог</th>
-          <th className="pb-2 text-right">Длит.</th>
-          <th className="pb-2">Резюме</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((it) => {
-          const st = ITEM_STATUS[it.status] ?? { label: it.status, variant: "gray" as const };
-          return (
-            <tr key={it.id} className="border-t border-[rgba(0,0,0,0.04)] text-[12.5px] align-top">
-              <td className="py-[8px] font-medium">{it.phone}</td>
-              <td className="py-[8px]"><Pill variant={st.variant}>{st.label}</Pill></td>
-              <td className="py-[8px]">{it.outcome ?? "—"}</td>
-              <td className="py-[8px] text-right">{it.duration_sec != null ? `${it.duration_sec}с` : "—"}</td>
-              <td className="py-[8px] text-text-muted max-w-[320px]">{it.summary ?? "—"}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto">
+      <table className="w-full text-left mt-2">
+        <thead>
+          <tr className="text-[11px] text-text-muted font-semibold uppercase tracking-wider">
+            <th className="pb-2">Телефон</th>
+            <th className="pb-2">Статус</th>
+            <th className="pb-2">Итог (вывод ИИ)</th>
+            <th className="pb-2 text-right">Длит.</th>
+            <th className="pb-2 text-right">Запись</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageRows.map((it) => {
+            const st = ITEM_STATUS[it.status] ?? { label: it.status, variant: "gray" as const };
+            const canOpen = it.has_transcript || it.has_recording;
+            return (
+              <tr key={it.id} className="border-t border-[rgba(0,0,0,0.04)] text-[12.5px] align-top">
+                <td className="py-[8px] font-medium">{it.phone}</td>
+                <td className="py-[8px]"><Pill variant={st.variant}>{st.label}</Pill></td>
+                <td className="py-[8px] text-text-muted max-w-[320px]">{it.summary ?? "—"}</td>
+                <td className="py-[8px] text-right">{it.duration_sec != null ? `${it.duration_sec}с` : "—"}</td>
+                <td className="py-[8px] text-right">
+                  {canOpen ? (
+                    <button
+                      onClick={() => setDetailItem(it)}
+                      title="Запись и транскрибация"
+                      className="inline-flex items-center gap-1 text-accent2 bg-transparent border-none cursor-pointer text-[12px] font-semibold"
+                    >
+                      <FileText size={14} /> Открыть
+                    </button>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="flex items-center justify-between mt-3 text-[12px] text-text-muted">
+        <span>{rows.length} номеров</span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[rgba(0,0,0,0.08)] bg-white disabled:opacity-40 cursor-pointer disabled:cursor-default"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span>стр. {safePage + 1} из {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[rgba(0,0,0,0.08)] bg-white disabled:opacity-40 cursor-pointer disabled:cursor-default"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {detailItem && <CallDetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+    </div>
   );
 }
 
@@ -614,14 +848,19 @@ function CampaignsTab() {
   const campaigns = useCampaigns();
   const create = useCreateCampaign();
   const control = useCampaignControl();
+  const { data: voices } = useTtsVoices();
 
   const [name, setName] = useState("");
+  const [cVoice, setCVoice] = useState("alena");
+  const [cRole, setCRole] = useState("");
+  const [cSpeed, setCSpeed] = useState("1.0");
   const [segmentKey, setSegmentKey] = useState("");
-  const [scenarioId, setScenarioId] = useState("default");
+  const [scenarioId, setScenarioId] = useState("plan_unfinished");
   const [maxConc, setMaxConc] = useState(1);
   const [scheduledAt, setScheduledAt] = useState("");
   const [winStart, setWinStart] = useState("09:00");
   const [winEnd, setWinEnd] = useState("20:00");
+  const [timezone, setTimezone] = useState("Europe/Moscow");
   const [openId, setOpenId] = useState<string | null>(null);
 
   const segItems = segments.data?.items ?? [];
@@ -639,6 +878,10 @@ function CampaignsTab() {
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         window_start: winStart || null,
         window_end: winEnd || null,
+        timezone,
+        tts_voice: cVoice,
+        tts_role: cRole || undefined,
+        tts_speed: parseFloat(cSpeed) || undefined,
       },
       { onSuccess: () => setName("") },
     );
@@ -691,6 +934,23 @@ function CampaignsTab() {
               <input className={field} type="time" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} />
             </label>
           </div>
+          <label className="flex flex-col gap-1 text-[12px] text-text-muted">
+            Часовой пояс
+            <select className={field} value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+              {TIMEZONES.map((tz) => (
+                <option key={tz.id} value={tz.id}>{tz.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] text-text-muted mb-1">Голос робота</div>
+          <VoiceControls
+            voices={voices}
+            voice={cVoice} setVoice={setCVoice}
+            role={cRole} setRole={setCRole}
+            speed={cSpeed} setSpeed={setCSpeed}
+          />
         </div>
         {create.error && (
           <div className="text-[12px] text-red-500 mt-2">{(create.error as any)?.response?.data?.detail ?? "Не удалось создать кампанию"}</div>

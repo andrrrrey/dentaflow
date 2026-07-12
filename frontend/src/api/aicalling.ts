@@ -101,6 +101,32 @@ export function useScenarios() {
   });
 }
 
+export interface ScenarioStep {
+  id: string;
+  greeting: string;
+  is_final?: boolean;
+}
+export interface ScenarioDetail {
+  id: string;
+  name: string;
+  description?: string;
+  greeting?: string;
+  system_prompt?: string;
+  steps: ScenarioStep[];
+}
+
+export function useScenarioDetail(scenarioId: string | null) {
+  return useQuery<ScenarioDetail>({
+    queryKey: ["ai-calling", "scenario", scenarioId],
+    queryFn: async () => {
+      const { data } = await api.get(`/ai-calling/scenarios/${scenarioId}`);
+      return data;
+    },
+    enabled: !!scenarioId,
+    staleTime: 60 * 1000,
+  });
+}
+
 export interface ScriptCorrection {
   id: string;
   trigger: string;
@@ -163,6 +189,9 @@ export interface Campaign {
   window_start: string | null;
   window_end: string | null;
   timezone: string;
+  tts_voice: string | null;
+  tts_role: string | null;
+  tts_speed: number | null;
   total: number;
   completed: number;
   succeeded: number;
@@ -183,7 +212,44 @@ export interface CampaignItem {
   summary: string | null;
   duration_sec: number | null;
   attempts: number;
+  call_id: string | null;
+  has_recording: boolean;
+  has_transcript: boolean;
   updated_at: string | null;
+}
+
+export interface CampaignItemTranscriptLine {
+  role: string; // robot | client | system
+  text: string;
+  timestamp?: number;
+}
+export interface CampaignItemTranscript {
+  item_id: string;
+  phone: string;
+  outcome: string | null;
+  summary: string | null;
+  duration_sec: number | null;
+  transcript: CampaignItemTranscriptLine[];
+  has_recording: boolean;
+}
+
+export function useCampaignItemTranscript(itemId: string | null) {
+  return useQuery<CampaignItemTranscript>({
+    queryKey: ["ai-calling", "campaign-item-transcript", itemId],
+    queryFn: async () => {
+      const { data } = await api.get(`/ai-calling/campaigns/items/${itemId}/transcript`);
+      return data;
+    },
+    enabled: !!itemId,
+  });
+}
+
+/** Скачивает .wav-запись звонка как blob-URL (через авторизованный api-клиент). */
+export async function fetchCampaignItemRecording(itemId: string): Promise<string> {
+  const { data } = await api.get(`/ai-calling/campaigns/items/${itemId}/recording`, {
+    responseType: "blob",
+  });
+  return URL.createObjectURL(data as Blob);
 }
 
 export interface CampaignCreateRequest {
@@ -195,6 +261,9 @@ export interface CampaignCreateRequest {
   window_start?: string | null;
   window_end?: string | null;
   timezone?: string;
+  tts_voice?: string | null;
+  tts_role?: string | null;
+  tts_speed?: number | null;
 }
 
 function campaignsActive(items: Campaign[]): boolean {
@@ -259,7 +328,11 @@ export interface TestCallResponse {
 }
 
 export function useTestCall() {
-  return useMutation<TestCallResponse, Error, { phone: string; scenario_id?: string }>({
+  return useMutation<
+    TestCallResponse,
+    Error,
+    { phone: string; scenario_id?: string; tts_voice?: string; tts_role?: string; tts_speed?: number }
+  >({
     mutationFn: async (body) => {
       const { data } = await api.post("/ai-calling/test-call", body);
       return data;

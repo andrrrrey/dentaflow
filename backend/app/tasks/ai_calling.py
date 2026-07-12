@@ -131,6 +131,9 @@ async def _place_call(item_id: str) -> dict:
             return {"skipped": True}
         scenario_id = campaign.scenario_id
         phone = item.phone
+        tts_voice = campaign.tts_voice
+        tts_role = campaign.tts_role
+        tts_speed = campaign.tts_speed
 
         await _sync_credentials(db)
         caller_id = await get_raw_value(db, "novofon_caller_id")
@@ -139,10 +142,21 @@ async def _place_call(item_id: str) -> dict:
     # 1. Создаём сессию диалога в aicallrobot.
     call_id = None
     try:
+        start_payload = {
+            "phone_number": phone,
+            "scenario_id": scenario_id,
+            "algo_version": "v1",
+        }
+        if tts_voice:
+            start_payload["tts_voice"] = tts_voice
+        if tts_role:
+            start_payload["tts_role"] = tts_role
+        if tts_speed:
+            start_payload["tts_speed"] = tts_speed
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.AICALLROBOT_URL}/api/v1/calls/start",
-                json={"phone_number": phone, "scenario_id": scenario_id, "algo_version": "v1"},
+                json=start_payload,
             )
             resp.raise_for_status()
             call_id = resp.json().get("call_id")

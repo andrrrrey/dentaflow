@@ -9,12 +9,15 @@
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import logging
+import os
 import uuid
 
 import httpx
 import websockets
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,14 +112,14 @@ async def internal_novofon_sip(
 async def tts_test(
     body: dict,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     await _sync_credentials(db)
     return await _proxy("POST", "/api/v1/tts", json=body)
 
 
 @router.get("/voices")
-async def voices(_user: User = Depends(role_required("owner"))):
+async def voices(_user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("GET", "/api/v1/voices")
 
 
@@ -126,7 +129,7 @@ async def voices(_user: User = Depends(role_required("owner"))):
 async def dialog_start(
     body: dict,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     await _sync_credentials(db)
     return await _proxy("POST", "/api/v1/ai/chat_v2/start", json=body)
@@ -136,7 +139,7 @@ async def dialog_start(
 async def dialog_turn(
     body: dict,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     await _sync_credentials(db)
     return await _proxy("POST", "/api/v1/ai/chat_v2/turn", json=body)
@@ -145,7 +148,7 @@ async def dialog_turn(
 @router.delete("/dialog/session/{session_id}")
 async def dialog_delete_session(
     session_id: str,
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     return await _proxy("DELETE", f"/api/v1/ai/chat_v2/session/{session_id}")
 
@@ -156,12 +159,12 @@ async def dialog_delete_session(
 async def calls_start(
     body: dict | None = None,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     await _sync_credentials(db)
     payload = {
         "phone_number": (body or {}).get("phone_number", "dentaflow-owner"),
-        "scenario_id": (body or {}).get("scenario_id", "default"),
+        "scenario_id": (body or {}).get("scenario_id", "plan_unfinished"),
         "algo_version": "v2",
     }
     return await _proxy("POST", "/api/v1/calls/start", json=payload)
@@ -170,32 +173,32 @@ async def calls_start(
 # ── Скрипты диалога ─────────────────────────────────────────────────────────────
 
 @router.get("/scenarios")
-async def scenarios(_user: User = Depends(role_required("owner"))):
+async def scenarios(_user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("GET", "/api/v1/scenarios")
 
 
 @router.get("/scenarios/{scenario_id}")
-async def scenario_detail(scenario_id: str, _user: User = Depends(role_required("owner"))):
+async def scenario_detail(scenario_id: str, _user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("GET", f"/api/v1/scenarios/{scenario_id}")
 
 
 @router.get("/script-corrections")
-async def list_corrections(_user: User = Depends(role_required("owner"))):
+async def list_corrections(_user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("GET", "/api/v1/script-corrections")
 
 
 @router.post("/script-corrections")
-async def add_correction(body: dict, _user: User = Depends(role_required("owner"))):
+async def add_correction(body: dict, _user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("POST", "/api/v1/script-corrections", json=body)
 
 
 @router.put("/script-corrections/{item_id}")
-async def update_correction(item_id: str, body: dict, _user: User = Depends(role_required("owner"))):
+async def update_correction(item_id: str, body: dict, _user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("PUT", f"/api/v1/script-corrections/{item_id}", json=body)
 
 
 @router.delete("/script-corrections/{item_id}")
-async def delete_correction(item_id: str, _user: User = Depends(role_required("owner"))):
+async def delete_correction(item_id: str, _user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("DELETE", f"/api/v1/script-corrections/{item_id}")
 
 
@@ -211,7 +214,7 @@ def _upstream_ws_url(call_id: str) -> str:
 
 
 async def _authorize_ws_owner(token: str) -> bool:
-    """Проверяет, что токен валиден и пользователь — owner."""
+    """Проверяет, что токен валиден и пользователь — owner или manager."""
     try:
         payload = decode_token(token)
     except Exception:
@@ -228,7 +231,7 @@ async def _authorize_ws_owner(token: str) -> bool:
     async with async_session_factory() as db:
         result = await db.execute(select(User).where(User.id == user_uuid))
         user = result.scalar_one_or_none()
-        return bool(user and user.is_active and user.role == "owner")
+        return bool(user and user.is_active and user.role in ("owner", "manager"))
 
 
 @router.websocket("/ws/audio/{call_id}")
@@ -295,12 +298,15 @@ async def _pump_upstream_to_client(upstream, client: WebSocket) -> None:
 class CampaignCreate(BaseModel):
     name: str
     segment_key: str
-    scenario_id: str = "default"
+    scenario_id: str = "plan_unfinished"
     max_concurrent: int = 1
     scheduled_at: datetime | None = None
     window_start: str | None = None  # "09:00"
     window_end: str | None = None    # "20:00"
     timezone: str = "Europe/Moscow"
+    tts_voice: str | None = None
+    tts_role: str | None = None
+    tts_speed: float | None = None
 
 
 class CampaignControl(BaseModel):
@@ -321,6 +327,9 @@ def _campaign_dict(c) -> dict:
         "window_start": c.window_start,
         "window_end": c.window_end,
         "timezone": c.timezone,
+        "tts_voice": c.tts_voice,
+        "tts_role": c.tts_role,
+        "tts_speed": c.tts_speed,
         "total": total,
         "completed": c.completed,
         "succeeded": c.succeeded,
@@ -333,7 +342,16 @@ def _campaign_dict(c) -> dict:
     }
 
 
+def _recording_path(call_id: str | None) -> str | None:
+    """Путь к .wav-записи звонка в общем томе (MixMonitor: aicall-<call_id>.wav)."""
+    if not call_id:
+        return None
+    base = os.path.basename(str(call_id))  # защита от path traversal
+    return os.path.join(settings.AICALL_RECORDINGS_DIR, f"aicall-{base}.wav")
+
+
 def _item_dict(i) -> dict:
+    rec = _recording_path(i.call_id)
     return {
         "id": str(i.id),
         "patient_id": str(i.patient_id) if i.patient_id else None,
@@ -343,6 +361,9 @@ def _item_dict(i) -> dict:
         "summary": i.summary,
         "duration_sec": i.duration_sec,
         "attempts": i.attempts,
+        "call_id": i.call_id,
+        "has_recording": bool(rec and os.path.isfile(rec)),
+        "has_transcript": i.comm_id is not None,
         "updated_at": i.updated_at.isoformat() if i.updated_at else None,
     }
 
@@ -350,7 +371,7 @@ def _item_dict(i) -> dict:
 @router.get("/campaigns")
 async def campaigns_list(
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     items = await ai_calling_service.list_campaigns(db)
     return {"items": [_campaign_dict(c) for c in items]}
@@ -360,7 +381,7 @@ async def campaigns_list(
 async def campaigns_create(
     body: CampaignCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(role_required("owner")),
+    user: User = Depends(role_required("owner", "manager")),
 ):
     campaign = await ai_calling_service.create_campaign(
         db,
@@ -372,6 +393,9 @@ async def campaigns_create(
         window_start=body.window_start,
         window_end=body.window_end,
         tz=body.timezone,
+        tts_voice=body.tts_voice,
+        tts_role=body.tts_role,
+        tts_speed=body.tts_speed,
         created_by=user.id,
     )
     if campaign.total == 0:
@@ -386,7 +410,7 @@ async def campaigns_create(
 async def campaign_get(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     campaign = await ai_calling_service.get_campaign(db, campaign_id)
     if campaign is None:
@@ -398,10 +422,73 @@ async def campaign_get(
 async def campaign_items(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     items = await ai_calling_service.list_items(db, campaign_id)
     return {"items": [_item_dict(i) for i in items]}
+
+
+async def _get_item(db: AsyncSession, item_id: uuid.UUID):
+    from app.models.ai_calling import AiCallingCampaignItem
+    return (
+        await db.execute(select(AiCallingCampaignItem).where(AiCallingCampaignItem.id == item_id))
+    ).scalar_one_or_none()
+
+
+@router.get("/campaigns/items/{item_id}/transcript")
+async def campaign_item_transcript(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner", "manager")),
+):
+    """Транскрипт и вывод ИИ по конкретному звонку (из связанной Communication)."""
+    from app.models.communication import Communication
+
+    item = await _get_item(db, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Звонок не найден")
+
+    transcript: list = []
+    ai_summary = item.summary
+    if item.comm_id:
+        comm = (
+            await db.execute(select(Communication).where(Communication.id == item.comm_id))
+        ).scalar_one_or_none()
+        if comm is not None:
+            if comm.content:
+                try:
+                    parsed = _json.loads(comm.content)
+                    if isinstance(parsed, list):
+                        transcript = parsed
+                except (ValueError, TypeError):
+                    transcript = []
+            if comm.ai_summary:
+                ai_summary = comm.ai_summary
+    return {
+        "item_id": str(item.id),
+        "phone": item.phone,
+        "outcome": item.outcome,
+        "summary": ai_summary,
+        "duration_sec": item.duration_sec,
+        "transcript": transcript,
+        "has_recording": bool(_recording_path(item.call_id) and os.path.isfile(_recording_path(item.call_id))),
+    }
+
+
+@router.get("/campaigns/items/{item_id}/recording")
+async def campaign_item_recording(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner", "manager")),
+):
+    """Стримит .wav-запись звонка (MixMonitor) из общего тома с Asterisk."""
+    item = await _get_item(db, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Звонок не найден")
+    path = _recording_path(item.call_id)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Запись недоступна")
+    return FileResponse(path, media_type="audio/wav", filename=f"call-{item.call_id}.wav")
 
 
 @router.post("/campaigns/{campaign_id}/control")
@@ -409,7 +496,7 @@ async def campaign_control(
     campaign_id: uuid.UUID,
     body: CampaignControl,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     if body.action not in ("start", "pause", "resume", "cancel"):
         raise HTTPException(status_code=400, detail="Недопустимое действие")
@@ -426,14 +513,17 @@ async def campaign_control(
 
 class TestCallRequest(BaseModel):
     phone: str
-    scenario_id: str = "default"
+    scenario_id: str = "plan_unfinished"
+    tts_voice: str | None = None
+    tts_role: str | None = None
+    tts_speed: float | None = None
 
 
 @router.post("/test-call")
 async def test_call(
     body: TestCallRequest,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     phone = ai_calling_service.normalize_phone(body.phone)
     if not phone:
@@ -443,11 +533,14 @@ async def test_call(
     caller_id = await get_raw_value(db, "novofon_caller_id")
     ami_password = await get_raw_value(db, "novofon_ami_password")
 
-    start = await _proxy(
-        "POST",
-        "/api/v1/calls/start",
-        json={"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v1"},
-    )
+    start_payload = {"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v1"}
+    if body.tts_voice:
+        start_payload["tts_voice"] = body.tts_voice
+    if body.tts_role:
+        start_payload["tts_role"] = body.tts_role
+    if body.tts_speed:
+        start_payload["tts_speed"] = body.tts_speed
+    start = await _proxy("POST", "/api/v1/calls/start", json=start_payload)
     call_id = (start or {}).get("call_id") if isinstance(start, dict) else None
     if not call_id:
         raise HTTPException(status_code=502, detail="aicallrobot не создал сессию звонка")
@@ -476,7 +569,7 @@ async def test_call(
 @router.get("/calls/{call_id}")
 async def call_status(
     call_id: str,
-    _user: User = Depends(role_required("owner")),
+    _user: User = Depends(role_required("owner", "manager")),
 ):
     """Статус и живой транскрипт звонка (для тестового звонка). Проксирует aicallrobot."""
     return await _proxy("GET", f"/api/v1/calls/{call_id}")

@@ -44,6 +44,9 @@ services:
     env_file: .env
     environment:
       AICALLROBOT_URL: http://aicallrobot:8000
+    volumes:
+      # Общий том с записями ИИ-звонков (Asterisk MixMonitor пишет сюда, backend отдаёт).
+      - aicall_recordings:/recordings
     depends_on:
       - postgres
       - redis
@@ -78,6 +81,9 @@ services:
     ports:
       - "5060:5060/udp"
       - "10000-10040:10000-10040/udp"   # RTP (см. asterisk/etc/rtp.conf): 41 порт ≈ 20 звонков (2 порта/звонок)
+    volumes:
+      # Общий том с записями ИИ-звонков (MixMonitor пишет aicall-<call_id>.wav сюда).
+      - aicall_recordings:/recordings
     depends_on:
       - backend
       - aicallrobot
@@ -171,3 +177,4 @@ volumes:
   frontend_node_modules:    # cached node_modules for fast frontend builds
   aicallrobot_data:
   aicallrobot_kb:
+  aicall_recordings:

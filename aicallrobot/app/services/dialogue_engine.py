@@ -195,7 +195,7 @@ class DialogueEngine:
             # Фильтр безопасности сработал на сложном промпте — повторяем с минимальным
             logger.warning(f"Safety refusal on step '{step.id if step else '?'}', retrying with minimal prompt")
             minimal_system = (
-                "Ты — Татьяна, менеджер компании «РусЭнергоСтрой», ведёшь деловой телефонный разговор. "
+                "Ты — вежливый администратор стоматологической клиники, ведёшь телефонный разговор. "
                 "Отвечай кратко и по делу, 1-2 предложения на русском языке."
             )
             if step and (step.prompt or step.greeting):
