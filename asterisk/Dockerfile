@@ -24,6 +24,6 @@ RUN chmod +x /entrypoint.sh
 # SIP (signalling) + диапазон RTP (см. rtp.conf). При работе за NAT задайте
 # EXTERNAL_IP и пробросьте эти UDP-порты.
 EXPOSE 5060/udp
-EXPOSE 10000-10020/udp
+EXPOSE 10000-10040/udp
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -46,6 +46,10 @@ services:
     # (POST /api/v1/runtime-credentials), .env этого сервиса не требуется.
     build: ./aicallrobot
     restart: always
+    environment:
+      # Отображаемый лимит параллельных звонков в /stats (не блокирует звонки —
+      # реальный контроль в celery_worker_ai --concurrency и max_concurrent кампании).
+      MAX_CONCURRENT_CALLS: "20"
     volumes:
       - aicallrobot_data:/app/data
       - aicallrobot_kb:/app/knowledge_base
@@ -60,7 +64,7 @@ services:
       BACKEND_URL: http://backend:8000
     ports:
       - "5060:5060/udp"
-      - "10000-10020:10000-10020/udp"   # RTP (см. asterisk/etc/rtp.conf)
+      - "10000-10040:10000-10040/udp"   # RTP (см. asterisk/etc/rtp.conf): 41 порт ≈ 20 звонков (2 порта/звонок)
     depends_on:
       - backend
       - aicallrobot
@@ -75,7 +79,9 @@ services:
     restart: always
     # concurrency=4 so the nightly full sync (~150s) and the every-5-min
     # appointment sync don't block each other or the on-demand tasks.
-    command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,ai,sync --concurrency=4
+    # Очередь "ai" вынесена в отдельный celery_worker_ai (звонок держит слот
+    # воркера весь разговор — иначе обзвон забивал бы общий воркер).
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q default,sync --concurrency=4
 
   # Dedicated worker for the heavy base-analysis (patient segments) recompute.
   # Isolated on its own queue so the 1Denta syncs can never starve it.
@@ -87,6 +93,20 @@ services:
       - redis
     restart: always
     command: celery -A app.tasks.celery_app worker --loglevel=info -Q segments --concurrency=1
+
+  # Выделенный воркер ИИ-обзвона (очередь "ai"). place_call держит слот всё время
+  # разговора (опрос до 300с), поэтому concurrency ≈ максимум одновременных звонков.
+  # В эту же очередь идёт диспетчер tick_campaigns — поэтому берём +1 слот (20 звонков
+  # + 1 для диспетчера), иначе при 20 активных звонках диспетчеру не хватит слота.
+  # Согласуйте с RTP-портами (asterisk/etc/rtp.conf) и лимитом каналов тарифа Novofon.
+  celery_worker_ai:
+    image: dentaflow-backend:latest
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q ai --concurrency=21
 
   celery_beat:
     image: dentaflow-backend:latest
