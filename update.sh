@@ -33,7 +33,7 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "back" ]; then
 
   echo "→ Запуск aicallrobot, asterisk, бэкенда и celery..."
   $COMPOSE up -d --no-deps --remove-orphans --force-recreate \
-    aicallrobot asterisk backend celery_worker celery_worker_segments celery_beat
+    aicallrobot asterisk backend celery_worker celery_worker_segments celery_worker_ai celery_beat
 
   echo "→ Перезапуск nginx..."
   $COMPOSE restart nginx
