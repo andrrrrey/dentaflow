@@ -64,6 +64,9 @@ class StartCallRequest(BaseModel):
     phone_number: str
     scenario_id: str = "default"
     algo_version: str = "v1"
+    tts_voice: str | None = None
+    tts_role: str | None = None
+    tts_speed: float | None = None
 
 
 class AIConfigUpdate(BaseModel):
@@ -205,6 +208,7 @@ async def get_scenario(scenario_id: str):
         "name": scenario.name,
         "description": scenario.description,
         "greeting": scenario.greeting,
+        "system_prompt": scenario.system_prompt,
         "steps": [
             {"id": s.id, "greeting": s.greeting, "is_final": s.is_final}
             for s in scenario.steps.values()
@@ -438,6 +442,9 @@ async def start_call(request: StartCallRequest):
             phone_number=request.phone_number,
             scenario_id=request.scenario_id,
             algo_version=request.algo_version,
+            tts_voice=request.tts_voice,
+            tts_role=request.tts_role,
+            tts_speed=request.tts_speed,
         )
         if request.algo_version == "v2":
             v2_greeting = script_v2_engine.greeting(session.call_id)
@@ -553,8 +560,15 @@ async def audio_websocket(websocket: WebSocket, call_id: str):
         tts_service=tts_service,
     )
 
-    # Voice config set by client via {action:"config"} message
+    # Voice config: по умолчанию берём из сессии (реальные звонки Asterisk не шлют
+    # {action:"config"}); браузерный тест может переопределить его config-сообщением.
     tts_voice_config: dict = {}
+    if session.tts_voice:
+        tts_voice_config["voice"] = session.tts_voice
+    if session.tts_role:
+        tts_voice_config["role"] = session.tts_role
+    if session.tts_speed:
+        tts_voice_config["speed"] = session.tts_speed
 
     async def synthesize_response(text: str) -> bytes:
         provider = tts_voice_config.get("provider", "yandex")

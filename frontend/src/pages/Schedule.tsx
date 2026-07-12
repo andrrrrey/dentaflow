@@ -18,13 +18,15 @@ const statusLabels: Record<string, string> = {
   no_show: "Не явился",
 };
 
+// Выразительная палитра статусов: зелёный — пациент пришёл, фиолетовый —
+// подтвердился, оранжевый — просто запись (не подтверждён).
 const statusColors: Record<string, { bg: string; text: string; border: string }> = {
-  confirmed: { bg: "rgba(0,201,167,0.13)", text: "#007d6e", border: "rgba(0,201,167,0.3)" },
-  unconfirmed: { bg: "rgba(59,127,237,0.12)", text: "#2563eb", border: "rgba(59,127,237,0.25)" },
-  arrived: { bg: "rgba(91,76,245,0.12)", text: "#5B4CF5", border: "rgba(91,76,245,0.25)" },
-  completed: { bg: "rgba(91,76,245,0.12)", text: "#5B4CF5", border: "rgba(91,76,245,0.25)" },
-  cancelled: { bg: "rgba(244,75,110,0.1)", text: "#c52048", border: "rgba(244,75,110,0.2)" },
-  no_show: { bg: "rgba(245,166,35,0.12)", text: "#b45309", border: "rgba(245,166,35,0.25)" },
+  arrived: { bg: "rgba(16,185,129,0.18)", text: "#047857", border: "#10b981" },
+  completed: { bg: "rgba(16,185,129,0.18)", text: "#047857", border: "#10b981" },
+  confirmed: { bg: "rgba(124,58,237,0.16)", text: "#6d28d9", border: "#7c3aed" },
+  unconfirmed: { bg: "rgba(245,158,11,0.2)", text: "#b45309", border: "#f59e0b" },
+  cancelled: { bg: "rgba(244,75,110,0.14)", text: "#c52048", border: "#f44b6e" },
+  no_show: { bg: "rgba(107,114,128,0.16)", text: "#4b5563", border: "#9ca3af" },
 };
 
 const CLINIC_START = 9;
@@ -562,7 +564,7 @@ export default function Schedule() {
                           {initials || "—"}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[13.5px] font-bold text-text-main truncate leading-tight">{doctorName}</div>
+                          <div className="text-[13.5px] font-bold text-text-main leading-tight whitespace-normal break-words">{doctorName}</div>
                           <div className="text-[11px] text-text-muted truncate mt-[1px]">
                             {specialty ? `${specialty} · ` : ""}{appts.length} записей
                           </div>

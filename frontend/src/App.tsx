@@ -204,7 +204,7 @@ function App() {
         <Route
           path="/ai-calling"
           element={
-            <ProtectedRoute denyRoles={["manager", "admin", "marketer"]}>
+            <ProtectedRoute denyRoles={["admin", "marketer"]}>
               <AppLayout title="ИИ обзвон">
                 <AiCalling />
               </AppLayout>

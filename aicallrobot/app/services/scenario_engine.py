@@ -97,16 +97,16 @@ class ScenarioManager:
         )
 
     def _create_default_scenario(self):
-        """Создаёт сценарий по умолчанию."""
+        """Создаёт нейтральный сценарий-заглушку (когда YAML-сценарии не найдены)."""
         default = Scenario(
             id="default",
-            name="Тестовый сценарий",
-            description="Базовый сценарий для тестирования голосового контура",
-            greeting="Здравствуйте! Меня зовут Татьяна, я звоню от компании. Удобно ли вам сейчас говорить?",
+            name="Базовый сценарий стоматологии",
+            description="Резервный сценарий для тестирования голосового контура",
+            greeting="Здравствуйте! Это администратор стоматологической клиники. Удобно ли вам сейчас говорить?",
             system_prompt=(
-                "Ты — AI-ассистент для исходящих звонков. "
-                "Ведёшь вежливый деловой диалог на русском языке. "
-                "Отвечай кратко, по делу. Если клиент не хочет говорить — вежливо прощайся."
+                "Ты — вежливый администратор стоматологической клиники, ведёшь исходящий звонок "
+                "по базе пациентов на русском языке. Отвечай кратко, по делу, с заботой. "
+                "Если пациент не хочет говорить — вежливо прощайся."
             ),
             steps={
                 "start": ScenarioStep(
@@ -118,20 +118,20 @@ class ScenarioManager:
                 ),
                 "pitch": ScenarioStep(
                     id="pitch",
-                    greeting="Отлично! Я хотела рассказать вам о нашем новом предложении. Вам это интересно?",
+                    greeting="Приглашаем вас на бесплатный осмотр в нашу клинику. Вам это интересно?",
                     on_positive="details",
                     on_negative="farewell",
                     on_objection="handle_objection",
                 ),
                 "details": ScenarioStep(
                     id="details",
-                    greeting="Замечательно! Могу я уточнить удобное время для более подробного разговора?",
+                    greeting="Замечательно! Подскажите, когда вам удобнее прийти — на этой или на следующей неделе?",
                     on_positive="schedule",
                     on_negative="farewell",
                 ),
                 "schedule": ScenarioStep(
                     id="schedule",
-                    greeting="Отлично, я зафиксирую. Спасибо за ваше время!",
+                    greeting="Отлично, наш администратор перезвонит и подтвердит точное время. Спасибо!",
                     is_final=True,
                 ),
                 "farewell": ScenarioStep(
@@ -145,12 +145,18 @@ class ScenarioManager:
         logger.info("Created default scenario")
 
     def get_scenario(self, scenario_id: str | None = None) -> Scenario:
-        """Получить сценарий по ID."""
+        """Получить сценарий по ID с устойчивым фоллбэком."""
         sid = scenario_id or self.settings.default_scenario
-        if sid not in self.scenarios:
-            logger.warning(f"Scenario '{sid}' not found, using default")
-            sid = "default"
-        return self.scenarios[sid]
+        if sid in self.scenarios:
+            return self.scenarios[sid]
+        logger.warning(f"Scenario '{sid}' not found, falling back")
+        fallback = self.settings.default_scenario
+        if fallback in self.scenarios:
+            return self.scenarios[fallback]
+        if self.scenarios:
+            return next(iter(self.scenarios.values()))
+        self._create_default_scenario()
+        return self.scenarios["default"]
 
     def list_scenarios(self) -> list[dict]:
         """Список доступных сценариев."""

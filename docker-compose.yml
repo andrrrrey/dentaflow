@@ -31,6 +31,7 @@ services:
       - redis
     volumes:
       - ./backend:/app
+      - aicall_recordings:/recordings
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   aicallrobot:
@@ -54,6 +55,8 @@ services:
     ports:
       - "5060:5060/udp"
       - "10000-10020:10000-10020/udp"   # RTP (см. asterisk/etc/rtp.conf)
+    volumes:
+      - aicall_recordings:/recordings
     depends_on:
       - backend
       - aicallrobot
@@ -94,3 +97,4 @@ volumes:
   redis_data:
   aicallrobot_data:
   aicallrobot_kb:
+  aicall_recordings:

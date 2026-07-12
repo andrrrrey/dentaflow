@@ -97,7 +97,7 @@ const sections: NavSection[] = [
         label: "ИИ обзвон",
         icon: <Phone size={15} />,
         path: "/ai-calling",
-        hideForRoles: ["manager", "admin", "marketer"],
+        hideForRoles: ["admin", "marketer"],
       },
     ],
   },

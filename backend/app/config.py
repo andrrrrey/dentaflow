@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     AMI_USERNAME: str = "dentaflow"
     AMI_PASSWORD: str = ""
 
+    # Каталог с записями ИИ-звонков (общий том с Asterisk, MixMonitor пишет сюда
+    # файлы aicall-<call_id>.wav). См. docker-compose (том aicall_recordings).
+    AICALL_RECORDINGS_DIR: str = "/recordings"
+
     # Общий секрет для внутренних сервис-сервисных запросов внутри docker-сети
     # (например, entrypoint контейнера Asterisk тянет SIP-настройки Novofon из
     # админки). Наружу (через nginx) этот эндпоинт не публикуется.

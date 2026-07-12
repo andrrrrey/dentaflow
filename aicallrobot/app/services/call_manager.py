@@ -36,6 +36,11 @@ class CallSession:
     client_status: str = "unknown"  # interested / not_interested / callback / unknown
     retries: dict = field(default_factory=dict)  # step_id -> retry_count
     algo_version: str = "v1"  # "v1" | "v2"
+    # Голос TTS для этого звонка (реальные телефонные звонки — Asterisk не шлёт
+    # {action:"config"}, поэтому берём настройки из сессии).
+    tts_voice: str | None = None
+    tts_role: str | None = None
+    tts_speed: float | None = None
 
 
 class CallManager:
@@ -50,7 +55,15 @@ class CallManager:
     def active_count(self) -> int:
         return len([c for c in self.active_calls.values() if c.status == CallStatus.ACTIVE])
 
-    async def start_call(self, phone_number: str, scenario_id: str = "default", algo_version: str = "v1") -> CallSession:
+    async def start_call(
+        self,
+        phone_number: str,
+        scenario_id: str = "default",
+        algo_version: str = "v1",
+        tts_voice: str | None = None,
+        tts_role: str | None = None,
+        tts_speed: float | None = None,
+    ) -> CallSession:
         """Создаёт новую сессию звонка."""
         async with self._lock:
             session = CallSession(
@@ -58,6 +71,9 @@ class CallManager:
                 scenario_id=scenario_id,
                 status=CallStatus.ACTIVE,
                 algo_version=algo_version,
+                tts_voice=tts_voice,
+                tts_role=tts_role,
+                tts_speed=tts_speed,
             )
             self.active_calls[session.call_id] = session
             logger.bind(call=True).info(

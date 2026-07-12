@@ -27,6 +27,17 @@ const statusLabels: Record<string, string> = {
   no_show: "Не явился",
 };
 
+// Выразительная палитра статусов (синхронизирована с календарём Schedule.tsx):
+// зелёный — пришёл, фиолетовый — подтвердился, оранжевый — просто запись.
+const statusPill: Record<string, { bg: string; color: string }> = {
+  arrived: { bg: "rgba(16,185,129,0.18)", color: "#047857" },
+  completed: { bg: "rgba(16,185,129,0.18)", color: "#047857" },
+  confirmed: { bg: "rgba(124,58,237,0.16)", color: "#6d28d9" },
+  unconfirmed: { bg: "rgba(245,158,11,0.2)", color: "#b45309" },
+  cancelled: { bg: "rgba(244,75,110,0.14)", color: "#c52048" },
+  no_show: { bg: "rgba(107,114,128,0.16)", color: "#4b5563" },
+};
+
 const sexLabels: Record<number, string> = { 1: "Мужской", 2: "Женский" };
 
 function formatDt(iso: string | null): string {
@@ -185,7 +196,12 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[17px] font-extrabold">Детали записи</h2>
+            <h2 className="text-[20px] font-extrabold leading-tight">
+              {patient?.name || "Детали записи"}
+              {age != null && (
+                <span className="text-[14px] font-semibold text-text-muted ml-2">{age} лет</span>
+              )}
+            </h2>
             {appt?.external_id && !appt.external_id.startsWith("local-") && (
               <span className="flex items-center gap-1 text-[11px] text-text-muted mt-[2px]">
                 <Hash size={10} />
@@ -387,8 +403,8 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                     onClick={() => setStatusDropdownOpen((o) => !o)}
                     className="flex items-center gap-1 px-3 py-[5px] rounded-xl text-[12.5px] font-semibold cursor-pointer border-none"
                     style={{
-                      background: currentStatus === "confirmed" ? "rgba(0,201,167,0.12)" : currentStatus === "cancelled" ? "rgba(244,75,110,0.1)" : currentStatus === "arrived" || currentStatus === "completed" ? "rgba(91,76,245,0.1)" : "rgba(91,76,245,0.08)",
-                      color: currentStatus === "confirmed" ? "#007d6e" : currentStatus === "cancelled" ? "#c52048" : currentStatus === "arrived" || currentStatus === "completed" ? "#5B4CF5" : "#5B4CF5",
+                      background: (statusPill[currentStatus ?? ""] ?? statusPill.unconfirmed).bg,
+                      color: (statusPill[currentStatus ?? ""] ?? statusPill.unconfirmed).color,
                     }}
                     disabled={updateStatus.isPending}
                   >

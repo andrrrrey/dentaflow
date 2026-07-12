@@ -32,9 +32,9 @@ def test_parse_csv():
     print("=" * 60)
     csv_text = (
         "Пример фразы;Что отвечает сейчас;Правильный ответ;Фаза\n"
-        "Зачем вам директор;Хм;Мы по испытаниям электросетей;secretary\n"
+        "Зачем звоните;Хм;Приглашаем на бесплатный осмотр;secretary\n"
         ";;;\n"
-        "Нам не нужно;Жаль;Это бесплатная проверка;\n"
+        "Нам не нужно;Жаль;Осмотр бесплатный, без обязательств;\n"
     )
     rows = parse_correction_table(csv_text.encode("utf-8"), "test.csv")
     assert len(rows) == 2, rows
@@ -58,7 +58,7 @@ def test_parse_xlsx():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Пример", "Сейчас", "Правильный", "Фаза"])
-    ws.append(["алло кто это", "...", "Это компания РЭС", "lpr_greeting"])
+    ws.append(["алло кто это", "...", "Это стоматологическая клиника", "lpr_greeting"])
     ws.append([None, None, None, None])
     buf = io.BytesIO()
     wb.save(buf)
@@ -103,13 +103,13 @@ def test_match():
     svc.import_rows(
         [
             {
-                "trigger": "Зачем вам наш директор?",
-                "correct_answer": "Мы проводим испытания электросетей, это к нему.",
+                "trigger": "Зачем вы звоните?",
+                "correct_answer": "Приглашаем вас на бесплатный осмотр в нашу клинику.",
                 "phase": "secretary",
             },
             {
                 "trigger": "Нам ваши услуги не нужны",
-                "correct_answer": "Это обязательная проверка по требованию Ростехнадзора.",
+                "correct_answer": "Осмотр бесплатный и ни к чему не обязывает.",
                 "phase": "any",
             },
         ],
@@ -118,14 +118,14 @@ def test_match():
     loop = asyncio.new_event_loop()
 
     # Близкая фраза в нужной фазе → срабатывает
-    r1 = loop.run_until_complete(svc.match("а зачем вам нужен наш руководитель", "secretary"))
-    assert r1 and "испытания" in r1, r1
+    r1 = loop.run_until_complete(svc.match("а по какому вопросу звоните", "secretary"))
+    assert r1 and "осмотр" in r1, r1
     # Та же фраза, но правило только для secretary → в lpr_main не срабатывает
-    r2 = loop.run_until_complete(svc.match("а зачем вам нужен наш руководитель", "lpr_main"))
+    r2 = loop.run_until_complete(svc.match("а по какому вопросу звоните", "lpr_main"))
     assert r2 is None, r2
     # Правило phase=any срабатывает в любой фазе
     r3 = loop.run_until_complete(svc.match("нам не нужны ваши услуги", "lpr_main"))
-    assert r3 and "Ростехнадзора" in r3, r3
+    assert r3 and "обязывает" in r3, r3
     # Нерелевантная фраза → None
     r4 = loop.run_until_complete(svc.match("какая сегодня погода в москве", "secretary"))
     assert r4 is None, r4
