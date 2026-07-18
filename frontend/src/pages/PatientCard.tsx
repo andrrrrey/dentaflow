@@ -10,14 +10,16 @@ import DealsHistory from "../components/patient/DealsHistory";
 import TasksList from "../components/patient/TasksList";
 import AIAnalysis from "../components/patient/AIAnalysis";
 import PatientStats from "../components/patient/PatientStats";
+import LoyaltyBlock from "../components/patient/LoyaltyBlock";
 import AddDealModal from "../components/pipeline/AddDealModal";
 import AddAppointmentModal from "../components/schedule/AddAppointmentModal";
 
-type TabKey = "1denta" | "stats" | "communications" | "crm" | "tasks";
+type TabKey = "1denta" | "stats" | "loyalty" | "communications" | "crm" | "tasks";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "1denta", label: "История визитов" },
   { key: "stats", label: "Статистика" },
+  { key: "loyalty", label: "Бонусы" },
   { key: "communications", label: "Коммуникации" },
   { key: "crm", label: "CRM" },
   { key: "tasks", label: "Задачи" },
@@ -122,6 +124,9 @@ export default function PatientCard() {
           )}
           {activeTab === "stats" && (
             <PatientStats stats={patient.stats} rawData={patient.raw_1denta_data} appointments={patient.appointments} />
+          )}
+          {activeTab === "loyalty" && (
+            <LoyaltyBlock patientId={patient.id} referralCode={patient.referral_code} />
           )}
           {activeTab === "communications" && (
             <CommHistory communications={patient.communications} />

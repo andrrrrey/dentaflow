@@ -79,6 +79,9 @@ class PatientResponse(BaseModel):
     total_revenue: float
     ltv_score: int | None
     tags: list[str] | None
+    # Программа лояльности
+    bonus_balance: int = 0
+    referral_code: str | None = None
     # Родитель / представитель (ручной ввод — 1Denta API этих данных не отдаёт)
     representative_name: str | None = None
     representative_phone: str | None = None

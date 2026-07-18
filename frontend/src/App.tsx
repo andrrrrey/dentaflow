@@ -18,6 +18,7 @@ import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import Settings from "./pages/Settings";
 import Marketing from "./pages/Marketing";
+import Loyalty from "./pages/Loyalty";
 import Tasks from "./pages/Tasks";
 import AiCalling from "./pages/AiCalling";
 
@@ -167,6 +168,16 @@ function App() {
             <ProtectedRoute>
               <AppLayout title="Маркетинг">
                 <Marketing />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/loyalty/*"
+          element={
+            <ProtectedRoute>
+              <AppLayout title="Бонусная программа">
+                <Loyalty />
               </AppLayout>
             </ProtectedRoute>
           }

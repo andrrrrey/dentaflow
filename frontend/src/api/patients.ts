@@ -16,6 +16,8 @@ export interface PatientResponse {
   total_revenue: number;
   ltv_score: number | null;
   tags: string[] | null;
+  bonus_balance: number;
+  referral_code: string | null;
   representative_name: string | null;
   representative_phone: string | null;
   representative_relation: string | null;

@@ -146,7 +146,23 @@ def kb_main() -> dict:
         "max": [
             [_max_btn("📅 Записаться на приём", "book")],
             [_max_btn("💬 Задать вопрос", "ask")],
+            [_max_btn("📋 Мои визиты и оплаты", "history")],
+            [_max_btn("🎁 Бонусная программа", "bonus")],
             [_max_btn("📞 Связаться с менеджером", "manager")],
+        ],
+    }
+
+
+def kb_bonus() -> dict:
+    """Keyboard inside the bonus section — action to send a review screenshot."""
+    return {
+        "tg": _tg([
+            [_tg_btn("📤 Отправить скриншот отзыва", "bonus_review")],
+            [_tg_btn("🔙 Главное меню", "menu")],
+        ]),
+        "max": [
+            [_max_btn("📤 Отправить скриншот отзыва", "bonus_review")],
+            [_max_btn("🔙 Главное меню", "menu")],
         ],
     }
 
@@ -281,6 +297,43 @@ async def process(
         await set_state(channel, uid, {**state, "step": "mgr_name", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
 
+    if payload == "history":
+        patient = await _resolve_patient(db, channel, uid)
+        if patient is None:
+            await set_state(channel, uid, {**state, "step": "link_phone", "after": "history"})
+            return reply(
+                "Чтобы показать историю визитов, укажите номер телефона, "
+                "по которому вы записаны в клинике:",
+                kb_request_phone(),
+            )
+        return reply(await _format_history(db, patient), kb_back_main())
+
+    if payload == "bonus":
+        patient = await _resolve_patient(db, channel, uid)
+        if patient is None:
+            await set_state(channel, uid, {**state, "step": "link_phone", "after": "bonus"})
+            return reply(
+                "Чтобы открыть бонусную программу, укажите номер телефона, "
+                "по которому вы записаны в клинике:",
+                kb_request_phone(),
+            )
+        return reply(await _format_bonus(db, patient), kb_bonus())
+
+    if payload == "bonus_review":
+        patient = await _resolve_patient(db, channel, uid)
+        if patient is None:
+            await set_state(channel, uid, {**state, "step": "link_phone", "after": "bonus"})
+            return reply(
+                "Сначала укажите номер телефона, по которому вы записаны в клинике:",
+                kb_request_phone(),
+            )
+        await set_state(channel, uid, {**state, "step": "review_wait"})
+        return reply(
+            "📸 Пришлите скриншот вашего отзыва одним изображением. "
+            "После проверки администратором мы начислим вам баллы.",
+            kb_back_main(),
+        )
+
     if payload == "ai_book":
         await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book", "chat_id": str(chat_id) if chat_id else ""})
         return reply("Для записи мне нужны ваши контакты.\n\nВведите ваше имя:", kb_cancel())
@@ -341,6 +394,32 @@ async def process(
                                 comment=content, create_patient=False,
                                 chat_id=saved_chat_id, channel_uid=str(uid))
         return reply("Спасибо! Наш администратор свяжется с вами для записи.", kb_main())
+
+    if step == "link_phone":
+        phone = text.strip()
+        if not phone:
+            return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
+        after = state.get("after", "history")
+        await clear_state(channel, uid)
+        await _update_bot_user_phone(db, channel, str(uid), phone)
+        patient = await _find_patient_by_phone(db, phone)
+        if patient is None:
+            return reply(
+                "К сожалению, мы не нашли карту пациента с таким номером. "
+                "Проверьте номер или обратитесь к администратору клиники.",
+                kb_main(),
+            )
+        if after == "bonus":
+            return reply(await _format_bonus(db, patient), kb_bonus())
+        return reply(await _format_history(db, patient), kb_back_main())
+
+    if step == "review_wait":
+        # Ожидаем изображение; текст вместо фото — подсказка (фото ловится в вебхуке)
+        return reply(
+            "Пожалуйста, пришлите скриншот отзыва изображением 📸 "
+            "или вернитесь в меню.",
+            kb_back_main(),
+        )
 
     if step == "mgr_name":
         name = text.strip()
@@ -574,7 +653,7 @@ async def _update_bot_user_phone(db, channel: str, user_id: str, phone: str) -> 
         from app.models.bot_user import BotUser
         await db.execute(
             sa_update(BotUser)
-            .where(BotUser.channel == channel, BotUser.user_id == user_id)
+            .where(BotUser.channel == _db_channel(channel), BotUser.user_id == user_id)
             .values(phone=phone)
         )
         await db.commit()
@@ -619,6 +698,141 @@ async def _find_comm_for_user(db, channel: str, uid) -> str | None:
     except Exception:
         logger.warning("bot_flow: DB lookup for active conv failed")
     return None
+
+
+def _db_channel(channel: str) -> str:
+    """BotUser/Communication хранят канал как 'telegram', а движок использует 'tg'."""
+    return "telegram" if channel == "tg" else channel
+
+
+async def _find_patient_by_phone(db, phone: str):
+    """Найти пациента по телефону (точное совпадение либо нормализованное)."""
+    try:
+        from sqlalchemy import select
+        from app.models.patient import Patient
+        row = (await db.execute(
+            select(Patient).where(Patient.phone == phone).limit(1)
+        )).scalars().first()
+        if row is not None:
+            return row
+        # Фолбэк: сравнение по последним 10 цифрам (форматы +7/8/скобки)
+        digits = "".join(c for c in phone if c.isdigit())[-10:]
+        if len(digits) == 10:
+            candidates = (await db.execute(
+                select(Patient).where(Patient.phone.like(f"%{digits}")).limit(1)
+            )).scalars().first()
+            return candidates
+    except Exception:
+        logger.warning("bot_flow: patient lookup by phone failed")
+    return None
+
+
+async def _resolve_patient(db, channel: str, uid):
+    """Найти пациента, связанного с этим пользователем бота (по телефону BotUser)."""
+    try:
+        from sqlalchemy import select
+        from app.models.bot_user import BotUser
+        phone = (await db.execute(
+            select(BotUser.phone).where(
+                BotUser.channel == _db_channel(channel), BotUser.user_id == str(uid)
+            )
+        )).scalar_one_or_none()
+        if not phone:
+            return None
+        return await _find_patient_by_phone(db, phone)
+    except Exception:
+        logger.warning("bot_flow: resolve_patient failed")
+        return None
+
+
+def _fmt_money(value) -> str:
+    try:
+        return f"{float(value):,.0f}".replace(",", " ")
+    except (TypeError, ValueError):
+        return "0"
+
+
+async def _format_history(db, patient) -> str:
+    """Текст истории визитов и оплат пациента (последние визиты)."""
+    from sqlalchemy import select
+    from app.models.appointment import Appointment
+
+    rows = (await db.execute(
+        select(Appointment)
+        .where(Appointment.patient_id == patient.id)
+        .order_by(Appointment.scheduled_at.desc())
+        .limit(10)
+    )).scalars().all()
+
+    if not rows:
+        return (
+            "📋 <b>История визитов</b>\n\n"
+            "Пока у нас нет данных о ваших визитах. "
+            "Они появятся здесь после приёма."
+        )
+
+    _STATUS = {
+        "completed": "✅ завершён",
+        "confirmed": "🟢 подтверждён",
+        "scheduled": "🕒 запланирован",
+        "cancelled": "❌ отменён",
+        "no_show": "⚠️ неявка",
+    }
+    lines = ["📋 <b>История визитов и оплат</b>\n"]
+    for a in rows:
+        when = a.scheduled_at.strftime("%d.%m.%Y") if a.scheduled_at else "—"
+        parts = [f"<b>{when}</b>"]
+        if a.service:
+            parts.append(a.service)
+        if a.doctor_name:
+            parts.append(f"врач: {a.doctor_name}")
+        line = " · ".join(parts)
+        status = _STATUS.get((a.status or "").lower())
+        if status:
+            line += f"\n   {status}"
+        pay = a.payment_amount if a.payment_amount is not None else a.revenue
+        if pay is not None and float(pay) > 0:
+            line += f"\n   💰 оплата: {_fmt_money(pay)} ₽"
+        lines.append(line)
+
+    total = patient.total_revenue
+    if total is not None and float(total) > 0:
+        lines.append(f"\n<b>Всего оплачено: {_fmt_money(total)} ₽</b>")
+    return "\n\n".join(lines)
+
+
+async def _format_bonus(db, patient) -> str:
+    """Текст раздела бонусной программы: баланс, код, последние начисления."""
+    from app.services import loyalty_service
+
+    code = await loyalty_service.get_or_create_referral_code(db, patient.id)
+    balance = int(patient.bonus_balance or 0)
+    ledger = await loyalty_service.get_patient_ledger(db, patient.id, limit=5)
+
+    _ACTION = {
+        "purchase": "покупка",
+        "referral": "рекомендация",
+        "review": "отзыв",
+        "manual": "корректировка",
+    }
+    lines = [
+        "🎁 <b>Бонусная программа</b>\n",
+        f"💎 Ваш баланс: <b>{balance}</b> баллов\n",
+        f"🔑 Ваш реферальный код: <b>{code or '—'}</b>",
+        "Поделитесь им с друзьями — назовите код администратору, "
+        "и вы получите баллы за рекомендацию.\n",
+        "📸 Оставили отзыв о клинике? Нажмите «Отправить скриншот отзыва» — "
+        "после проверки мы начислим баллы.",
+    ]
+    if ledger:
+        hist = ["\n<b>Последние начисления:</b>"]
+        for t in ledger:
+            when = t.created_at.strftime("%d.%m.%Y") if t.created_at else ""
+            sign = "+" if t.points >= 0 else ""
+            label = _ACTION.get(t.action_type, t.action_type)
+            hist.append(f"{when} · {label}: {sign}{t.points}")
+        lines.append("\n".join(hist))
+    return "\n".join(lines)
 
 
 def _welcome(welcome_message: str, clinic_name: str) -> str:

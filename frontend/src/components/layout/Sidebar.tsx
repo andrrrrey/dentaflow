@@ -15,6 +15,7 @@ import {
   FileBarChart,
   Settings,
   Megaphone,
+  Gift,
   CheckSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -85,6 +86,7 @@ const sections: NavSection[] = [
   {
     items: [
       { label: "Маркетинг", icon: <Megaphone size={15} />, path: "/marketing/discounts" },
+      { label: "Бонусная программа", icon: <Gift size={15} />, path: "/loyalty/settings" },
       { label: "Справочники", icon: <BookOpen size={15} />, path: "/directories" },
       { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports", hideForRoles: ["admin"] },
       { label: "Сотрудники", icon: <Users size={15} />, path: "/staff", hideForRoles: ["admin"] },

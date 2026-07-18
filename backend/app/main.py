@@ -20,6 +20,7 @@ from app.routers import (
     doctors,
     integrations,
     knowledge_base,
+    loyalty,
     marketing,
     notifications,
     patient_segments,
@@ -98,6 +99,7 @@ app.include_router(marketing.router)
 app.include_router(webhooks.router)
 app.include_router(knowledge_base.router)
 app.include_router(rewards.router)
+app.include_router(loyalty.router)
 
 # --- Static files (avatars, uploads) ---
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
