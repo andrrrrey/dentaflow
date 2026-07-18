@@ -827,6 +827,14 @@ async def _sync_directories_async() -> dict:
                 return _normalize_commodity(item)
             return item
 
+        # Признак онлайн-записи есть только в /api/v2/booking/service —
+        # выгрузка /api/v2/service его не содержит.
+        booking_items: list = []
+        try:
+            booking_items = await service.get_booking_services()
+        except Exception:
+            logger.exception("sync_directories: failed to load booking services")
+
         for category, fetch_coro in [
             ("service", service.get_services()),
             ("resource", service.get_resources()),
@@ -859,11 +867,14 @@ async def _sync_directories_async() -> dict:
                             row.data = normalized
                             row.synced_at = now
                 else:
+                    normalized_items = [_normalize_for_cache(category, item) for item in items]
+                    if category == "service":
+                        from app.routers.directories import apply_booking_flags
+                        apply_booking_flags(normalized_items, booking_items)
                     await session.execute(
                         delete(DirectoryCache).where(DirectoryCache.category == category)
                     )
-                    for item in items:
-                        normalized = _normalize_for_cache(category, item)
+                    for item, normalized in zip(items, normalized_items):
                         session.add(DirectoryCache(
                             external_id=str(item.get("id", "")),
                             category=category,

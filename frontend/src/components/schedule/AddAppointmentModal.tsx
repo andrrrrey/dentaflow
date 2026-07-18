@@ -37,7 +37,7 @@ export default function AddAppointmentModal({
   const doctors = doctorsData?.doctors ?? [];
   // Запись создаётся сначала в 1Denta, поэтому доступны только услуги,
   // открытые там для онлайн-записи.
-  const onlineServices = useMemo(
+  const allOnlineServices = useMemo(
     () => (servicesData?.services ?? []).filter((s) => s.onlineRecord),
     [servicesData]
   );
@@ -64,6 +64,23 @@ export default function AddAppointmentModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctors.length]);
+
+  // 1Denta принимает визит только с услугой, привязанной к выбранному врачу
+  const onlineServices = useMemo(() => {
+    if (!form.doctor_id) return allOnlineServices;
+    return allOnlineServices.filter((s) => {
+      const res = s.bookingResources;
+      return !res || res.length === 0 || res.includes(String(form.doctor_id));
+    });
+  }, [allOnlineServices, form.doctor_id]);
+
+  // При смене врача сбрасываем услугу, если она ему недоступна
+  useEffect(() => {
+    if (form.service && !onlineServices.some((s) => s.name === form.service)) {
+      setForm((p) => ({ ...p, service: "", service_ids: [] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineServices]);
 
   function set(key: keyof CreateAppointmentData, val: string | number) {
     setForm((p) => {
@@ -153,9 +170,13 @@ export default function AddAppointmentModal({
                 <option value="">— Выбрать услугу —</option>
                 {onlineServices.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
+            ) : allOnlineServices.length > 0 ? (
+              <div className="text-[12px] text-[#c52048] font-medium">
+                У выбранного врача нет услуг, открытых для онлайн-записи в 1Denta. Выберите другого врача или привяжите услуги к врачу в настройках онлайн-записи 1Denta.
+              </div>
             ) : (
               <div className="text-[12px] text-[#c52048] font-medium">
-                Нет услуг, открытых для онлайн-записи в 1Denta. Откройте услуги для онлайн-записи в настройках 1Denta и запустите синхронизацию справочников.
+                Нет услуг, открытых для онлайн-записи в 1Denta. Откройте услуги для онлайн-записи в настройках 1Denta и запустите синхронизацию справочников (Настройки → 1Denta → Синхронизировать).
               </div>
             )}
             {form.service && (
