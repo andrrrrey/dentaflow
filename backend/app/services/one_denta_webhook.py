@@ -246,6 +246,8 @@ async def apply_directory_event(db: AsyncSession, category: str, item: dict) -> 
                 normalized["onlineRecord"] = old.get("onlineRecord", False)
             if normalized.get("duration") is None:
                 normalized["duration"] = old.get("duration")
+            if "bookingResources" not in normalized and old.get("bookingResources"):
+                normalized["bookingResources"] = old["bookingResources"]
         row.name = normalized.get("name") or row.name
         row.data = normalized
         row.synced_at = now_utc

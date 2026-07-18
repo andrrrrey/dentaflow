@@ -57,6 +57,30 @@ def _normalize_resource(r: dict) -> dict:
     }
 
 
+def apply_booking_flags(normalized: list[dict], booking_items: list[dict]) -> None:
+    """Проставляет onlineRecord/bookingResources по списку /api/v2/booking/service.
+
+    Выгрузка /api/v2/service не содержит признака онлайн-записи — услуга
+    считается онлайн-доступной, если присутствует в booking-списке. Оттуда же
+    берём привязанных врачей (resources) и длительность, если её не было.
+    """
+    booking_map: dict[str, dict] = {}
+    for b in booking_items:
+        bid = str(b.get("id", ""))
+        if bid:
+            booking_map[bid] = b
+    for n in normalized:
+        b = booking_map.get(str(n.get("id", "")))
+        if b is None:
+            continue
+        n["onlineRecord"] = True
+        if not n.get("duration") and b.get("durationSeconds"):
+            n["duration"] = int(b["durationSeconds"]) // 60
+        n["bookingResources"] = [
+            str(r.get("id")) for r in (b.get("resources") or []) if r.get("id") is not None
+        ]
+
+
 def _normalize_commodity(c: dict) -> dict:
     price = c.get("price")
     return {
@@ -197,6 +221,10 @@ async def sync_from_1denta(
     try:
         raw = await svc.get_services()
         normalized = [_normalize_service(s) for s in raw]
+        try:
+            apply_booking_flags(normalized, await svc.get_booking_services())
+        except Exception:
+            logger.exception("Failed to load booking services — onlineRecord flags may be stale")
         counts["services"] = await _upsert_items(db, "service", normalized)
     except Exception as e:
         logger.exception("Failed to sync services")

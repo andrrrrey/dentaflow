@@ -8,6 +8,8 @@ export interface ServiceItem {
   price?: string;
   duration?: number;
   onlineRecord?: boolean;
+  /** ID врачей (1Denta resources), которым услуга доступна в онлайн-записи */
+  bookingResources?: string[];
   [key: string]: unknown;
 }
 

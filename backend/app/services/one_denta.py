@@ -603,6 +603,20 @@ class OneDentaService:
             logger.info("1Denta: sample service raw=%s", items[0])
         return items
 
+    async def get_booking_services(self) -> list[dict]:
+        """Услуги, открытые для онлайн-записи (GET /api/v2/booking/service).
+
+        Выгрузка /api/v2/service НЕ содержит признака онлайн-записи — его
+        можно определить только по присутствию услуги в этом списке. Здесь же
+        приходят привязанные сотрудники (resources) и длительность.
+        """
+        if self._no_credentials():
+            return []
+        data = await self._request("GET", "/api/v2/booking/service")
+        items = data.get("services", []) or data.get("data", [])
+        logger.info("1Denta: /api/v2/booking/service → %d online services", len(items))
+        return items
+
     async def get_resources(self) -> list[dict]:
         """Return staff members available for online booking. Cached in-process for 10 min."""
         import time
