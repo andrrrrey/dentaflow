@@ -609,19 +609,50 @@ async def create_appointment(
             detail=f"Не удалось создать запись в 1Denta: {e}",
         )
 
-    appt = Appointment(
-        external_id=external_id or f"local-{uuid.uuid4().hex[:8]}",
-        patient_id=patient.id,
-        doctor_name=body.doctor_name,
-        doctor_id=body.doctor_id,
-        service=body.service,
-        branch=body.branch,
-        scheduled_at=parsed_dt,
-        duration_min=body.duration_min,
-        status="unconfirmed",
-    )
-    db.add(appt)
-    await db.flush()
+    # Вебхук 1Denta о созданном визите может прийти раньше, чем мы вставим
+    # свою строку — тогда запись уже в базе, и слепой INSERT упал бы на
+    # уникальности external_id. Подхватываем существующую строку.
+    appt = None
+    if external_id:
+        appt = (await db.execute(
+            select(Appointment).where(Appointment.external_id == external_id)
+        )).scalars().first()
+
+    if appt is None:
+        appt = Appointment(
+            external_id=external_id or f"local-{uuid.uuid4().hex[:8]}",
+            patient_id=patient.id,
+            doctor_name=body.doctor_name,
+            doctor_id=body.doctor_id,
+            service=body.service,
+            branch=body.branch,
+            scheduled_at=parsed_dt,
+            duration_min=body.duration_min,
+            status="unconfirmed",
+        )
+        db.add(appt)
+    else:
+        appt.patient_id = appt.patient_id or patient.id
+        appt.doctor_name = body.doctor_name or appt.doctor_name
+        appt.doctor_id = body.doctor_id or appt.doctor_id
+        appt.service = body.service or appt.service
+        appt.scheduled_at = parsed_dt
+        appt.duration_min = body.duration_min or appt.duration_min
+        appt.comment = body.comment or appt.comment
+
+    from sqlalchemy.exc import IntegrityError
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Остаточная гонка с вебхуком: строка появилась между SELECT и INSERT.
+        # Визит в 1Denta создан и запись в базе есть — возвращаем её.
+        await db.rollback()
+        existing = (await db.execute(
+            select(Appointment).where(Appointment.external_id == external_id)
+        )).scalars().first()
+        if existing is None:
+            raise HTTPException(status_code=500, detail="Не удалось сохранить запись — попробуйте обновить расписание")
+        appt = existing
 
     return {
         "id": str(appt.id),
