@@ -589,10 +589,19 @@ async def create_appointment(
         logger.info("1Denta: visit created, external_id=%s", external_id)
     except httpx.HTTPStatusError as e:
         logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
-        raise HTTPException(
-            status_code=502,
-            detail=f"1Denta отклонила создание записи (HTTP {e.response.status_code}): {e.response.text[:200]}",
-        )
+        resp_text = e.response.text[:300]
+        # Известные коды 1Denta → понятные сообщения
+        if "SlotUnavailableError" in resp_text:
+            detail = (
+                "1Denta: выбранное время недоступно для онлайн-записи у этого врача — "
+                "оно занято или вне его графика. Выберите другое время "
+                "(доступность определяется графиком врача в 1Denta)."
+            )
+        elif "Invalid value visit.user.phone" in resp_text:
+            detail = "1Denta: неверный формат телефона пациента"
+        else:
+            detail = f"1Denta отклонила создание записи (HTTP {e.response.status_code}): {resp_text[:200]}"
+        raise HTTPException(status_code=502, detail=detail)
     except Exception as e:
         logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
         raise HTTPException(

@@ -4,7 +4,7 @@ import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Button from "../components/ui/Button";
 import { useUiStore } from "../store/uiStore";
-import { useSchedule, useDoctorsList, useUpdateAppointment, useScheduleBreaks } from "../api/schedule";
+import { useSchedule, useDoctorsList, useUpdateAppointment } from "../api/schedule";
 import type { Appointment } from "../api/schedule";
 import AppointmentDetailModal from "../components/schedule/AppointmentDetailModal";
 import AddAppointmentModal from "../components/schedule/AddAppointmentModal";
@@ -306,20 +306,9 @@ export default function Schedule() {
     status: filterStatus || undefined,
   });
   const { data: doctorsData } = useDoctorsList();
-  const { data: breaksData } = useScheduleBreaks(dateStr);
   const updateAppt = useUpdateAppointment();
 
   const appointments = data?.appointments ?? [];
-
-  // Перерывы по doctor_id → интервалы минут дня
-  const breaksByDoctorId = useMemo(() => {
-    const map = new Map<string, Array<{ start: number; end: number }>>();
-    for (const b of breaksData?.breaks ?? []) {
-      if (!map.has(b.doctor_id)) map.set(b.doctor_id, []);
-      map.get(b.doctor_id)!.push({ start: b.start_min, end: b.end_min });
-    }
-    return map;
-  }, [breaksData]);
 
   const doctorsWithAppointments = useMemo(() => {
     const map = new Map<string, Appointment[]>();
@@ -705,14 +694,13 @@ export default function Schedule() {
                         const relY = e.clientY - rect.top;
                         let slotMin = CLINIC_START_MIN + Math.floor((relY / SLOT_HEIGHT) * 60 / 30) * 30;
                         slotMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - 30, slotMin));
-                        // Рамку показываем только на свободном времени (записи и перерывы — занято)
-                        const docBreaks = breaksByDoctorId.get(doctorIdByName.get(doctorName) ?? "") ?? [];
+                        // Рамку показываем только на свободном времени
                         const busy = doctorAppts.some((a) => {
                           if (!a.scheduled_at) return false;
                           const s = parseISO(a.scheduled_at);
                           const sMin = s.getHours() * 60 + s.getMinutes();
                           return sMin < slotMin + 30 && sMin + a.duration_min > slotMin;
-                        }) || docBreaks.some((b) => b.start < slotMin + 30 && b.end > slotMin);
+                        });
                         if (busy) {
                           if (hoverSlot) setHoverSlot(null);
                         } else if (!hoverSlot || hoverSlot.doctorName !== doctorName || hoverSlot.slotMin !== slotMin) {
@@ -723,28 +711,6 @@ export default function Schedule() {
                         setHoverSlot((h) => (h?.doctorName === doctorName ? null : h));
                       }}
                     >
-                      {/* Перерывы врача (восстановлены из свободных слотов 1Denta) */}
-                      {(breaksByDoctorId.get(doctorIdByName.get(doctorName) ?? "") ?? []).map((b, i) => (
-                        <div
-                          key={`break-${i}`}
-                          className="absolute flex items-start justify-center"
-                          style={{
-                            top: ((b.start - CLINIC_START_MIN) / 60) * SLOT_HEIGHT,
-                            height: ((b.end - b.start) / 60) * SLOT_HEIGHT,
-                            left: 3,
-                            right: 3,
-                            borderRadius: 10,
-                            background: "repeating-linear-gradient(-45deg, rgba(120,130,150,0.10), rgba(120,130,150,0.10) 8px, rgba(120,130,150,0.04) 8px, rgba(120,130,150,0.04) 16px)",
-                            zIndex: 4,
-                            pointerEvents: "none",
-                          }}
-                        >
-                          <span className="text-[11.5px] font-semibold text-text-muted mt-2">
-                            {fmtMin(b.start)} – {fmtMin(b.end)} · Перерыв
-                          </span>
-                        </div>
-                      ))}
-
                       {/* Ховер-рамка «Новая запись» на свободном слоте */}
                       {hoverSlot?.doctorName === doctorName && !drag && (
                         <div
