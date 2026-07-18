@@ -127,6 +127,25 @@ export interface CreateAppointmentData {
   branch?: string;
 }
 
+export interface DoctorBreak {
+  doctor_id: string;
+  start_min: number;
+  end_min: number;
+}
+
+/** Перерывы врачей, восстановленные из свободных слотов онлайн-записи 1Denta */
+export function useScheduleBreaks(date: string) {
+  return useQuery<{ breaks: DoctorBreak[] }>({
+    queryKey: ["schedule-breaks", date],
+    queryFn: async () => {
+      const { data } = await api.get("/schedule/breaks", { params: { date } });
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export function useCreateAppointment() {
   const qc = useQueryClient();
   return useMutation({
