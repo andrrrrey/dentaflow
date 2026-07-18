@@ -71,6 +71,137 @@ async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: 
         logger.exception("_upsert_bot_user failed for %s:%s", channel, user_id)
 
 
+async def _upsert_chat_comm(
+    db,
+    channel: str,
+    chat_id: str,
+    channel_uid: str,
+    text: str,
+    sender_name: str | None = None,
+) -> str | None:
+    """Гарантирует тред в «Коммуникациях» для КАЖДОГО входящего сообщения бота.
+
+    Раньше Communication создавалась только после завершения лид-сценария
+    (имя+телефон в bot_flow), поэтому обычные диалоги с ботом вообще не
+    появлялись в разделе чатов. Тред ищется по (channel, bot_channel_uid);
+    входящее сообщение добавляется в bot_messages, превью и last_message_at
+    обновляются, завершённый тред снова помечается непрочитанным.
+    Возвращает comm_id.
+    """
+    try:
+        from app.models.bot_message import BotMessage
+        from app.models.bot_user import BotUser
+
+        comm = (await db.execute(
+            select(Communication)
+            .where(
+                Communication.channel == channel,
+                Communication.bot_channel_uid == str(channel_uid),
+            )
+            .order_by(Communication.created_at.desc())
+            .limit(1)
+        )).scalars().first()
+
+        created = comm is None
+        if created:
+            # Привязываем пациента по телефону из BotUser, если он уже известен
+            patient_id = None
+            phone = (await db.execute(
+                select(BotUser.phone).where(
+                    BotUser.channel == channel,
+                    BotUser.user_id == str(channel_uid),
+                ).limit(1)
+            )).scalar_one_or_none()
+            if phone:
+                patient = (await db.execute(
+                    select(Patient).where(Patient.phone == phone)
+                    .order_by(Patient.created_at).limit(1)
+                )).scalars().first()
+                if patient:
+                    patient_id = patient.id
+            comm = Communication(
+                patient_id=patient_id,
+                channel=channel,
+                direction="inbound",
+                # type="chat" отличает авточаты от лид-тредов (type="message"):
+                # bot_flow переводит бота в режим «менеджер ответит» только для
+                # лид-тредов, иначе ИИ-ассистент перестал бы отвечать.
+                type="chat",
+                content=text,
+                status="new",
+                priority="normal",
+                bot_chat_id=str(chat_id) if chat_id else None,
+                bot_channel_uid=str(channel_uid),
+                last_message_at=func.now(),
+            )
+            db.add(comm)
+            await db.flush()
+        else:
+            comm.content = text  # превью последнего сообщения в списке чатов
+            comm.last_message_at = func.now()
+            if comm.status in ("done", "ignored"):
+                comm.status = "new"  # новое входящее — тред снова непрочитан
+
+        db.add(BotMessage(
+            communication_id=comm.id,
+            direction="inbound",
+            content=text,
+            sender_name=sender_name,
+        ))
+        await db.commit()
+
+        if created:
+            try:
+                await realtime.publish("new_communication", {
+                    "id": str(comm.id), "channel": channel,
+                    "type": "chat", "priority": "normal",
+                })
+            except Exception:
+                pass
+        return str(comm.id)
+    except Exception:
+        logger.exception("_upsert_chat_comm failed for %s:%s", channel, channel_uid)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return None
+
+
+async def _append_outbound_bot_message(db, channel: str, channel_uid: str, text: str) -> None:
+    """Сохраняет ответ бота в тред чата (если тред существует)."""
+    if not text:
+        return
+    try:
+        from app.models.bot_message import BotMessage
+
+        comm = (await db.execute(
+            select(Communication)
+            .where(
+                Communication.channel == channel,
+                Communication.bot_channel_uid == str(channel_uid),
+            )
+            .order_by(Communication.created_at.desc())
+            .limit(1)
+        )).scalars().first()
+        if comm is None:
+            return
+        db.add(BotMessage(
+            communication_id=comm.id,
+            direction="outbound",
+            content=text,
+            sender_name="Бот",
+        ))
+        comm.last_message_at = func.now()
+        await db.commit()
+    except Exception:
+        logger.exception("_append_outbound_bot_message failed for %s:%s", channel, channel_uid)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+
 # ------------------------------------------------------------------
 # Novofon (telephony)
 # ------------------------------------------------------------------
@@ -315,8 +446,6 @@ async def telegram_webhook(
     if is_callback:
         await tg_svc.answer_callback_query(result.get("callback_query_id", ""))
 
-    # Communication is created only when user provides contacts (inside bot_flow)
-
     if not chat_id:
         return {"status": "ok"}
 
@@ -325,6 +454,12 @@ async def telegram_webhook(
         await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
 
     is_start = text.strip() == "/start"
+
+    # Каждое текстовое сообщение попадает в тред раздела «Коммуникации»
+    # (раньше тред создавался только после завершения лид-сценария)
+    if text.strip() and not is_callback and not is_start and not text.strip().startswith("/"):
+        sender = result.get("sender_name") or result.get("username") or None
+        await _upsert_chat_comm(db, "telegram", str(chat_id), str(user_id), text.strip(), sender)
 
     # Register bot commands menu once per process
     if not _tg_commands_registered:
@@ -378,6 +513,8 @@ async def telegram_webhook(
         system_prompt=system_prompt,
     )
     await tg_svc.send_reply(chat_id, resp["text"], reply_markup=resp["kb"]["tg"])
+    # Ответ бота сохраняем в тред, чтобы история чата была полной
+    await _append_outbound_bot_message(db, "telegram", str(user_id), resp["text"])
     return {"status": "ok"}
 
 
@@ -409,8 +546,6 @@ async def max_webhook(
     payload = result.get("callback_id_payload", "") or ""
     text = result.get("content", "") or ""
 
-    # Communication is created only when user provides contacts (inside bot_flow)
-
     if not chat_id:
         logger.warning("Max webhook: no chat_id, skipping reply")
         return {"ok": True}
@@ -418,6 +553,11 @@ async def max_webhook(
     # Upsert BotUser record on every interaction (including bot_started)
     if user_id and chat_id:
         await _upsert_bot_user(db, "max", str(chat_id), str(user_id))
+
+    # Каждое текстовое сообщение попадает в тред раздела «Коммуникации»
+    if text.strip() and not is_callback and update_type != "bot_started":
+        sender = result.get("sender_name") or None
+        await _upsert_chat_comm(db, "max", str(chat_id), str(user_id), text.strip(), sender)
 
     max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
     if not max_token:
@@ -474,6 +614,8 @@ async def max_webhook(
         logger.warning("Max webhook: sending reply len=%d buttons=%d to chat_id=%s",
                        len(clean_text), len(resp["kb"]["max"]), chat_id)
         await max_svc.send_reply(chat_id, clean_text, buttons=resp["kb"]["max"])
+        # Ответ бота сохраняем в тред, чтобы история чата была полной
+        await _append_outbound_bot_message(db, "max", str(user_id), clean_text)
     except Exception:
         logger.exception("Max webhook: failed to send reply to chat_id=%s", chat_id)
 

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle, Send, ArrowDownLeft, ArrowUpRight,
@@ -69,7 +70,7 @@ function ChatRow({ item, active, unread, onClick, onDelete }: {
   onClick: () => void;
   onDelete: (id: string) => void;
 }) {
-  const timeAgo = formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ru });
+  const timeAgo = formatDistanceToNow(new Date(item.last_message_at ?? item.created_at), { addSuffix: true, locale: ru });
   return (
     <div
       onClick={onClick}
@@ -211,11 +212,25 @@ export default function Chats() {
       const ua = isUnread(a) ? 1 : 0;
       const ub = isUnread(b) ? 1 : 0;
       if (ua !== ub) return ub - ua;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return (
+        new Date(b.last_message_at ?? b.created_at).getTime() -
+        new Date(a.last_message_at ?? a.created_at).getTime()
+      );
     });
   }, [data]);
 
   const selected = selectedId ? chats.find((i) => i.id === selectedId) ?? null : null;
+
+  // Переход из уведомления: /chats?comm=<id> — авто-выбор треда
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const comm = searchParams.get("comm");
+    if (comm && chats.some((i) => i.id === comm)) {
+      setSelectedId(comm);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, chats.length]);
 
   function handleSelect(item: CommunicationItem) {
     setSelectedId(item.id);

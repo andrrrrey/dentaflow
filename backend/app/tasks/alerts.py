@@ -47,19 +47,24 @@ async def _check_stale_leads_async() -> dict:
         if not stale_comms:
             return {"created_notifications": 0}
 
-        # Check which communications already have a stale_lead notification
-        stale_ids = [str(c.id) for c in stale_comms]
+        # Check which communications already have a stale_lead notification.
+        # Legacy rows stored a bare UUID; new rows store a routable link with
+        # ?comm=<id> — dedupe must match both formats.
+        def _link_candidates(comm) -> list[str]:
+            cid = str(comm.id)
+            return [cid, f"/chats?comm={cid}", f"/communications?comm={cid}"]
+
+        all_candidates = [c for comm in stale_comms for c in _link_candidates(comm)]
         existing_stmt = select(Notification.link).where(
             Notification.type == "stale_lead",
-            Notification.link.in_(stale_ids),
+            Notification.link.in_(all_candidates),
         )
         existing_result = await session.execute(existing_stmt)
         already_notified = {row[0] for row in existing_result.all()}
 
         created = 0
         for comm in stale_comms:
-            comm_id_str = str(comm.id)
-            if comm_id_str in already_notified:
+            if any(c in already_notified for c in _link_candidates(comm)):
                 continue
 
             channel_label = {
@@ -69,6 +74,10 @@ async def _check_stale_leads_async() -> dict:
                 "site": "Заявка с сайта",
             }.get(comm.channel, comm.channel)
 
+            # Чаты открываем в разделе «Коммуникация», остальное — в «Заявках».
+            # Ссылка обязана быть роутабельной (раньше хранился голый UUID и
+            # клик по уведомлению вёл на несуществующий маршрут — пустая страница).
+            page = "/chats" if comm.channel in ("telegram", "max") else "/communications"
             notification = Notification(
                 type="stale_lead",
                 title=f"Не обработано: {channel_label}",
@@ -76,7 +85,7 @@ async def _check_stale_leads_async() -> dict:
                     f"Обращение ({channel_label}) ожидает ответа. "
                     f"Содержание: {(comm.content or '')[:100]}"
                 ),
-                link=comm_id_str,
+                link=f"{page}?comm={comm.id}",
             )
             session.add(notification)
             created += 1

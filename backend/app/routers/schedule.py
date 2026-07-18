@@ -170,6 +170,9 @@ async def get_appointment_detail(
             "total_revenue": float(patient.total_revenue),
             "ltv_score": patient.ltv_score,
             "tags": patient.tags,
+            "representative_name": patient.representative_name,
+            "representative_phone": patient.representative_phone,
+            "representative_relation": patient.representative_relation,
             "raw_1denta_data": patient.raw_1denta_data,
         }
     return response

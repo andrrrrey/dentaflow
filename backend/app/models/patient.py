@@ -37,6 +37,11 @@ class Patient(Base):
     patient_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # new|regular|refused|potential|noGroup
     ltv_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # AI LTV 0-100
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Родитель / законный представитель (для детей). Заполняется вручную в
+    # DentaFlow — API 1Denta эти данные не отдаёт.
+    representative_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    representative_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    representative_relation: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

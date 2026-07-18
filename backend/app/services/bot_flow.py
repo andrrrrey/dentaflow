@@ -432,7 +432,7 @@ async def process(
             if not conv_id:
                 conv_id = await _find_comm_for_user(db, channel, uid)
             if conv_id:
-                await _append_bot_message(db, conv_id, "inbound", text)
+                # Входящее сообщение уже сохранено в тред на уровне вебхука
                 return reply("✉️ Получено, менеджер ответит вам здесь.", kb_back_main())
         await clear_state(channel, uid)
         return reply(_welcome(welcome_message, clinic_name), kb_main())
@@ -442,7 +442,7 @@ async def process(
     if not conv_id:
         conv_id = await _find_comm_for_user(db, channel, uid)
     if conv_id and text.strip():
-        await _append_bot_message(db, conv_id, "inbound", text)
+        # Входящее сообщение уже сохранено в тред на уровне вебхука
         return reply("✉️ Получено, менеджер ответит вам здесь.", kb_back_main())
 
     # User typed something while in booking flow → nudge
@@ -475,38 +475,64 @@ async def _create_lead_comm(
         from app.models.bot_message import BotMessage
         from app.services.realtime import realtime
 
+        from sqlalchemy.sql import func as sa_func
+
         patient_id = None
         if create_patient and phone:
             stmt = select(Patient).where(Patient.phone == phone).limit(1)
-            row = (await db.execute(stmt)).scalar_one_or_none()
+            row = (await db.execute(stmt)).scalars().first()
             if row:
                 patient_id = row.id
             else:
-                parts = name.strip().split(None, 2)
                 p = Patient(
-                    first_name=parts[1] if len(parts) > 1 else "",
-                    last_name=parts[0] if parts else name,
-                    middle_name=parts[2] if len(parts) > 2 else "",
+                    name=name.strip() or "Без имени",
                     phone=phone,
+                    source_channel="telegram" if channel == "tg" else channel,
                 )
                 db.add(p)
                 await db.flush()
                 patient_id = p.id
 
         ch = channel if channel != "tg" else "telegram"
-        comm = Communication(
-            patient_id=patient_id,
-            channel=ch,
-            direction="inbound",
-            type="message",
-            content=comment,
-            status="new",
-            priority="high",
-            bot_chat_id=chat_id or None,
-            bot_channel_uid=channel_uid or None,
-        )
-        db.add(comm)
-        await db.flush()
+
+        # Вебхук создаёт авточат-тред (type="chat") на каждое сообщение —
+        # при захвате лида апгрейдим существующий тред, а не плодим дубликат.
+        comm = None
+        if channel_uid:
+            comm = (await db.execute(
+                select(Communication)
+                .where(
+                    Communication.channel == ch,
+                    Communication.bot_channel_uid == str(channel_uid),
+                )
+                .order_by(Communication.created_at.desc())
+                .limit(1)
+            )).scalars().first()
+
+        created = comm is None
+        if created:
+            comm = Communication(
+                patient_id=patient_id,
+                channel=ch,
+                direction="inbound",
+                type="message",
+                content=comment,
+                status="new",
+                priority="high",
+                bot_chat_id=chat_id or None,
+                bot_channel_uid=channel_uid or None,
+                last_message_at=sa_func.now(),
+            )
+            db.add(comm)
+            await db.flush()
+        else:
+            comm.type = "message"  # теперь это лид-тред
+            comm.priority = "high"
+            comm.status = "new"
+            comm.content = comment
+            comm.patient_id = comm.patient_id or patient_id
+            comm.bot_chat_id = comm.bot_chat_id or (chat_id or None)
+            comm.last_message_at = sa_func.now()
 
         msg = BotMessage(
             communication_id=comm.id,
@@ -561,29 +587,6 @@ async def _do_back(state: dict, channel: str, uid) -> dict:
     return reply("Главное меню:", kb_main())
 
 
-async def _append_bot_message(
-    db,
-    comm_id: str,
-    direction: str,
-    content: str,
-    sender_name: str | None = None,
-) -> None:
-    """Save a single message to bot_messages for an existing communication."""
-    try:
-        import uuid as _uuid
-        from app.models.bot_message import BotMessage
-        msg = BotMessage(
-            communication_id=_uuid.UUID(comm_id),
-            direction=direction,
-            content=content,
-            sender_name=sender_name,
-        )
-        db.add(msg)
-        await db.commit()
-    except Exception:
-        logger.exception("bot_flow: failed to append bot message")
-
-
 async def _find_comm_for_user(db, channel: str, uid) -> str | None:
     """DB fallback: find most recent open communication for this bot user.
 
@@ -599,6 +602,9 @@ async def _find_comm_for_user(db, channel: str, uid) -> str | None:
             .where(
                 Communication.channel == ch,
                 Communication.bot_channel_uid == str(uid),
+                # Только лид-треды («менеджер ответит») — авточаты (type="chat")
+                # не должны выключать ИИ-ассистента.
+                Communication.type == "message",
                 Communication.status.in_(["new", "in_progress"]),
             )
             .order_by(Communication.created_at.desc())

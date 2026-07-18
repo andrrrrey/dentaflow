@@ -79,6 +79,10 @@ class PatientResponse(BaseModel):
     total_revenue: float
     ltv_score: int | None
     tags: list[str] | None
+    # Родитель / представитель (ручной ввод — 1Denta API этих данных не отдаёт)
+    representative_name: str | None = None
+    representative_phone: str | None = None
+    representative_relation: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -157,3 +161,6 @@ class PatientUpdate(BaseModel):
     source_channel: str | None = None
     tags: list[str] | None = None
     ltv_score: int | None = None
+    representative_name: str | None = None
+    representative_phone: str | None = None
+    representative_relation: str | None = None

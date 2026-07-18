@@ -119,6 +119,13 @@ export default function NotificationBell() {
 
   const handleNavigate = (link: string) => {
     setOpen(false);
+    // Легаси-уведомления хранят голый UUID коммуникации: navigate() трактует
+    // его как относительный путь (получалось /schedule/<uuid> — пустая
+    // страница). Нормализуем в абсолютный маршрут раздела «Заявки».
+    if (!link.startsWith("/")) {
+      navigate(`/communications?comm=${link}`);
+      return;
+    }
     navigate(link);
   };
 

@@ -73,6 +73,9 @@ export interface AppointmentDetailResponse {
     total_revenue: number;
     ltv_score: number | null;
     tags: string[] | null;
+    representative_name: string | null;
+    representative_phone: string | null;
+    representative_relation: string | null;
     raw_1denta_data: Record<string, unknown> | null;
   } | null;
 }

@@ -320,6 +320,18 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                   {patient.source_channel && <InfoRow icon={<Tag size={13} />} label="Канал" value={patient.source_channel} />}
                 </div>
 
+                {(patient.representative_name || patient.representative_phone) && (
+                  <div className="flex items-center gap-2 text-[12.5px] px-2.5 py-[6px] rounded-lg" style={{ background: "rgba(245,166,35,0.08)" }}>
+                    <User size={13} style={{ color: "#b45309" }} />
+                    <span className="font-semibold" style={{ color: "#b45309" }}>Представитель:</span>
+                    <span className="text-text-main font-medium">
+                      {patient.representative_name}
+                      {patient.representative_relation ? ` (${patient.representative_relation})` : ""}
+                      {patient.representative_phone ? ` · ${patient.representative_phone}` : ""}
+                    </span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-3 mt-2">
                   <StatBox label="Выручка" value={`${patient.total_revenue.toLocaleString("ru-RU")} ₽`} />
                   <StatBox label="Средний чек" value={averageCheck != null ? `${averageCheck.toLocaleString("ru-RU")} ₽` : "—"} />
