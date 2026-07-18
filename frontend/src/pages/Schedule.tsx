@@ -3,7 +3,6 @@ import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWe
 import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Button from "../components/ui/Button";
-import { clinicNow } from "../config";
 import { useUiStore } from "../store/uiStore";
 import { useSchedule, useDoctorsList, useUpdateAppointment } from "../api/schedule";
 import type { Appointment } from "../api/schedule";
@@ -148,7 +147,7 @@ function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   );
 }
 
-function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart, preview }: {
+function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart, preview, onHover }: {
   appt: Appointment;
   onClick: () => void;
   col: number;
@@ -156,6 +155,7 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
   colWidth: number;
   onDragStart: (appt: Appointment, e: React.MouseEvent) => void;
   preview: DragPreview | null;
+  onHover: (appt: Appointment | null, x: number, y: number) => void;
 }) {
   if (!appt.scheduled_at) return null;
   const start = parseISO(appt.scheduled_at);
@@ -190,6 +190,9 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
       }}
       onMouseDown={(e) => onDragStart(appt, e)}
       onClick={onClick}
+      onMouseEnter={(e) => onHover(appt, e.clientX, e.clientY)}
+      onMouseMove={(e) => onHover(appt, e.clientX, e.clientY)}
+      onMouseLeave={() => onHover(null, 0, 0)}
     >
       <div className="px-[9px] py-[7px] h-full flex flex-col justify-start overflow-hidden">
         <div className="text-[11.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
@@ -229,7 +232,9 @@ export default function Schedule() {
   const [containerW, setContainerW] = useState(0);
   const [addModalPrefill, setAddModalPrefill] = useState<{ doctorId: string; doctorName: string; dateTime: string } | null>(null);
   const [hoverSlot, setHoverSlot] = useState<{ doctorName: string; slotMin: number } | null>(null);
-  const [nowTick, setNowTick] = useState(() => clinicNow());
+  const [hoverCard, setHoverCard] = useState<{ appt: Appointment; x: number; y: number } | null>(null);
+  // Красная линия «сейчас» — по локальным часам компьютера пользователя
+  const [nowTick, setNowTick] = useState(() => new Date());
 
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
   // Расписанию нужна вся ширина — сворачиваем главное меню при открытии страницы
@@ -240,7 +245,7 @@ export default function Schedule() {
 
   // Тик текущего времени (для красной линии «сейчас»)
   useEffect(() => {
-    const t = setInterval(() => setNowTick(clinicNow()), 60_000);
+    const t = setInterval(() => setNowTick(new Date()), 60_000);
     return () => clearInterval(t);
   }, []);
 
@@ -718,7 +723,12 @@ export default function Schedule() {
                           colWidth={colWidth}
                           onDragStart={handleDragStart}
                           preview={preview && preview.apptId === appt.id ? preview : null}
+                          onHover={(a, x, y) => {
+                            if (drag) { setHoverCard(null); return; }
+                            setHoverCard(a ? { appt: a, x, y } : null);
+                          }}
                           onClick={() => {
+                            setHoverCard(null);
                             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                             setSelectedAppointmentId(appt.id);
                           }}
@@ -733,6 +743,67 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {/* Ховер-карточка записи: полная информация, как в 1Denta — видно
+          детали даже когда плашки мелкие или лежат друг на друге */}
+      {hoverCard && !drag && (() => {
+        const a = hoverCard.appt;
+        const start = a.scheduled_at ? parseISO(a.scheduled_at) : null;
+        const startMin = start ? start.getHours() * 60 + start.getMinutes() : 0;
+        const age = calcAge(a.patient_birth_date);
+        const colors = statusColors[a.status ?? ""] ?? statusColors.unconfirmed;
+        const CARD_W = 300;
+        const left = hoverCard.x + 16 + CARD_W > window.innerWidth
+          ? hoverCard.x - CARD_W - 16
+          : hoverCard.x + 16;
+        const top = Math.min(hoverCard.y + 14, window.innerHeight - 220);
+        return (
+          <div
+            className="fixed z-[250] pointer-events-none rounded-[14px] p-[14px] flex flex-col gap-[6px]"
+            style={{
+              left,
+              top,
+              width: CARD_W,
+              background: "rgba(255,255,255,0.98)",
+              boxShadow: "0 12px 36px rgba(30,41,59,0.22)",
+              border: `1px solid rgba(91,76,245,0.12)`,
+              borderLeft: `4px solid ${colors.border}`,
+            }}
+          >
+            {start && (
+              <div className="text-[13px] font-mono font-bold" style={{ color: colors.text }}>
+                {fmtMin(startMin)} – {fmtMin(startMin + a.duration_min)}
+                <span className="font-sans font-medium text-text-muted"> · {a.duration_min} мин</span>
+              </div>
+            )}
+            <div className="text-[14.5px] font-bold text-text-main leading-snug">
+              {a.is_primary && <span title="Первичный пациент" className="mr-1" style={{ color: colors.border }}>①</span>}
+              {a.patient_name}
+              {age !== null && <span className="font-medium text-text-muted">, {age} лет</span>}
+            </div>
+            {a.patient_phone && (
+              <div className="text-[13px] text-text-main font-medium">{a.patient_phone}</div>
+            )}
+            {a.doctor_name && (
+              <div className="text-[12px] text-text-muted">Врач: {a.doctor_name}</div>
+            )}
+            {a.service && (
+              <div className="text-[12px] text-text-muted leading-snug">{a.service}</div>
+            )}
+            {a.comment && (
+              <div className="text-[12px] text-text-muted leading-snug italic">💬 {a.comment}</div>
+            )}
+            <div>
+              <span
+                className="inline-block px-2 py-[2px] rounded-lg text-[11px] font-bold"
+                style={{ background: colors.bg, color: colors.text }}
+              >
+                {statusLabels[a.status ?? ""] ?? a.status ?? "—"}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Drag tooltip — follows the cursor with the new time / doctor */}
       {drag && drag.moved && preview && (

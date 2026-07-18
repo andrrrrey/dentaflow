@@ -16,6 +16,7 @@ export interface Appointment {
   scheduled_at: string | null;
   duration_min: number;
   status: string | null;
+  comment?: string | null;
   revenue: number;
 }
 
