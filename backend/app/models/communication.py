@@ -48,6 +48,11 @@ class Communication(Base):
     responded_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Время последнего сообщения в треде (входящего или исходящего) —
+    # по нему сортируется список чатов.
+    last_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

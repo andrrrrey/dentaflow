@@ -15,6 +15,7 @@ import {
   useCheckIntegration,
   useSyncOneDenta,
   useOneDentaSyncStatus,
+  useRegisterOneDentaWebhook,
   useKnowledgeBaseFiles,
   useUploadKbFile,
   useDeleteKbFile,
@@ -779,11 +780,55 @@ function fmtRelative(iso: string | null | undefined): string {
   }
 }
 
-function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }) {
+function OneDentaWebhookRow({ status, isOwner }: { status: OneDentaSyncStatus | undefined; isOwner: boolean }) {
+  const registerWebhook = useRegisterOneDentaWebhook();
+  const [msg, setMsg] = useState("");
+
+  async function handleRegister() {
+    setMsg("");
+    try {
+      const res = await registerWebhook.mutateAsync();
+      setMsg(`Вебхуки подключены: ${res.webhook_url}`);
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setMsg(detail || "Не удалось подключить вебхуки");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1 mt-2 pt-2" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-text-muted">
+          Вебхуки (мгновенная синхронизация):{" "}
+          {status?.webhook_url
+            ? <span className="text-emerald-600 font-semibold">подключены</span>
+            : <span className="font-semibold" style={{ color: "#b45309" }}>не подключены</span>}
+        </span>
+        {isOwner && (
+          <button
+            onClick={handleRegister}
+            disabled={registerWebhook.isPending}
+            className="text-[11px] font-semibold px-2 py-[3px] rounded-lg border-none cursor-pointer disabled:opacity-50"
+            style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
+          >
+            {registerWebhook.isPending
+              ? "Подключение..."
+              : status?.webhook_url ? "Переподключить" : "Подключить вебхуки 1Denta"}
+          </button>
+        )}
+      </div>
+      {status?.webhook_url && <div className="text-text-muted break-all">{status.webhook_url}</div>}
+      {msg && <div className="text-text-muted break-all">{msg}</div>}
+    </div>
+  );
+}
+
+function OneDentaSyncInfo({ status, isOwner }: { status: OneDentaSyncStatus | undefined; isOwner: boolean }) {
   if (!status || !status.last_sync_at) {
     return (
       <div className="text-text-muted">
         Синхронизация ещё не выполнялась. Данные обновляются автоматически раз в час.
+        <OneDentaWebhookRow status={status} isOwner={isOwner} />
       </div>
     );
   }
@@ -831,6 +876,7 @@ function OneDentaSyncInfo({ status }: { status: OneDentaSyncStatus | undefined }
       <div className="text-text-muted">
         Синхронизировано: {summaryParts.length ? summaryParts.join(" · ") : "—"}
       </div>
+      <OneDentaWebhookRow status={status} isOwner={isOwner} />
     </div>
   );
 }
@@ -920,7 +966,7 @@ function IntegrationsTab() {
             onSync={showSync ? handleSyncOneDenta : undefined}
             syncing={showSync && syncOneDenta.isPending}
             syncStatus={showSync ? syncStatus : undefined}
-            syncInfo={isOneDenta ? <OneDentaSyncInfo status={oneDentaStatus} /> : undefined}
+            syncInfo={isOneDenta ? <OneDentaSyncInfo status={oneDentaStatus} isOwner={isOwner} /> : undefined}
           />
         );
       })}

@@ -269,6 +269,9 @@ async def patch_patient(
         source_channel=body.source_channel,
         tags=body.tags,
         ltv_score=body.ltv_score,
+        representative_name=body.representative_name,
+        representative_phone=body.representative_phone,
+        representative_relation=body.representative_relation,
     )
     if updated is None:
         raise HTTPException(

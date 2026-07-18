@@ -272,8 +272,117 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
           <div className="text-center text-text-muted py-12 text-[13px]">Запись не найдена</div>
         ) : (
           <>
+            {/* Patient info — наверху по требованию клиники */}
+            {patient && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Пациент</div>
+                  <button
+                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-accent2 hover:underline border-none bg-transparent cursor-pointer"
+                  >
+                    Карточка пациента
+                    <ExternalLink size={11} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 mb-1">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[14px] font-bold cursor-pointer hover:opacity-80"
+                    style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
+                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                  >
+                    {patient.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <button
+                      onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
+                      className="text-[15px] font-bold text-text-main hover:text-accent2 transition-colors border-none bg-transparent cursor-pointer p-0 text-left"
+                    >
+                      {patient.name}
+                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {age !== null && <span className="text-[12px] text-text-muted">{age} лет</span>}
+                      {medicalCard && (
+                        <span className="text-[11px] px-2 py-[1px] rounded-md font-medium" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+                          Карта №{medicalCard}
+                        </span>
+                      )}
+                    </div>
+                    {patient.external_id && <div className="text-[11px] text-text-muted">ID: {patient.external_id}</div>}
+                  </div>
+                  {patient.is_new_patient && <Pill variant="blue">Первичный</Pill>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {patient.phone && <InfoRow icon={<Phone size={13} />} label="Телефон" value={patient.phone} />}
+                  {patient.email && <InfoRow icon={<Mail size={13} />} label="Email" value={patient.email} />}
+                  {patient.birth_date && <InfoRow icon={<Calendar size={13} />} label="Дата рождения" value={patient.birth_date} />}
+                  {patient.source_channel && <InfoRow icon={<Tag size={13} />} label="Канал" value={patient.source_channel} />}
+                </div>
+
+                {(patient.representative_name || patient.representative_phone) && (
+                  <div className="flex items-center gap-2 text-[12.5px] px-2.5 py-[6px] rounded-lg" style={{ background: "rgba(245,166,35,0.08)" }}>
+                    <User size={13} style={{ color: "#b45309" }} />
+                    <span className="font-semibold" style={{ color: "#b45309" }}>Представитель:</span>
+                    <span className="text-text-main font-medium">
+                      {patient.representative_name}
+                      {patient.representative_relation ? ` (${patient.representative_relation})` : ""}
+                      {patient.representative_phone ? ` · ${patient.representative_phone}` : ""}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-3 mt-2">
+                  <StatBox label="Выручка" value={`${patient.total_revenue.toLocaleString("ru-RU")} ₽`} />
+                  <StatBox label="Средний чек" value={averageCheck != null ? `${averageCheck.toLocaleString("ru-RU")} ₽` : "—"} />
+                  <StatBox label="Посл. визит" value={patient.last_visit_at ? formatDt(patient.last_visit_at).split(",")[0] : "—"} />
+                </div>
+
+                {patient.tags && patient.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {patient.tags.map((t) => (
+                      <span key={t} className="px-2 py-[2px] rounded-lg text-[11px] font-medium" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Comment block */}
+            <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+              <div className="flex items-center gap-2">
+                <MessageSquare size={13} className="text-text-muted" />
+                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Комментарий</span>
+              </div>
+              <textarea
+                value={commentValue}
+                onChange={(e) => { setCommentValue(e.target.value); setCommentSaved(false); }}
+                rows={2}
+                placeholder="Добавьте комментарий к записи..."
+                className="w-full text-[13px] px-3 py-2 rounded-xl border resize-none focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-text-muted">Комментарий синхронизируется с 1Denta</span>
+                <button
+                  onClick={handleCommentSave}
+                  disabled={updateAppt.isPending}
+                  className="px-4 py-[6px] rounded-xl text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-50"
+                  style={
+                    commentSaved
+                      ? { background: "rgba(0,201,167,0.12)", color: "#007d6e" }
+                      : { background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }
+                  }
+                >
+                  {commentSaved ? "Сохранено ✓" : "Сохранить"}
+                </button>
+              </div>
+            </div>
+
             {/* Appointment info */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
               <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Запись</div>
               <div className="grid grid-cols-2 gap-3">
                 {/* Date & time — editable */}
@@ -517,113 +626,16 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
               </button>
             </div>
 
-            {/* Comment block */}
-            <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
-              <div className="flex items-center gap-2">
-                <MessageSquare size={13} className="text-text-muted" />
-                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Комментарий</span>
-              </div>
-              <textarea
-                value={commentValue}
-                onChange={(e) => { setCommentValue(e.target.value); setCommentSaved(false); }}
-                rows={2}
-                placeholder="Добавьте комментарий к записи..."
-                className="w-full text-[13px] px-3 py-2 rounded-xl border resize-none focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
-                style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-text-muted">Комментарий синхронизируется с 1Denta</span>
-                <button
-                  onClick={handleCommentSave}
-                  disabled={updateAppt.isPending}
-                  className="px-4 py-[6px] rounded-xl text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-50"
-                  style={
-                    commentSaved
-                      ? { background: "rgba(0,201,167,0.12)", color: "#007d6e" }
-                      : { background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }
-                  }
-                >
-                  {commentSaved ? "Сохранено ✓" : "Сохранить"}
-                </button>
-              </div>
-            </div>
-
-            {/* Patient info */}
-            {patient && (
-              <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Пациент</div>
-                  <button
-                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-accent2 hover:underline border-none bg-transparent cursor-pointer"
-                  >
-                    Карточка пациента
-                    <ExternalLink size={11} />
-                  </button>
+            {/* Raw 1Denta data */}
+            {patient && raw && (
+              <div className="pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
+                <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Данные 1Denta</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {raw.sex != null && Number(raw.sex) !== 0 && <InfoRow icon={<User size={13} />} label="Пол" value={sexLabels[raw.sex as number] || String(raw.sex)} />}
+                  {raw.visits_count != null && <InfoRow icon={<Calendar size={13} />} label="Визитов" value={String(raw.visits_count)} />}
+                  {raw.type != null && <InfoRow icon={<Tag size={13} />} label="Тип" value={String(raw.type)} />}
+                  {raw.comment != null && <InfoRow icon={<Tag size={13} />} label="Комментарий" value={String(raw.comment)} />}
                 </div>
-                <div className="flex items-center gap-3 mb-1">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[14px] font-bold cursor-pointer hover:opacity-80"
-                    style={{ background: "linear-gradient(135deg, #5B4CF5, #3B7FED)" }}
-                    onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
-                  >
-                    {patient.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <button
-                      onClick={() => { onClose(); navigate(`/patients/${patient.id}`); }}
-                      className="text-[15px] font-bold text-text-main hover:text-accent2 transition-colors border-none bg-transparent cursor-pointer p-0 text-left"
-                    >
-                      {patient.name}
-                    </button>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {age !== null && <span className="text-[12px] text-text-muted">{age} лет</span>}
-                      {medicalCard && (
-                        <span className="text-[11px] px-2 py-[1px] rounded-md font-medium" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
-                          Карта №{medicalCard}
-                        </span>
-                      )}
-                    </div>
-                    {patient.external_id && <div className="text-[11px] text-text-muted">ID: {patient.external_id}</div>}
-                  </div>
-                  {patient.is_new_patient && <Pill variant="blue">Новый</Pill>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {patient.phone && <InfoRow icon={<Phone size={13} />} label="Телефон" value={patient.phone} />}
-                  {patient.email && <InfoRow icon={<Mail size={13} />} label="Email" value={patient.email} />}
-                  {patient.birth_date && <InfoRow icon={<Calendar size={13} />} label="Дата рождения" value={patient.birth_date} />}
-                  {patient.source_channel && <InfoRow icon={<Tag size={13} />} label="Канал" value={patient.source_channel} />}
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 mt-2">
-                  <StatBox label="Выручка" value={`${patient.total_revenue.toLocaleString("ru-RU")} ₽`} />
-                  <StatBox label="Средний чек" value={averageCheck != null ? `${averageCheck.toLocaleString("ru-RU")} ₽` : "—"} />
-                  <StatBox label="Посл. визит" value={patient.last_visit_at ? formatDt(patient.last_visit_at).split(",")[0] : "—"} />
-                </div>
-
-                {patient.tags && patient.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {patient.tags.map((t) => (
-                      <span key={t} className="px-2 py-[2px] rounded-lg text-[11px] font-medium" style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Raw 1Denta data */}
-                {raw && (
-                  <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(91,76,245,0.06)" }}>
-                    <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Данные 1Denta</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {raw.sex != null && Number(raw.sex) !== 0 && <InfoRow icon={<User size={13} />} label="Пол" value={sexLabels[raw.sex as number] || String(raw.sex)} />}
-                      {raw.visits_count != null && <InfoRow icon={<Calendar size={13} />} label="Визитов" value={String(raw.visits_count)} />}
-                      {raw.type != null && <InfoRow icon={<Tag size={13} />} label="Тип" value={String(raw.type)} />}
-                      {raw.comment != null && <InfoRow icon={<Tag size={13} />} label="Комментарий" value={String(raw.comment)} />}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </>

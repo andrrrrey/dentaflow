@@ -27,7 +27,13 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "novofon_caller_id",
         "novofon_ami_password",
     ],
-    "one_denta": ["one_denta_api_url", "one_denta_email", "one_denta_password"],
+    "one_denta": [
+        "one_denta_api_url",
+        "one_denta_email",
+        "one_denta_password",
+        "one_denta_webhook_secret",
+        "one_denta_webhook_url",
+    ],
     "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
     "yandex_speechkit": ["yandex_api_key", "yandex_folder_id"],
     "bots": ["bot_welcome_message", "bot_clinic_name"],
@@ -54,7 +60,7 @@ ALL_KEYS = [k for keys in INTEGRATION_KEYS.values() for k in keys]
 
 MASKED_KEYS = {
     "novofon_api_key", "novofon_webhook_secret", "novofon_sip_password", "novofon_ami_password",
-    "one_denta_password",
+    "one_denta_password", "one_denta_webhook_secret",
     "openai_api_key",
     "yandex_api_key",
     "telegram_bot_token", "telegram_webhook_secret",

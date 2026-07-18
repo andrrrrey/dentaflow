@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useCommunications } from "../api/communications";
 import { useCommunicationsStore } from "../store/communicationsStore";
 import FeedFilters from "../components/communications/FeedFilters";
@@ -415,6 +416,17 @@ export default function Communications() {
 
   const items = (data?.items ?? []).filter((i) => REQUEST_CHANNELS.includes(i.channel));
   const selected = selectedId ? items.find((i) => i.id === selectedId) ?? null : null;
+
+  // Переход из уведомления: /communications?comm=<id> — авто-выбор обращения
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const comm = searchParams.get("comm");
+    if (comm && items.some((i) => i.id === comm)) {
+      setSelectedId(comm);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, items.length]);
 
   const statusCounts = useMemo(() => {
     const allItems = (allData?.items ?? []).filter((i) => REQUEST_CHANNELS.includes(i.channel));

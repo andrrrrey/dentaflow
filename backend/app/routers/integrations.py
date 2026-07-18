@@ -88,8 +88,53 @@ async def sync_one_denta(
     return {"status": "started"}
 
 
+@router.post("/sync-1denta/register-webhook")
+async def register_one_denta_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Owner-only: зарегистрировать вебхук DentaFlow в 1Denta.
+
+    ВАЖНО: POST /api/v2/hook_settings в SQNS ЗАМЕНЯЕТ весь список URL.
+    DentaFlow — единственный потребитель вебхуков этой клиники, поэтому
+    регистрируем только свой URL. Если у клиники появятся другие интеграции
+    с вебхуками SQNS, их URL нужно включать в этот же список.
+    """
+    if _current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Только владелец может настраивать вебхуки")
+
+    import secrets as _secrets
+
+    secret = await get_raw_value(db, "one_denta_webhook_secret")
+    if not secret:
+        secret = _secrets.token_urlsafe(24)
+
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    webhook_url = f"{proto}://{host}/api/v1/webhooks/1denta?secret={secret}"
+
+    from app.services.one_denta import OneDentaService
+
+    try:
+        svc = await OneDentaService.from_db(db)
+        await svc.setup_webhook([webhook_url])
+    except Exception as e:
+        logger.exception("Failed to register 1Denta webhook")
+        raise HTTPException(status_code=502, detail=f"Не удалось зарегистрировать вебхук в 1Denta: {e}")
+
+    await save_settings(db, {
+        "one_denta_webhook_secret": secret,
+        "one_denta_webhook_url": f"{proto}://{host}/api/v1/webhooks/1denta",
+    })
+    await db.commit()
+
+    return {"ok": True, "webhook_url": f"{proto}://{host}/api/v1/webhooks/1denta"}
+
+
 @router.get("/sync-1denta/status")
 async def one_denta_sync_status(
+    db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
     """Return the last 1Denta sync outcome and the estimated next run time.
@@ -104,6 +149,8 @@ async def one_denta_sync_status(
     from app.tasks.celery_app import celery_app
     from app.tasks.sync_1denta import _REDIS_LAST_HOURLY_KEY, _REDIS_LAST_SYNC_KEY
 
+    webhook_url = await get_raw_value(db, "one_denta_webhook_url") or None
+
     empty = {
         "last_sync_at": None,
         "last_trigger": None,
@@ -111,6 +158,7 @@ async def one_denta_sync_status(
         "error": None,
         "result": None,
         "next_sync_at": None,
+        "webhook_url": webhook_url,
     }
 
     try:
@@ -166,6 +214,7 @@ async def one_denta_sync_status(
         "error": data.get("error"),
         "result": data.get("result"),
         "next_sync_at": next_sync_at,
+        "webhook_url": webhook_url,
     }
 
 

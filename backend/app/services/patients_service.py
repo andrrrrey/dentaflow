@@ -143,6 +143,9 @@ async def get_patients(
             total_revenue=float(p.total_revenue),
             ltv_score=p.ltv_score,
             tags=p.tags,
+            representative_name=p.representative_name,
+            representative_phone=p.representative_phone,
+            representative_relation=p.representative_relation,
             created_at=p.created_at,
         )
         for p in patients
@@ -390,6 +393,9 @@ async def get_patient_detail(
         total_revenue=float(patient.total_revenue),
         ltv_score=patient.ltv_score,
         tags=patient.tags,
+        representative_name=patient.representative_name,
+        representative_phone=patient.representative_phone,
+        representative_relation=patient.representative_relation,
         created_at=patient.created_at,
         appointments=appointments,
         communications=communications,
@@ -550,6 +556,9 @@ async def update_patient(
     source_channel: str | None = None,
     tags: list[str] | None = None,
     ltv_score: int | None = None,
+    representative_name: str | None = None,
+    representative_phone: str | None = None,
+    representative_relation: str | None = None,
 ) -> PatientResponse | None:
     patient = await db.get(Patient, patient_id)
     if patient is None:
@@ -573,6 +582,12 @@ async def update_patient(
         patient.tags = tags
     if ltv_score is not None:
         patient.ltv_score = ltv_score
+    if representative_name is not None:
+        patient.representative_name = representative_name.strip() or None
+    if representative_phone is not None:
+        patient.representative_phone = representative_phone.strip() or None
+    if representative_relation is not None:
+        patient.representative_relation = representative_relation.strip() or None
 
     await db.flush()
 
@@ -589,5 +604,8 @@ async def update_patient(
         total_revenue=float(patient.total_revenue),
         ltv_score=patient.ltv_score,
         tags=patient.tags,
+        representative_name=patient.representative_name,
+        representative_phone=patient.representative_phone,
+        representative_relation=patient.representative_relation,
         created_at=patient.created_at,
     )

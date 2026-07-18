@@ -72,7 +72,7 @@ export interface CommunicationItem {
   patient_name: string | null;
   channel: "telegram" | "novofon" | "max" | "site" | "manual";
   direction: "inbound" | "outbound";
-  type: "message" | "call" | "form" | "missed_call";
+  type: "message" | "chat" | "call" | "form" | "missed_call";
   content: string | null;
   media_url: string | null;
   duration_sec: number | null;
@@ -85,6 +85,7 @@ export interface CommunicationItem {
   assigned_to_name: string | null;
   bot_chat_id: string | null;
   responded_at: string | null;
+  last_message_at: string | null;
   created_at: string;
 }
 

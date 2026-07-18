@@ -170,6 +170,12 @@ async def reply_to_communication(
         sender_name=sender or None,
     )
     db.add(msg)
+    from sqlalchemy.sql import func as sa_func
+    comm_row.last_message_at = sa_func.now()
+    if comm_row.responded_at is None:
+        comm_row.responded_at = sa_func.now()
+    if comm_row.status == "new":
+        comm_row.status = "in_progress"
     await db.commit()
     await db.refresh(msg)
     return msg

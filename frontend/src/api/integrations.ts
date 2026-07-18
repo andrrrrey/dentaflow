@@ -71,6 +71,20 @@ export interface OneDentaSyncStatus {
     appointments?: OneDentaSyncCounts | null;
   } | null;
   next_sync_at: string | null;
+  webhook_url?: string | null;
+}
+
+export function useRegisterOneDentaWebhook() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean; webhook_url: string }, Error, void>({
+    mutationFn: async () => {
+      const { data } = await api.post("/integrations/sync-1denta/register-webhook");
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["one-denta-sync-status"] });
+    },
+  });
 }
 
 export function useOneDentaSyncStatus() {

@@ -33,6 +33,7 @@ def _row_to_response(comm: Communication, patient_name: str | None, assigned_nam
         assigned_to_name=assigned_name,
         bot_chat_id=comm.bot_chat_id,
         responded_at=comm.responded_at,
+        last_message_at=comm.last_message_at,
         created_at=comm.created_at,
     )
 
@@ -59,7 +60,10 @@ async def get_communications(
     if priority:
         stmt = stmt.where(Communication.priority == priority)
 
-    stmt = stmt.order_by(Communication.created_at.desc())
+    # Чаты сортируем по последнему сообщению в треде, остальное — по created_at
+    stmt = stmt.order_by(
+        func.coalesce(Communication.last_message_at, Communication.created_at).desc()
+    )
 
     # Total count (before pagination)
     count_stmt = select(func.count(Communication.id))

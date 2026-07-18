@@ -2,8 +2,9 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { format, parseISO, addDays, subDays, startOfMonth, endOfMonth, startOfWeek, addMonths, subMonths, isSameDay, isSameMonth, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import StatCard from "../components/ui/StatCard";
 import Button from "../components/ui/Button";
+import { clinicNow } from "../config";
+import { useUiStore } from "../store/uiStore";
 import { useSchedule, useDoctorsList, useUpdateAppointment } from "../api/schedule";
 import type { Appointment } from "../api/schedule";
 import AppointmentDetailModal from "../components/schedule/AppointmentDetailModal";
@@ -195,6 +196,9 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
           {fmtMin(displayStartMin)} – {fmtMin(displayEndMin)}
         </div>
         <div className="text-[13.5px] font-bold text-text-main leading-snug mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+          {appt.is_primary && (
+            <span title="Первичный пациент" className="mr-1" style={{ color: colors.border, fontWeight: 700 }}>①</span>
+          )}
           {appt.patient_name}
           {age !== null && <span className="font-medium text-text-muted">, {age} лет</span>}
         </div>
@@ -223,6 +227,22 @@ export default function Schedule() {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [calendarPanelOpen, setCalendarPanelOpen] = useState(true);
   const [containerW, setContainerW] = useState(0);
+  const [addModalPrefill, setAddModalPrefill] = useState<{ doctorId: string; doctorName: string; dateTime: string } | null>(null);
+  const [hoverSlot, setHoverSlot] = useState<{ doctorName: string; slotMin: number } | null>(null);
+  const [nowTick, setNowTick] = useState(() => clinicNow());
+
+  const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+  // Расписанию нужна вся ширина — сворачиваем главное меню при открытии страницы
+  useEffect(() => {
+    setSidebarCollapsed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Тик текущего времени (для красной линии «сейчас»)
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(clinicNow()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -236,8 +256,6 @@ export default function Schedule() {
   const updateAppt = useUpdateAppointment();
 
   const appointments = data?.appointments ?? [];
-  const stats = data?.stats;
-  const totalRevenue = appointments.reduce((s, a) => s + a.revenue, 0);
 
   const doctorsWithAppointments = useMemo(() => {
     const map = new Map<string, Appointment[]>();
@@ -413,14 +431,6 @@ export default function Schedule() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Всего записей" value={String(stats?.total ?? 0)} icon="📅" />
-        <StatCard label="Подтверждено" value={String(stats?.confirmed ?? 0)} delta={stats?.completion_rate ? `${stats.completion_rate}%` : undefined} deltaType="up" icon="✅" />
-        <StatCard label="Отменено" value={String(stats?.cancelled ?? 0)} icon="❌" />
-        <StatCard label="Выручка" value={totalRevenue.toLocaleString("ru-RU") + " ₽"} icon="💰" />
-      </div>
-
       {/* Main layout: sidebar + timetable */}
       <div className="flex gap-4 items-start">
         {/* Collapsed: slim strip with expand button */}
@@ -576,6 +586,33 @@ export default function Schedule() {
 
                 {/* Time grid */}
                 <div ref={columnsRowRef} className="flex relative">
+                  {/* Красная линия текущего времени (только на сегодняшнем дне) */}
+                  {isSameDay(selectedDate, nowTick) && (() => {
+                    const nowMin = nowTick.getHours() * 60 + nowTick.getMinutes();
+                    if (nowMin < CLINIC_START_MIN || nowMin > CLINIC_END_MIN) return null;
+                    const top = ((nowMin - CLINIC_START_MIN) / 60) * SLOT_HEIGHT;
+                    return (
+                      <div
+                        className="absolute pointer-events-none"
+                        style={{ top, left: 0, right: 0, zIndex: 25 }}
+                      >
+                        <div
+                          className="absolute text-white text-[10.5px] font-bold font-mono rounded px-1 py-[1px]"
+                          style={{ left: 4, top: -9, background: "#ef4444" }}
+                        >
+                          {fmtMin(nowMin)}
+                        </div>
+                        <div
+                          className="absolute rounded-full"
+                          style={{ left: TIME_COL_W - 3, top: -3, width: 7, height: 7, background: "#ef4444" }}
+                        />
+                        <div
+                          className="absolute"
+                          style={{ left: TIME_COL_W, right: 0, top: 0, height: 2, background: "#ef4444" }}
+                        />
+                      </div>
+                    );
+                  })()}
                   {/* Time column — sticky on horizontal scroll */}
                   <div
                     className="flex-shrink-0 sticky left-0 z-30"
@@ -598,7 +635,56 @@ export default function Schedule() {
                       key={doctorName}
                       className="relative"
                       style={{ width: colWidth, flex: "0 0 auto", height: gridHeight, borderLeft: "1px solid rgba(91,76,245,0.08)" }}
+                      onMouseMove={(e) => {
+                        if (drag) { if (hoverSlot) setHoverSlot(null); return; }
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const relY = e.clientY - rect.top;
+                        let slotMin = CLINIC_START_MIN + Math.floor((relY / SLOT_HEIGHT) * 60 / 30) * 30;
+                        slotMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - 30, slotMin));
+                        // Рамку показываем только на свободном времени
+                        const busy = doctorAppts.some((a) => {
+                          if (!a.scheduled_at) return false;
+                          const s = parseISO(a.scheduled_at);
+                          const sMin = s.getHours() * 60 + s.getMinutes();
+                          return sMin < slotMin + 30 && sMin + a.duration_min > slotMin;
+                        });
+                        if (busy) {
+                          if (hoverSlot) setHoverSlot(null);
+                        } else if (!hoverSlot || hoverSlot.doctorName !== doctorName || hoverSlot.slotMin !== slotMin) {
+                          setHoverSlot({ doctorName, slotMin });
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        setHoverSlot((h) => (h?.doctorName === doctorName ? null : h));
+                      }}
                     >
+                      {/* Ховер-рамка «Новая запись» на свободном слоте */}
+                      {hoverSlot?.doctorName === doctorName && !drag && (
+                        <div
+                          className="absolute flex items-start cursor-pointer"
+                          style={{
+                            top: ((hoverSlot.slotMin - CLINIC_START_MIN) / 60) * SLOT_HEIGHT,
+                            left: 3,
+                            right: 3,
+                            height: SLOT_HEIGHT / 2 - 3,
+                            border: "1.5px dashed #5B4CF5",
+                            borderRadius: 10,
+                            background: "rgba(91,76,245,0.05)",
+                            zIndex: 5,
+                          }}
+                          onClick={() => {
+                            setAddModalPrefill({
+                              doctorId: doctorIdByName.get(doctorName) ?? "",
+                              doctorName,
+                              dateTime: `${dateStr}T${fmtMin(hoverSlot.slotMin)}`,
+                            });
+                          }}
+                        >
+                          <span className="text-[12px] font-semibold px-2 py-1" style={{ color: "#5B4CF5" }}>
+                            {fmtMin(hoverSlot.slotMin)} – {fmtMin(hoverSlot.slotMin + 30)} · Новая запись
+                          </span>
+                        </div>
+                      )}
                       {/* Hour lines */}
                       {HOURS.map((h) => (
                         <div
@@ -665,8 +751,13 @@ export default function Schedule() {
         </div>
       )}
 
-      {showAddModal && (
-        <AddAppointmentModal onClose={() => setShowAddModal(false)} />
+      {(showAddModal || addModalPrefill) && (
+        <AddAppointmentModal
+          onClose={() => { setShowAddModal(false); setAddModalPrefill(null); }}
+          initialDoctorId={addModalPrefill?.doctorId}
+          initialDoctorName={addModalPrefill?.doctorName}
+          initialDateTime={addModalPrefill?.dateTime}
+        />
       )}
 
       {selectedAppointmentId && (

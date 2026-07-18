@@ -52,6 +52,7 @@ async def list_schedule(
             Patient.name.label("patient_name"),
             Patient.phone.label("patient_phone"),
             Patient.birth_date.label("patient_birth_date"),
+            Patient.patient_type.label("patient_type"),
             Patient.raw_1denta_data.label("patient_raw"),
         )
         .outerjoin(Patient, Appointment.patient_id == Patient.id)
@@ -84,6 +85,8 @@ async def list_schedule(
             "patient_name": row.patient_name or "Неизвестный пациент",
             "patient_phone": row.patient_phone,
             "patient_birth_date": bd.isoformat() if bd else None,
+            # «Первичный» пациент — 1Denta client type == "new"
+            "is_primary": row.patient_type == "new",
             "doctor_name": appt.doctor_name,
             "doctor_id": appt.doctor_id,
             "service": appt.service,
@@ -167,6 +170,9 @@ async def get_appointment_detail(
             "total_revenue": float(patient.total_revenue),
             "ltv_score": patient.ltv_score,
             "tags": patient.tags,
+            "representative_name": patient.representative_name,
+            "representative_phone": patient.representative_phone,
+            "representative_relation": patient.representative_relation,
             "raw_1denta_data": patient.raw_1denta_data,
         }
     return response
@@ -329,6 +335,7 @@ async def trigger_sync(
         "appointments": {
             "created": appt_result.get("created", 0),
             "updated": appt_result.get("updated", 0),
+            "deleted": appt_result.get("deleted", 0),
             "total": appt_result.get("total", 0),
         },
     }
@@ -354,8 +361,24 @@ async def create_appointment(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Create a new appointment locally and optionally in 1Denta."""
-    scheduled_dt = datetime.fromisoformat(body.scheduled_at)
+    """Create a new appointment in 1Denta and mirror it locally.
+
+    1Denta is the source of truth: the visit must be created there first
+    (requires a service enabled for online booking), otherwise the request
+    fails and nothing is stored locally.
+    """
+    try:
+        parsed_dt = datetime.fromisoformat(body.scheduled_at)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Неверный формат даты/времени")
+
+    if not body.service_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Выберите услугу из онлайн-записи 1Denta — без неё запись нельзя создать в 1Denta",
+        )
+
+    scheduled_dt = parsed_dt
     if scheduled_dt.tzinfo is None:
         scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
     end_dt = scheduled_dt + timedelta(minutes=body.duration_min)
@@ -382,8 +405,15 @@ async def create_appointment(
                     detail=f"Время пересекается с другой записью у этого врача ({appt_start.strftime('%H:%M')}–{appt_end.strftime('%H:%M')})",
                 )
 
-    patient_stmt = select(Patient).where(Patient.phone == body.patient_phone)
-    patient = (await db.execute(patient_stmt)).scalar_one_or_none()
+    # Duplicate phones exist in real 1Denta data — take the oldest match
+    # instead of scalar_one_or_none(), which raises on duplicates.
+    patient_stmt = (
+        select(Patient)
+        .where(Patient.phone == body.patient_phone)
+        .order_by(Patient.created_at)
+        .limit(1)
+    )
+    patient = (await db.execute(patient_stmt)).scalars().first()
 
     if not patient:
         patient = Patient(
@@ -396,23 +426,33 @@ async def create_appointment(
         db.add(patient)
         await db.flush()
 
-    external_id = None
-    if body.service_ids:
-        try:
-            svc = await OneDentaService.from_db(db)
-            result = await svc.create_visit(
-                name=body.patient_name,
-                phone=body.patient_phone,
-                email=body.patient_email,
-                service_ids=body.service_ids,
-                resource_id=body.doctor_id,
-                dt=body.scheduled_at,
-                comment=body.comment,
-            )
-            external_id = str(result.get("id", ""))
-            logger.info("1Denta: visit created, external_id=%s", external_id)
-        except Exception:
-            logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
+    import httpx
+
+    try:
+        svc = await OneDentaService.from_db(db)
+        result = await svc.create_visit(
+            name=body.patient_name,
+            phone=body.patient_phone,
+            email=body.patient_email,
+            service_ids=body.service_ids,
+            resource_id=body.doctor_id,
+            dt=body.scheduled_at,
+            comment=body.comment,
+        )
+        external_id = str(result.get("id", "") or "")
+        logger.info("1Denta: visit created, external_id=%s", external_id)
+    except httpx.HTTPStatusError as e:
+        logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
+        raise HTTPException(
+            status_code=502,
+            detail=f"1Denta отклонила создание записи (HTTP {e.response.status_code}): {e.response.text[:200]}",
+        )
+    except Exception as e:
+        logger.exception("1Denta: failed to create visit for patient=%s dt=%s", body.patient_phone, body.scheduled_at)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Не удалось создать запись в 1Denta: {e}",
+        )
 
     appt = Appointment(
         external_id=external_id or f"local-{uuid.uuid4().hex[:8]}",
@@ -421,7 +461,7 @@ async def create_appointment(
         doctor_id=body.doctor_id,
         service=body.service,
         branch=body.branch,
-        scheduled_at=datetime.fromisoformat(body.scheduled_at),
+        scheduled_at=parsed_dt,
         duration_min=body.duration_min,
         status="unconfirmed",
     )
@@ -435,6 +475,7 @@ async def create_appointment(
         "doctor_name": body.doctor_name,
         "scheduled_at": body.scheduled_at,
         "status": "unconfirmed",
+        "synced_with_1denta": bool(external_id),
     }
 
 

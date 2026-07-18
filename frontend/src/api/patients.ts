@@ -16,6 +16,9 @@ export interface PatientResponse {
   total_revenue: number;
   ltv_score: number | null;
   tags: string[] | null;
+  representative_name: string | null;
+  representative_phone: string | null;
+  representative_relation: string | null;
   created_at: string;
 }
 
@@ -114,6 +117,28 @@ export function usePatientDetail(id: string | undefined) {
   });
 
   return { data, isLoading };
+}
+
+export interface PatientUpdatePayload {
+  name?: string;
+  phone?: string;
+  email?: string;
+  representative_name?: string;
+  representative_phone?: string;
+  representative_relation?: string;
+}
+
+export function useUpdatePatient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ patientId, ...payload }: PatientUpdatePayload & { patientId: string }) => {
+      const { data } = await api.patch(`/patients/${patientId}`, payload);
+      return data as PatientResponse;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["patient", vars.patientId] });
+    },
+  });
 }
 
 export function useSyncPatient() {

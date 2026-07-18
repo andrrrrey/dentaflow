@@ -23,6 +23,7 @@ class CommunicationResponse(BaseModel):
     assigned_to_name: str | None
     bot_chat_id: str | None = None
     responded_at: datetime | None
+    last_message_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
