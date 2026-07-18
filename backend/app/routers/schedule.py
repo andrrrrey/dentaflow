@@ -113,6 +113,142 @@ async def list_schedule(
     }
 
 
+def _derive_breaks(busy: list[tuple[int, int]], free_starts: list[int]) -> list[tuple[int, int]]:
+    """Перерывы = «дыры» между активными интервалами дня врача.
+
+    API 1Denta не отдаёт перерывы как сущность. Восстанавливаем их косвенно:
+    активное время = записи (busy) + свободные онлайн-слоты (free_starts);
+    промежуток внутри дня, где нет ни того ни другого, — перерыв/блокировка.
+    Края дня (до первой и после последней активности) перерывом не считаются.
+    """
+    step = 15
+    fs = sorted(set(free_starts))
+    if len(fs) >= 2:
+        diffs = [b - a for a, b in zip(fs, fs[1:]) if b - a > 0]
+        if diffs:
+            step = min(min(diffs), 60)
+
+    covered = [(s, s + step) for s in fs] + [iv for iv in busy if iv[1] > iv[0]]
+    if len(covered) < 2:
+        return []
+    covered.sort()
+    merged: list[tuple[int, int]] = []
+    for s, e in covered:
+        if merged and s <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+        else:
+            merged.append((s, e))
+    return [
+        (e1, s2)
+        for (_, e1), (s2, _) in zip(merged, merged[1:])
+        if s2 - e1 >= 15
+    ]
+
+
+@router.get("/breaks")
+async def list_breaks(
+    day: date = Query(..., alias="date"),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Перерывы врачей на день, выведенные из свободных слотов онлайн-записи.
+
+    Слоты берутся из Redis-кэша (общий с синком, TTL 30 мин) либо запрашиваются
+    у 1Denta. Врачи без онлайн-записи пропускаются — для них данных нет.
+    """
+    import json as _json
+
+    from app.models.directory_cache import DirectoryCache
+    from app.services.one_denta import _redis_client
+
+    dt_from = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    dt_to = datetime(day.year, day.month, day.day, 23, 59, 59, tzinfo=timezone.utc)
+    rows = (await db.execute(
+        select(Appointment.doctor_id, Appointment.scheduled_at, Appointment.duration_min)
+        .where(
+            Appointment.scheduled_at >= dt_from,
+            Appointment.scheduled_at <= dt_to,
+            Appointment.doctor_id.isnot(None),
+            Appointment.doctor_id != "",
+            Appointment.status.notin_(["cancelled", "no_show"]),
+        )
+    )).all()
+
+    busy_by_doc: dict[str, list[tuple[int, int]]] = {}
+    for r in rows:
+        if not r.scheduled_at:
+            continue
+        start_min = r.scheduled_at.hour * 60 + r.scheduled_at.minute
+        busy_by_doc.setdefault(r.doctor_id, []).append(
+            (start_min, start_min + (r.duration_min or 30))
+        )
+    if not busy_by_doc:
+        return {"breaks": []}
+
+    cache_rows = (await db.execute(
+        select(DirectoryCache).where(DirectoryCache.category.in_(["resource", "service"]))
+    )).scalars().all()
+    online_resource_ids = {
+        r.external_id for r in cache_rows
+        if r.category == "resource" and not (r.data or {}).get("_placeholder")
+    }
+    probe_service_id = next(
+        (r.external_id for r in cache_rows
+         if r.category == "service" and (r.data or {}).get("onlineRecord")),
+        None,
+    )
+    if not probe_service_id:
+        return {"breaks": []}
+
+    svc = None
+    r_client = await _redis_client()
+    breaks: list[dict] = []
+    try:
+        for doc_id, busy in busy_by_doc.items():
+            if doc_id not in online_resource_ids:
+                continue
+            key = f"1denta:slots:{doc_id}:{day.isoformat()}"
+            minutes: list[int] | None = None
+            if r_client is not None:
+                try:
+                    cached = await r_client.get(key)
+                    if cached is not None:
+                        minutes = _json.loads(cached)
+                except Exception:
+                    minutes = None
+            if minutes is None:
+                minutes = []
+                try:
+                    if svc is None:
+                        svc = await OneDentaService.from_db(db)
+                    slots = await svc.get_available_slots(
+                        resource_id=doc_id, service_ids=[probe_service_id], date=day.isoformat()
+                    )
+                    for s in slots:
+                        try:
+                            sdt = datetime.fromisoformat(s)
+                            minutes.append(sdt.hour * 60 + sdt.minute)
+                        except ValueError:
+                            pass
+                except Exception:
+                    logger.warning("breaks: failed to load slots for %s @ %s", doc_id, day)
+                if r_client is not None:
+                    try:
+                        await r_client.setex(key, 1800, _json.dumps(minutes))
+                    except Exception:
+                        pass
+            for start_min, end_min in _derive_breaks(busy, minutes):
+                breaks.append({"doctor_id": doc_id, "start_min": start_min, "end_min": end_min})
+    finally:
+        if r_client is not None:
+            try:
+                await r_client.aclose()
+            except Exception:
+                pass
+
+    return {"breaks": breaks}
+
+
 @router.get("/{appointment_id}")
 async def get_appointment_detail(
     appointment_id: uuid.UUID,
