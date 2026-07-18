@@ -94,6 +94,7 @@ async def list_schedule(
             "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
             "duration_min": appt.duration_min,
             "status": appt.status,
+            "comment": appt.comment,
             "revenue": float(appt.revenue) if appt.revenue else 0,
         })
 
