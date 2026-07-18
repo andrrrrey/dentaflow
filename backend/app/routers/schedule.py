@@ -515,6 +515,15 @@ async def create_appointment(
             detail="Выберите услугу из онлайн-записи 1Denta — без неё запись нельзя создать в 1Denta",
         )
 
+    # 1Denta принимает телефон только как +7XXXXXXXXXX — проверяем заранее,
+    # чтобы вернуть понятную ошибку вместо 422 от 1Denta
+    normalized_phone = OneDentaService.normalize_phone(body.patient_phone)
+    if len(normalized_phone) != 12 or not normalized_phone.startswith("+7"):
+        raise HTTPException(
+            status_code=422,
+            detail="Неверный формат телефона — укажите российский номер из 11 цифр, например +7 999 123-45-67",
+        )
+
     scheduled_dt = parsed_dt
     if scheduled_dt.tzinfo is None:
         scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
