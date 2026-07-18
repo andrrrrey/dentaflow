@@ -8,6 +8,7 @@ export interface Appointment {
   patient_name: string;
   patient_phone: string | null;
   patient_birth_date: string | null;
+  is_primary?: boolean;
   doctor_name: string | null;
   doctor_id: string | null;
   service: string | null;

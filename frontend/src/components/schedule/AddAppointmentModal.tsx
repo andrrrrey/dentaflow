@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, RefreshCw, WifiOff } from "lucide-react";
+import { X, Plus, RefreshCw } from "lucide-react";
 import Button from "../ui/Button";
 import PatientSearchInput from "../ui/PatientSearchInput";
 import { useCreateAppointment, type CreateAppointmentData } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
-import { useServices, type ServiceItem } from "../../api/directories";
+import { useServices } from "../../api/directories";
 
 const inputStyle = {
   border: "1px solid rgba(91,76,245,0.15)",
@@ -16,34 +16,54 @@ interface AddAppointmentModalProps {
   onClose: () => void;
   initialPatientName?: string;
   initialPatientPhone?: string;
+  initialDoctorId?: string;
+  initialDoctorName?: string;
+  /** "yyyy-MM-dd'T'HH:mm" — префилл при клике по свободному слоту */
+  initialDateTime?: string;
 }
 
 export default function AddAppointmentModal({
   onClose,
   initialPatientName = "",
   initialPatientPhone = "",
+  initialDoctorId = "",
+  initialDoctorName = "",
+  initialDateTime = "",
 }: AddAppointmentModalProps) {
   const createMutation = useCreateAppointment();
   const { data: doctorsData } = useDoctorsList();
   const { data: servicesData } = useServices();
 
   const doctors = doctorsData?.doctors ?? [];
-  const services = servicesData?.services ?? [];
-
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  // Запись создаётся сначала в 1Denta, поэтому доступны только услуги,
+  // открытые там для онлайн-записи.
+  const onlineServices = useMemo(
+    () => (servicesData?.services ?? []).filter((s) => s.onlineRecord),
+    [servicesData]
+  );
 
   const [form, setForm] = useState<CreateAppointmentData>({
     patient_name: initialPatientName,
     patient_phone: initialPatientPhone,
-    doctor_id: doctors[0]?.doctor_id ?? "",
-    doctor_name: doctors[0]?.doctor_name ?? "",
+    doctor_id: initialDoctorId,
+    doctor_name: initialDoctorName,
     service: "",
     service_ids: [],
-    scheduled_at: "",
+    scheduled_at: initialDateTime,
     duration_min: 30,
     comment: "",
   });
   const [error, setError] = useState("");
+
+  // Список врачей приходит асинхронно — дефолт нельзя брать на первом рендере
+  useEffect(() => {
+    if (!form.doctor_id && doctors.length > 0) {
+      setForm((p) =>
+        p.doctor_id ? p : { ...p, doctor_id: doctors[0].doctor_id ?? "", doctor_name: doctors[0].doctor_name }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctors.length]);
 
   function set(key: keyof CreateAppointmentData, val: string | number) {
     setForm((p) => {
@@ -61,17 +81,17 @@ export default function AddAppointmentModal({
       setError("Заполните обязательные поля");
       return;
     }
+    if (!form.service_ids?.length) {
+      setError("Выберите услугу — запись создаётся в 1Denta и без услуги невозможна");
+      return;
+    }
     setError("");
     try {
       await createMutation.mutateAsync(form);
       onClose();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      if (detail) {
-        setError(detail);
-      } else {
-        setError("Ошибка при создании записи");
-      }
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(e?.response?.data?.detail || e?.message || "Ошибка при создании записи");
     }
   }
 
@@ -114,32 +134,32 @@ export default function AddAppointmentModal({
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Услуга</label>
-            {services.length > 0 ? (
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Услуга *</label>
+            {onlineServices.length > 0 ? (
               <select
                 value={form.service}
                 onChange={(e) => {
-                  const svc = services.find((s) => s.name === e.target.value) ?? null;
-                  setSelectedService(svc);
+                  const svc = onlineServices.find((s) => s.name === e.target.value) ?? null;
                   setForm((p) => ({
                     ...p,
                     service: e.target.value,
-                    service_ids: svc?.onlineRecord ? [String(svc.id)] : [],
+                    service_ids: svc ? [String(svc.id)] : [],
+                    duration_min: svc?.duration ? Number(svc.duration) : p.duration_min,
                   }));
                 }}
                 className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none cursor-pointer"
                 style={inputStyle}
               >
                 <option value="">— Выбрать услугу —</option>
-                {services.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                {onlineServices.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
             ) : (
-              <input value={form.service} onChange={(e) => set("service", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} placeholder="Консультация" />
+              <div className="text-[12px] text-[#c52048] font-medium">
+                Нет услуг, открытых для онлайн-записи в 1Denta. Откройте услуги для онлайн-записи в настройках 1Denta и запустите синхронизацию справочников.
+              </div>
             )}
             {form.service && (
-              selectedService?.onlineRecord
-                ? <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium mt-0.5"><RefreshCw size={11} />Будет синхронизирована с 1Denta</div>
-                : <div className="flex items-center gap-1 text-[11px] text-text-muted font-medium mt-0.5"><WifiOff size={11} />Только локально — онлайн-запись в 1Denta закрыта</div>
+              <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium mt-0.5"><RefreshCw size={11} />Запись будет создана в 1Denta</div>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">

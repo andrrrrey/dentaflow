@@ -388,8 +388,14 @@ class OneDentaService:
                 resource_map[rid_str] = f"Врач #{rid_str}"
                 logger.info("1Denta: resource %s unresolvable — using placeholder", rid_str)
 
-        mapped = [self._map_visit(v, resource_map, service_duration_map) for v in visits if not v.get("deleted")]
-        self._infer_durations_from_schedule(mapped)
+        # Keep deleted visits in the result (flagged) so the sync can remove
+        # the corresponding local appointments instead of silently skipping them.
+        mapped = []
+        for v in visits:
+            m = self._map_visit(v, resource_map, service_duration_map)
+            m["deleted"] = bool(v.get("deleted"))
+            mapped.append(m)
+        self._infer_durations_from_schedule([m for m in mapped if not m["deleted"]])
         return mapped
 
     async def create_visit(

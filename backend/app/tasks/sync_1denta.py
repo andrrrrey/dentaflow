@@ -177,10 +177,17 @@ async def _sync_appointments_async(
 
     created = 0
     updated = 0
+    deleted = 0
 
-    valid = [(a, a["external_id"]) for a in appointments_data if a.get("external_id")]
-    if not valid:
-        return {"created": 0, "updated": 0, "total": 0}
+    all_feed = [(a, a["external_id"]) for a in appointments_data if a.get("external_id")]
+    if not all_feed:
+        # Empty/failed feed — never reconcile-delete on it.
+        return {"created": 0, "updated": 0, "deleted": 0, "total": 0}
+
+    # Visits flagged deleted in 1Denta must be removed locally, not upserted.
+    valid = [(a, ext_id) for a, ext_id in all_feed if not a.get("deleted")]
+    deleted_ext_ids = [ext_id for a, ext_id in all_feed if a.get("deleted")]
+    feed_ext_ids = {ext_id for _, ext_id in all_feed}
 
     ext_ids = [ext_id for _, ext_id in valid]
     patient_ext_ids = list({a.get("patient_external_id") for a, _ in valid if a.get("patient_external_id")})
@@ -281,8 +288,13 @@ async def _sync_appointments_async(
                 appointment.patient_id = patient_id or appointment.patient_id
                 # Only update fields when the incoming value is non-empty so that
                 # a temporary resource_map miss can't erase a previously correct name.
-                if a_data.get("doctor_name"):
-                    appointment.doctor_name = a_data["doctor_name"]
+                # A "Врач #N" placeholder must not clobber an already known name
+                # (real from 1Denta or manually set in Справочники).
+                new_doctor_name = a_data.get("doctor_name")
+                if new_doctor_name and (
+                    not new_doctor_name.startswith("Врач #") or not appointment.doctor_name
+                ):
+                    appointment.doctor_name = new_doctor_name
                 if a_data.get("doctor_id"):
                     appointment.doctor_id = a_data["doctor_id"]
                 appointment.service = a_data.get("service") or appointment.service
@@ -302,6 +314,51 @@ async def _sync_appointments_async(
                 appointment.synced_at = now_utc
                 updated += 1
 
+        # ── Propagate deletions from 1Denta ────────────────────────────────
+        # 1) Visits explicitly flagged deleted in the feed.
+        # 2) Window reconciliation: local 1Denta-born appointments inside the
+        #    fetched window whose external_id no longer appears in the feed
+        #    (deleted long ago, so 1Denta stops returning them at all).
+        #    "local-…" records never existed in 1Denta and are kept.
+        from sqlalchemy import delete as sa_delete, update as sa_update
+        from app.models.task import Task
+
+        # Bounds mirror the dateFrom/dateTill params sent to 1Denta; stored
+        # values are naive wall-clock, so compare with naive bounds.
+        win_from = datetime.combine((now - timedelta(days=days_back)).date(), datetime.min.time())
+        win_to = datetime.combine((now + timedelta(days=days_forward)).date(), datetime.max.time())
+
+        stale_stmt = select(Appointment.id).where(
+            Appointment.scheduled_at >= win_from,
+            Appointment.scheduled_at <= win_to,
+            Appointment.external_id.isnot(None),
+            Appointment.external_id.notlike("local-%"),
+            Appointment.external_id.notin_(feed_ext_ids),
+        )
+        stale_ids = list((await session.execute(stale_stmt)).scalars().all())
+
+        explicit_stmt = select(Appointment.id).where(
+            Appointment.external_id.in_(deleted_ext_ids)
+        )
+        explicit_ids = list((await session.execute(explicit_stmt)).scalars().all()) if deleted_ext_ids else []
+
+        ids_to_delete = list({*stale_ids, *explicit_ids})
+        if ids_to_delete:
+            # tasks.appointment_id has no ON DELETE — unlink before deleting
+            await session.execute(
+                sa_update(Task)
+                .where(Task.appointment_id.in_(ids_to_delete))
+                .values(appointment_id=None)
+            )
+            await session.execute(
+                sa_delete(Appointment).where(Appointment.id.in_(ids_to_delete))
+            )
+            deleted = len(ids_to_delete)
+            logger.info(
+                "sync_appointments: deleted %d local appointments removed in 1Denta (explicit=%d, reconciled=%d)",
+                deleted, len(explicit_ids), len(stale_ids),
+            )
+
         await session.commit()
 
     # Backfill doctor_name for appointments that still have empty name.
@@ -311,7 +368,7 @@ async def _sync_appointments_async(
     # Auto-create waiting_list deals disabled — deals are created manually via Communications
     # await _sync_waiting_list_deals_async(appointments_data)
 
-    return {"created": created, "updated": updated, "total": len(appointments_data)}
+    return {"created": created, "updated": updated, "deleted": deleted, "total": len(appointments_data)}
 
 
 async def _backfill_doctor_names_async() -> None:
@@ -336,7 +393,9 @@ async def _backfill_doctor_names_async() -> None:
                 update(Appointment)
                 .where(
                     Appointment.doctor_id == ext_id,
-                    (Appointment.doctor_name == None) | (Appointment.doctor_name == ""),
+                    (Appointment.doctor_name == None)
+                    | (Appointment.doctor_name == "")
+                    | (Appointment.doctor_name == f"Врач #{ext_id}"),
                 )
                 .values(doctor_name=name)
             )
@@ -732,6 +791,11 @@ async def _sync_directories_async() -> dict:
     service = await OneDentaService.from_db_session_factory()
     counts: dict[str, int] = {}
 
+    # Drop the 10-min in-process resources cache so a doctor freshly enabled
+    # for online booking gets their real name within this very run.
+    from app.services import one_denta as one_denta_module
+    one_denta_module._resources_cache["ts"] = None
+
     async with async_session_factory() as session:
         now = datetime.now(timezone.utc)
 
@@ -759,18 +823,44 @@ async def _sync_directories_async() -> dict:
         ]:
             try:
                 items = await fetch_coro
-                await session.execute(
-                    delete(DirectoryCache).where(DirectoryCache.category == category)
-                )
-                for item in items:
-                    normalized = _normalize_for_cache(category, item)
-                    session.add(DirectoryCache(
-                        external_id=str(item.get("id", "")),
-                        category=category,
-                        name=_item_name(category, normalized),
-                        data=normalized,
-                        synced_at=now,
-                    ))
+                if category == "resource":
+                    # Upsert by external_id, keeping rows absent from the feed:
+                    # /api/v2/resource only returns online-booking staff, and
+                    # cache rows for the rest may hold manually set names.
+                    existing_res = (await session.execute(
+                        select(DirectoryCache).where(DirectoryCache.category == "resource")
+                    )).scalars().all()
+                    res_by_ext = {r.external_id: r for r in existing_res}
+                    for item in items:
+                        normalized = _normalize_for_cache(category, item)
+                        ext_id = str(item.get("id", ""))
+                        name = _item_name(category, normalized)
+                        row = res_by_ext.get(ext_id)
+                        if row is None:
+                            session.add(DirectoryCache(
+                                external_id=ext_id,
+                                category=category,
+                                name=name,
+                                data=normalized,
+                                synced_at=now,
+                            ))
+                        else:
+                            row.name = name or row.name
+                            row.data = normalized
+                            row.synced_at = now
+                else:
+                    await session.execute(
+                        delete(DirectoryCache).where(DirectoryCache.category == category)
+                    )
+                    for item in items:
+                        normalized = _normalize_for_cache(category, item)
+                        session.add(DirectoryCache(
+                            external_id=str(item.get("id", "")),
+                            category=category,
+                            name=_item_name(category, normalized),
+                            data=normalized,
+                            synced_at=now,
+                        ))
                 counts[category] = len(items)
                 logger.info("sync_directories: %s=%d", category, len(items))
             except Exception:
@@ -787,7 +877,9 @@ async def _sync_directories_async() -> dict:
                 update(Appointment)
                 .where(
                     Appointment.doctor_id == ext_id,
-                    (Appointment.doctor_name == None) | (Appointment.doctor_name == ""),
+                    (Appointment.doctor_name == None)
+                    | (Appointment.doctor_name == "")
+                    | (Appointment.doctor_name == f"Врач #{ext_id}"),
                 )
                 .values(doctor_name=name)
             )

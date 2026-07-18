@@ -83,19 +83,46 @@ async def _get_cached(db: AsyncSession, category: str) -> tuple[list[dict], str 
 
 
 async def _upsert_items(db: AsyncSession, category: str, items: list[dict]) -> int:
-    """Delete old rows and insert fresh ones. Returns count."""
-    await db.execute(delete(DirectoryCache).where(DirectoryCache.category == category))
+    """Refresh cached rows for a category. Returns count.
+
+    Resources are upserted by external_id and rows absent from the feed are
+    kept: /api/v2/resource only returns online-booking staff, and rows for the
+    rest may hold manually set doctor names. Other categories are replaced.
+    """
     now = datetime.now(timezone.utc)
-    for item in items:
-        ext_id = str(item.get("id", "")) or None
-        name = item.get("name") or item.get("title") or ""
-        db.add(DirectoryCache(
-            category=category,
-            external_id=ext_id,
-            name=name,
-            data=item,
-            synced_at=now,
-        ))
+    if category == "resource":
+        existing = (await db.execute(
+            select(DirectoryCache).where(DirectoryCache.category == category)
+        )).scalars().all()
+        by_ext = {r.external_id: r for r in existing}
+        for item in items:
+            ext_id = str(item.get("id", "")) or None
+            name = item.get("name") or item.get("title") or ""
+            row = by_ext.get(ext_id)
+            if row is None:
+                db.add(DirectoryCache(
+                    category=category,
+                    external_id=ext_id,
+                    name=name,
+                    data=item,
+                    synced_at=now,
+                ))
+            else:
+                row.name = name or row.name
+                row.data = item
+                row.synced_at = now
+    else:
+        await db.execute(delete(DirectoryCache).where(DirectoryCache.category == category))
+        for item in items:
+            ext_id = str(item.get("id", "")) or None
+            name = item.get("name") or item.get("title") or ""
+            db.add(DirectoryCache(
+                category=category,
+                external_id=ext_id,
+                name=name,
+                data=item,
+                synced_at=now,
+            ))
     await db.flush()
     return len(items)
 
@@ -229,14 +256,14 @@ async def update_resource_name(
 
     if existing:
         existing.name = body.name
-        existing.data = {**(existing.data or {}), "name": body.name, "title": body.name}
+        existing.data = {**(existing.data or {}), "name": body.name, "title": body.name, "_manual": True}
         existing.synced_at = now
     else:
         db.add(DirectoryCache(
             category="resource",
             external_id=external_id,
             name=body.name,
-            data={"id": external_id, "name": body.name, "title": body.name, "description": ""},
+            data={"id": external_id, "name": body.name, "title": body.name, "description": "", "_manual": True},
             synced_at=now,
         ))
 
@@ -267,7 +294,9 @@ async def _backfill_doctor_names(db: AsyncSession, resources: list[dict]) -> Non
             update(Appointment)
             .where(
                 Appointment.doctor_id == doctor_id,
-                (Appointment.doctor_name == None) | (Appointment.doctor_name == ""),
+                (Appointment.doctor_name == None)
+                | (Appointment.doctor_name == "")
+                | (Appointment.doctor_name == f"Врач #{doctor_id}"),
             )
             .values(doctor_name=doctor_name)
         )
