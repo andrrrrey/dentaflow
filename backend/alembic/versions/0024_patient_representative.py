@@ -2,26 +2,26 @@
 does not expose guardian data)
 
 Revision ID: 0024_patient_representative
-Revises: 0023_communications_last_message_at
+Revises: 0023_comm_last_message_at
 Create Date: 2026-07-18
 """
 
 from alembic import op
-import sqlalchemy as sa
 
 revision = "0024_patient_representative"
-down_revision = "0023_communications_last_message_at"
+down_revision = "0023_comm_last_message_at"
 branch_labels = None
 depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("patients", sa.Column("representative_name", sa.String(255), nullable=True))
-    op.add_column("patients", sa.Column("representative_phone", sa.String(50), nullable=True))
-    op.add_column("patients", sa.Column("representative_relation", sa.String(50), nullable=True))
+    # IF NOT EXISTS — safe to re-run after a partially failed deploy
+    op.execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS representative_name VARCHAR(255) NULL")
+    op.execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS representative_phone VARCHAR(50) NULL")
+    op.execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS representative_relation VARCHAR(50) NULL")
 
 
 def downgrade() -> None:
-    op.drop_column("patients", "representative_relation")
-    op.drop_column("patients", "representative_phone")
-    op.drop_column("patients", "representative_name")
+    op.execute("ALTER TABLE patients DROP COLUMN IF EXISTS representative_relation")
+    op.execute("ALTER TABLE patients DROP COLUMN IF EXISTS representative_phone")
+    op.execute("ALTER TABLE patients DROP COLUMN IF EXISTS representative_name")
