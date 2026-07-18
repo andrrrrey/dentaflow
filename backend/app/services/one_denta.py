@@ -490,6 +490,21 @@ class OneDentaService:
                     pass
         return boundaries
 
+    @staticmethod
+    def normalize_phone(phone: str) -> str:
+        """+7(999)888-77-66 / 8 999 888-77-66 → +79998887766.
+
+        POST /api/v2/visit отвергает номера со скобками/дефисами
+        ("Invalid value visit.user.phone") — принимает только +7XXXXXXXXXX.
+        """
+        import re
+        digits = re.sub(r"\D", "", phone or "")
+        if len(digits) == 11 and digits.startswith("8"):
+            digits = "7" + digits[1:]
+        if len(digits) == 10:
+            digits = "7" + digits
+        return f"+{digits}" if digits else (phone or "")
+
     async def create_visit(
         self,
         *,
@@ -504,6 +519,7 @@ class OneDentaService:
         """Create a new visit / appointment."""
         if self._no_credentials():
             raise RuntimeError("1Denta credentials not configured")
+        phone = self.normalize_phone(phone)
 
         def _to_int(v: str) -> int | str:
             try:
