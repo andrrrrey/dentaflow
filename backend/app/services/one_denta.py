@@ -363,10 +363,13 @@ class OneDentaService:
         except Exception:
             logger.exception("1Denta: failed to load resource map — doctor names will be empty")
 
+        real_resource_ids = set(resource_map)
+
         # Build service_id → durationSeconds lookup.
         # Visit data from /api/v2/visit does NOT embed durationSeconds on service items;
         # we must look it up from the service catalog.
         service_duration_map: dict[str, int] = {}
+        default_slot_service_id: str | None = None
         try:
             raw_services = await self._fetch_all_pages("/api/v2/service")
             for s in raw_services:
@@ -374,6 +377,9 @@ class OneDentaService:
                 dur = s.get("durationSeconds")
                 if sid and dur:
                     service_duration_map[sid] = int(dur)
+                    # Any service with a duration works for probing /resource/{id}/time
+                    if default_slot_service_id is None:
+                        default_slot_service_id = sid
             logger.info("1Denta: loaded %d service durations", len(service_duration_map))
         except Exception:
             logger.exception("1Denta: failed to load service durations — visit durations may be wrong")
@@ -395,8 +401,94 @@ class OneDentaService:
             m = self._map_visit(v, resource_map, service_duration_map)
             m["deleted"] = bool(v.get("deleted"))
             mapped.append(m)
-        self._infer_durations_from_schedule([m for m in mapped if not m["deleted"]])
+        active = [m for m in mapped if not m["deleted"]]
+        boundaries = await self._load_slot_boundaries(
+            active, real_resource_ids, default_slot_service_id
+        )
+        self._infer_durations_from_schedule(active, boundaries=boundaries)
         return mapped
+
+    async def _load_slot_boundaries(
+        self,
+        visits: list[dict],
+        real_resource_ids: set[str],
+        service_id: str | None,
+    ) -> dict[tuple[str, str], list[int]]:
+        """Free online-booking slots as minutes-of-day per (doctor_id, date).
+
+        Queried only for doctor/day pairs that still need duration inference
+        (today .. +14 days, doctors present in /api/v2/resource). Results are
+        cached in Redis for 30 min to bound the number of 1Denta calls.
+        """
+        import json as _json
+        from datetime import datetime as _dt, timedelta as _td
+
+        if not service_id:
+            return {}
+
+        today = _dt.utcnow().date()
+        horizon = today + _td(days=14)
+
+        pairs: set[tuple[str, str]] = set()
+        for v in visits:
+            if v.get("duration_min") is not None:
+                continue
+            doc = v.get("doctor_id")
+            sched = v.get("scheduled_at")
+            if not doc or doc not in real_resource_ids or not sched:
+                continue
+            try:
+                d = _dt.fromisoformat(sched).date()
+            except ValueError:
+                continue
+            if today <= d <= horizon:
+                pairs.add((doc, d.isoformat()))
+        if not pairs:
+            return {}
+
+        boundaries: dict[tuple[str, str], list[int]] = {}
+        r = await _redis_client()
+        try:
+            for doc, day in sorted(pairs):
+                key = f"1denta:slots:{doc}:{day}"
+                minutes: list[int] | None = None
+                if r is not None:
+                    try:
+                        cached = await r.get(key)
+                        if cached is not None:
+                            minutes = _json.loads(cached)
+                    except Exception:
+                        minutes = None
+                if minutes is None:
+                    minutes = []
+                    try:
+                        slots = await self.get_available_slots(
+                            resource_id=doc, service_ids=[service_id], date=day
+                        )
+                        for s in slots:
+                            try:
+                                sdt = _dt.fromisoformat(s)
+                                minutes.append(sdt.hour * 60 + sdt.minute)
+                            except ValueError:
+                                pass
+                    except Exception:
+                        # Cache the empty result too so a failing endpoint
+                        # isn't hammered on every sync run.
+                        logger.warning("1Denta: failed to load slots for %s @ %s", doc, day)
+                    if r is not None:
+                        try:
+                            await r.setex(key, 1800, _json.dumps(minutes))
+                        except Exception:
+                            pass
+                if minutes:
+                    boundaries[(doc, day)] = minutes
+        finally:
+            if r is not None:
+                try:
+                    await r.aclose()
+                except Exception:
+                    pass
+        return boundaries
 
     async def create_visit(
         self,
@@ -727,14 +819,26 @@ class OneDentaService:
         }
 
     @staticmethod
-    def _infer_durations_from_schedule(visits: list[dict], max_gap_min: int = 180) -> None:
+    def _infer_durations_from_schedule(
+        visits: list[dict],
+        max_gap_min: int = 120,
+        boundaries: dict[tuple[str, str], list[int]] | None = None,
+    ) -> None:
         """Fill in duration_min for visits where the API returned None.
 
         1Denta does not expose appointment duration in the visit response.
         For back-to-back appointments the duration equals the gap to the next
         appointment for the same doctor on the same day.  Gaps larger than
-        max_gap_min (default 3 h) are treated as lunch breaks / free time and
-        ignored so we don't inflate durations with idle time.
+        max_gap_min are treated as lunch breaks / free time and ignored so we
+        don't inflate durations with idle time.
+
+        ``boundaries`` — (doctor_id, YYYY-MM-DD) → sorted minutes-of-day of
+        *free* online-booking slots for that doctor/day.  A free slot after a
+        visit start marks where the visit is already over, so the inferred end
+        is capped by the first boundary after the start.  This fixes durations
+        stretching across idle time when the next appointment is hours away.
+        Values inferred here are marked with ``duration_inferred=True`` so the
+        sync only lets them shrink stored durations, never inflate them.
         """
         from collections import defaultdict
         from datetime import datetime as _dt
@@ -753,17 +857,31 @@ class OneDentaService:
                 except Exception:
                     pass
 
-        for group in groups.values():
+        for (doc, day), group in groups.items():
+            day_bounds = sorted((boundaries or {}).get((doc, day), []))
             group.sort(key=lambda x: x.get("scheduled_at", ""))
             for i, vm in enumerate(group):
-                if i + 1 >= len(group):
-                    break
                 try:
                     curr = _dt.fromisoformat(vm["scheduled_at"])
-                    nxt = _dt.fromisoformat(group[i + 1]["scheduled_at"])
-                    diff = int((nxt - curr).total_seconds() // 60)
-                    if 0 < diff <= max_gap_min:
-                        vm["duration_min"] = diff
+                    start_min = curr.hour * 60 + curr.minute
+                    gap: int | None = None
+                    if i + 1 < len(group):
+                        nxt = _dt.fromisoformat(group[i + 1]["scheduled_at"])
+                        diff = int((nxt - curr).total_seconds() // 60)
+                        if diff > 0:
+                            gap = diff
+                    boundary_gap: int | None = None
+                    for b in day_bounds:
+                        if b > start_min:
+                            boundary_gap = b - start_min
+                            break
+                    candidates = [g for g in (gap, boundary_gap) if g is not None]
+                    if not candidates:
+                        continue
+                    duration = min(candidates)
+                    if 0 < duration <= max_gap_min:
+                        vm["duration_min"] = duration
+                        vm["duration_inferred"] = True
                 except Exception:
                     pass
 

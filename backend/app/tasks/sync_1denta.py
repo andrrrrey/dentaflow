@@ -300,9 +300,19 @@ async def _sync_appointments_async(
                 appointment.service = a_data.get("service") or appointment.service
                 appointment.branch = a_data.get("branch", appointment.branch)
                 appointment.scheduled_at = scheduled_at or appointment.scheduled_at
+                # Exact durations (timeEnd / service catalog) always win.
+                # Inferred ones (gap/slot heuristics) may only shrink the stored
+                # value or replace the 30-min insert default — never inflate.
                 new_dur = a_data.get("duration_min")
                 if new_dur:
-                    appointment.duration_min = new_dur
+                    if not a_data.get("duration_inferred"):
+                        appointment.duration_min = new_dur
+                    elif (
+                        not appointment.duration_min
+                        or appointment.duration_min == 30
+                        or new_dur < appointment.duration_min
+                    ):
+                        appointment.duration_min = new_dur
                 appointment.status = a_data.get("status", appointment.status)
                 appointment.revenue = a_data.get("revenue", appointment.revenue)
                 appointment.discount = a_data.get("discount", appointment.discount)

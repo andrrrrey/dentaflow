@@ -491,6 +491,76 @@ def _default_system_prompt(clinic_name: str) -> str:
 
 
 # ------------------------------------------------------------------
+# 1Denta (SQNS CRM Exchange) — visit / client / service / commodity
+# ------------------------------------------------------------------
+
+@router.get("/1denta")
+async def one_denta_webhook_test():
+    """GET-эндпоинт для проверки доступности URL из браузера."""
+    return {"status": "ok", "endpoint": "1denta webhook is reachable"}
+
+
+@router.post("/1denta")
+async def one_denta_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Приём вебхуков 1Denta: мгновенная синхронизация записей/пациентов/справочников.
+
+    SQNS не подписывает payload, поэтому URL регистрируется с секретом в query
+    (?secret=...). Все операции идемпотентны (апсерт/удаление по external_id) —
+    повторная доставка безопасна. Часовой синк остаётся страховкой на случай
+    пропущенных вебхуков.
+    """
+    secret = request.query_params.get("secret", "")
+    stored_secret = await get_raw_value(db, "one_denta_webhook_secret")
+    if not stored_secret or secret != stored_secret:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    from app.services.one_denta_webhook import (
+        apply_client_event,
+        apply_directory_event,
+        apply_visit_event,
+    )
+
+    try:
+        # Диспетчеризация по контейнеру, а не по body["object"]: у товара
+        # object == "service", но контейнер — commodity (особенность SQNS).
+        if isinstance(body.get("visit"), dict):
+            result = await apply_visit_event(db, body["visit"])
+        elif isinstance(body.get("client"), dict):
+            result = await apply_client_event(db, body["client"])
+        elif isinstance(body.get("commodity"), dict):
+            result = await apply_directory_event(db, "commodity", body["commodity"])
+        elif isinstance(body.get("service"), dict):
+            result = await apply_directory_event(db, "service", body["service"])
+        else:
+            logger.warning("1Denta webhook: unknown payload keys=%s", list(body.keys()))
+            return {"ok": True, "action": "ignored"}
+        await db.commit()
+    except Exception:
+        logger.exception("1Denta webhook processing failed: object=%s", body.get("object"))
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+    logger.info("1Denta webhook processed: %s", result)
+
+    # Обновляем открытые расписания в реальном времени (best-effort)
+    try:
+        await realtime.publish("schedule_updated", result)
+    except Exception:
+        pass
+
+    return {"ok": True, **result}
+
+
+# ------------------------------------------------------------------
 # Website / Tilda form
 # ------------------------------------------------------------------
 
