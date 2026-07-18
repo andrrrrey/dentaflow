@@ -147,7 +147,7 @@ function MiniCalendar({ selected, onSelect, calendarMonth, onChangeMonth }: {
   );
 }
 
-function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart, preview, onHover }: {
+function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart, preview, expandLeft }: {
   appt: Appointment;
   onClick: () => void;
   col: number;
@@ -155,8 +155,10 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
   colWidth: number;
   onDragStart: (appt: Appointment, e: React.MouseEvent) => void;
   preview: DragPreview | null;
-  onHover: (appt: Appointment | null, x: number, y: number) => void;
+  /** Разворачивать ховер-карточку влево (для последней колонки), чтобы не вылезать за край */
+  expandLeft: boolean;
 }) {
+  const [hovered, setHovered] = useState(false);
   if (!appt.scheduled_at) return null;
   const start = parseISO(appt.scheduled_at);
   const startMin = start.getHours() * 60 + start.getMinutes();
@@ -172,49 +174,96 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
   const displayStartMin = isDragging ? preview.newStartMin : startMin;
   const displayEndMin = displayStartMin + appt.duration_min;
 
+  // Ховер: плашка разворачивается на месте (как в 1Denta) — тот же цвет,
+  // достаточная ширина/высота, вся информация о записи поверх соседей.
+  const expanded = hovered && !isDragging;
+  const EXPAND_W = Math.max(colWidth - GAP * 2, 270);
+
+  const basePos: React.CSSProperties = expanded
+    ? expandLeft
+      ? { right: `${GAP}px`, width: `${EXPAND_W}px` }
+      : { left: `calc(${col * colW}% + ${GAP}px)`, width: `${EXPAND_W}px` }
+    : { left: `calc(${col * colW}% + ${GAP}px)`, width: `calc(${colW}% - ${GAP * 2}px)` };
+
   return (
     <div
-      className="absolute rounded-[10px] cursor-grab active:cursor-grabbing overflow-hidden transition-shadow hover:shadow-lg hover:z-20"
+      className="absolute rounded-[10px] cursor-grab active:cursor-grabbing"
       style={{
         top: `${top}px`,
-        height: `${height}px`,
-        left: `calc(${col * colW}% + ${GAP}px)`,
-        width: `calc(${colW}% - ${GAP * 2}px)`,
-        background: colors.bg,
+        height: expanded ? "auto" : `${height}px`,
+        minHeight: expanded ? `${height}px` : undefined,
+        ...basePos,
+        // Непрозрачный пастельный фон того же тона: слой цвета статуса поверх белого
+        background: expanded
+          ? `linear-gradient(${colors.bg}, ${colors.bg}), #ffffff`
+          : colors.bg,
         borderLeft: `4px solid ${colors.border}`,
-        boxShadow: isDragging ? "0 8px 24px rgba(91,76,245,0.35)" : "0 1px 4px rgba(120,140,180,0.12)",
-        zIndex: isDragging ? 60 : 10,
+        boxShadow: isDragging
+          ? "0 8px 24px rgba(91,76,245,0.35)"
+          : expanded
+            ? "0 10px 30px rgba(30,41,59,0.25)"
+            : "0 1px 4px rgba(120,140,180,0.12)",
+        zIndex: isDragging ? 60 : expanded ? 45 : 10,
         transform: isDragging ? `translate(${preview.dxPx}px, ${preview.dyPx}px)` : undefined,
         opacity: isDragging ? 0.92 : 1,
         pointerEvents: isDragging ? "none" : undefined,
+        overflow: "hidden",
+        transition: "box-shadow 0.12s",
       }}
-      onMouseDown={(e) => onDragStart(appt, e)}
+      onMouseDown={(e) => { setHovered(false); onDragStart(appt, e); }}
       onClick={onClick}
-      onMouseEnter={(e) => onHover(appt, e.clientX, e.clientY)}
-      onMouseMove={(e) => onHover(appt, e.clientX, e.clientY)}
-      onMouseLeave={() => onHover(null, 0, 0)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div className="px-[9px] py-[7px] h-full flex flex-col justify-start overflow-hidden">
         <div className="text-[11.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
           {fmtMin(displayStartMin)} – {fmtMin(displayEndMin)}
+          {expanded && <span className="font-sans font-medium text-text-muted"> · {appt.duration_min} мин</span>}
         </div>
-        <div className="text-[13.5px] font-bold text-text-main leading-snug mt-[3px]" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+        <div
+          className="text-[13.5px] font-bold text-text-main leading-snug mt-[3px]"
+          style={expanded ? undefined : { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}
+        >
           {appt.is_primary && (
             <span title="Первичный пациент" className="mr-1" style={{ color: colors.border, fontWeight: 700 }}>①</span>
           )}
           {appt.patient_name}
           {age !== null && <span className="font-medium text-text-muted">, {age} лет</span>}
         </div>
-        {height > 56 && appt.patient_phone && (
-          <div className="text-[12px] text-text-muted truncate mt-[3px] font-medium">{appt.patient_phone}</div>
-        )}
-        {height > 84 && appt.service && (
-          <div
-            className="text-[11.5px] text-text-muted mt-[3px] leading-snug"
-            style={!compact ? { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } : { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          >
-            {appt.service}
-          </div>
+        {expanded ? (
+          <>
+            {appt.patient_phone && (
+              <div className="text-[12.5px] text-text-main mt-[4px] font-medium">{appt.patient_phone}</div>
+            )}
+            {appt.service && (
+              <div className="text-[12px] text-text-muted mt-[4px] leading-snug">{appt.service}</div>
+            )}
+            {appt.comment && (
+              <div className="text-[12px] text-text-muted mt-[4px] leading-snug italic">💬 {appt.comment}</div>
+            )}
+            <div className="mt-[6px] mb-[2px]">
+              <span
+                className="inline-block px-2 py-[2px] rounded-lg text-[11px] font-bold"
+                style={{ background: "rgba(255,255,255,0.65)", color: colors.text }}
+              >
+                {statusLabels[appt.status ?? ""] ?? appt.status ?? "—"}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            {height > 56 && appt.patient_phone && (
+              <div className="text-[12px] text-text-muted truncate mt-[3px] font-medium">{appt.patient_phone}</div>
+            )}
+            {height > 84 && appt.service && (
+              <div
+                className="text-[11.5px] text-text-muted mt-[3px] leading-snug"
+                style={!compact ? { overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } : { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {appt.service}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -232,7 +281,6 @@ export default function Schedule() {
   const [containerW, setContainerW] = useState(0);
   const [addModalPrefill, setAddModalPrefill] = useState<{ doctorId: string; doctorName: string; dateTime: string } | null>(null);
   const [hoverSlot, setHoverSlot] = useState<{ doctorName: string; slotMin: number } | null>(null);
-  const [hoverCard, setHoverCard] = useState<{ appt: Appointment; x: number; y: number } | null>(null);
   // Красная линия «сейчас» — по локальным часам компьютера пользователя
   const [nowTick, setNowTick] = useState(() => new Date());
 
@@ -635,7 +683,7 @@ export default function Schedule() {
                   </div>
 
                   {/* Doctor columns */}
-                  {doctorsWithAppointments.map(([doctorName, doctorAppts]) => (
+                  {doctorsWithAppointments.map(([doctorName, doctorAppts], colIdx) => (
                     <div
                       key={doctorName}
                       className="relative"
@@ -723,12 +771,8 @@ export default function Schedule() {
                           colWidth={colWidth}
                           onDragStart={handleDragStart}
                           preview={preview && preview.apptId === appt.id ? preview : null}
-                          onHover={(a, x, y) => {
-                            if (drag) { setHoverCard(null); return; }
-                            setHoverCard(a ? { appt: a, x, y } : null);
-                          }}
+                          expandLeft={colIdx === doctorsWithAppointments.length - 1 && doctorsWithAppointments.length > 1}
                           onClick={() => {
-                            setHoverCard(null);
                             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                             setSelectedAppointmentId(appt.id);
                           }}
@@ -743,67 +787,6 @@ export default function Schedule() {
           </div>
         </div>
       </div>
-
-      {/* Ховер-карточка записи: полная информация, как в 1Denta — видно
-          детали даже когда плашки мелкие или лежат друг на друге */}
-      {hoverCard && !drag && (() => {
-        const a = hoverCard.appt;
-        const start = a.scheduled_at ? parseISO(a.scheduled_at) : null;
-        const startMin = start ? start.getHours() * 60 + start.getMinutes() : 0;
-        const age = calcAge(a.patient_birth_date);
-        const colors = statusColors[a.status ?? ""] ?? statusColors.unconfirmed;
-        const CARD_W = 300;
-        const left = hoverCard.x + 16 + CARD_W > window.innerWidth
-          ? hoverCard.x - CARD_W - 16
-          : hoverCard.x + 16;
-        const top = Math.min(hoverCard.y + 14, window.innerHeight - 220);
-        return (
-          <div
-            className="fixed z-[250] pointer-events-none rounded-[14px] p-[14px] flex flex-col gap-[6px]"
-            style={{
-              left,
-              top,
-              width: CARD_W,
-              background: "rgba(255,255,255,0.98)",
-              boxShadow: "0 12px 36px rgba(30,41,59,0.22)",
-              border: `1px solid rgba(91,76,245,0.12)`,
-              borderLeft: `4px solid ${colors.border}`,
-            }}
-          >
-            {start && (
-              <div className="text-[13px] font-mono font-bold" style={{ color: colors.text }}>
-                {fmtMin(startMin)} – {fmtMin(startMin + a.duration_min)}
-                <span className="font-sans font-medium text-text-muted"> · {a.duration_min} мин</span>
-              </div>
-            )}
-            <div className="text-[14.5px] font-bold text-text-main leading-snug">
-              {a.is_primary && <span title="Первичный пациент" className="mr-1" style={{ color: colors.border }}>①</span>}
-              {a.patient_name}
-              {age !== null && <span className="font-medium text-text-muted">, {age} лет</span>}
-            </div>
-            {a.patient_phone && (
-              <div className="text-[13px] text-text-main font-medium">{a.patient_phone}</div>
-            )}
-            {a.doctor_name && (
-              <div className="text-[12px] text-text-muted">Врач: {a.doctor_name}</div>
-            )}
-            {a.service && (
-              <div className="text-[12px] text-text-muted leading-snug">{a.service}</div>
-            )}
-            {a.comment && (
-              <div className="text-[12px] text-text-muted leading-snug italic">💬 {a.comment}</div>
-            )}
-            <div>
-              <span
-                className="inline-block px-2 py-[2px] rounded-lg text-[11px] font-bold"
-                style={{ background: colors.bg, color: colors.text }}
-              >
-                {statusLabels[a.status ?? ""] ?? a.status ?? "—"}
-              </span>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Drag tooltip — follows the cursor with the new time / doctor */}
       {drag && drag.moved && preview && (
