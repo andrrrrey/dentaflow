@@ -204,9 +204,13 @@ class TelegramBotService:
             return
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(f"{self.base_url}/setMyCommands", json={"commands": commands})
+                resp = await client.post(f"{self.base_url}/setMyCommands", json={"commands": commands})
+                if resp.status_code != 200 or not resp.json().get("ok"):
+                    logger.warning("TelegramBotService: setMyCommands failed: %s", resp.text[:300])
+                else:
+                    logger.info("TelegramBotService: %d bot commands registered", len(commands))
         except Exception:
-            logger.warning("TelegramBotService: failed to register bot commands")
+            logger.warning("TelegramBotService: failed to register bot commands", exc_info=True)
 
     async def send_daily_report(self, chat_id: int, report: dict) -> None:
         """Format and send an HTML daily report to *chat_id*."""

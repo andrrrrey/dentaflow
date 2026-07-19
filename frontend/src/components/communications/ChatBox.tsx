@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Send, Loader2 } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isToday, isYesterday, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useCommunicationMessages, sendCommunicationReply } from "../../api/communications";
+
+/** Заголовок-разделитель дат в переписке (как в Telegram/Max). */
+function dayLabel(d: Date): string {
+  if (isToday(d)) return "Сегодня";
+  if (isYesterday(d)) return "Вчера";
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return format(d, sameYear ? "d MMMM" : "d MMMM yyyy", { locale: ru });
+}
 
 interface Props {
   communicationId: string;
@@ -83,11 +91,25 @@ export default function ChatBox({ communicationId, channel, botChatId, fill }: P
           <p className="text-[12px] text-text-muted text-center py-4">Нет сообщений</p>
         )}
 
-        {messages.map((msg) => {
+        {messages.map((msg, i) => {
           const isInbound = msg.direction === "inbound";
+          const msgDate = parseISO(msg.created_at);
+          const prev = i > 0 ? messages[i - 1] : null;
+          const showDateSep =
+            !prev || !isSameDay(msgDate, parseISO(prev.created_at));
           return (
+            <div key={msg.id} className="contents">
+              {showDateSep && (
+                <div className="self-center my-[6px]">
+                  <span
+                    className="text-[10.5px] font-semibold text-text-muted px-[10px] py-[3px] rounded-full"
+                    style={{ background: "rgba(91,76,245,0.08)" }}
+                  >
+                    {dayLabel(msgDate)}
+                  </span>
+                </div>
+              )}
             <div
-              key={msg.id}
               className={`flex flex-col max-w-[82%] ${isInbound ? "items-start self-start" : "items-end self-end"}`}
             >
               <div
@@ -113,6 +135,7 @@ export default function ChatBox({ communicationId, channel, botChatId, fill }: P
                   {format(parseISO(msg.created_at), "HH:mm", { locale: ru })}
                 </p>
               </div>
+            </div>
             </div>
           );
         })}

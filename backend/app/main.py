@@ -42,9 +42,29 @@ from app.routers import (
 logger = logging.getLogger(__name__)
 
 
+async def _register_telegram_commands() -> None:
+    """Регистрируем меню команд Telegram при старте, чтобы новые пункты
+    (/history, /bonus и т.д.) появлялись сразу после деплоя, не дожидаясь
+    входящего апдейта."""
+    try:
+        from app.database import async_session_factory
+        from app.services.integrations_service import get_raw_value
+        from app.services.telegram_bot import TelegramBotService
+
+        async with async_session_factory() as db:
+            token = await get_raw_value(db, "telegram_bot_token") or settings.TELEGRAM_BOT_TOKEN
+        if not token:
+            return
+        await TelegramBotService(bot_token=token).set_my_commands()
+        logger.info("Telegram bot commands registered on startup")
+    except Exception:
+        logger.warning("Failed to register Telegram commands on startup", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("DentaFlow backend starting up")
+    await _register_telegram_commands()
     yield
     logger.info("DentaFlow backend shutting down")
 
