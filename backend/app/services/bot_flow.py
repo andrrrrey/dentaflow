@@ -706,20 +706,30 @@ def _db_channel(channel: str) -> str:
 
 
 async def _find_patient_by_phone(db, phone: str):
-    """Найти пациента по телефону (точное совпадение либо нормализованное)."""
+    """Найти пациента по телефону.
+
+    Сравнение по последним 10 цифрам с нормализацией **обеих** сторон: в базе
+    номер может храниться с форматированием (+7(927)012-07-77), а Telegram/Max
+    присылают только цифры (79270120777).
+    """
     try:
-        from sqlalchemy import select
+        from sqlalchemy import func, select
         from app.models.patient import Patient
+        # Точное совпадение (быстрый путь)
         row = (await db.execute(
             select(Patient).where(Patient.phone == phone).limit(1)
         )).scalars().first()
         if row is not None:
             return row
-        # Фолбэк: сравнение по последним 10 цифрам (форматы +7/8/скобки)
+        # Нормализованное совпадение по последним 10 цифрам.
+        # regexp_replace убирает из сохранённого номера всё, кроме цифр.
         digits = "".join(c for c in phone if c.isdigit())[-10:]
         if len(digits) == 10:
+            normalized = func.right(
+                func.regexp_replace(Patient.phone, r"[^0-9]", "", "g"), 10
+            )
             candidates = (await db.execute(
-                select(Patient).where(Patient.phone.like(f"%{digits}")).limit(1)
+                select(Patient).where(normalized == digits).limit(1)
             )).scalars().first()
             return candidates
     except Exception:
