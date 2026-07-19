@@ -101,6 +101,18 @@ class TelegramBotService:
         if contact and not text:
             text = contact.get("phone_number", "")
 
+        # Photo (largest size) — used for review screenshots
+        photo_file_id = None
+        photos = message.get("photo")
+        if photos:
+            # Telegram sends an array of sizes ascending; take the largest
+            photo_file_id = photos[-1].get("file_id")
+        else:
+            # Image sent as a document (uncompressed)
+            doc = message.get("document") or {}
+            if str(doc.get("mime_type", "")).startswith("image/"):
+                photo_file_id = doc.get("file_id")
+
         is_command = text.startswith("/")
 
         result: dict = {
@@ -118,6 +130,7 @@ class TelegramBotService:
             "is_command": is_command,
             "is_callback": False,
             "callback_data": None,
+            "photo_file_id": photo_file_id,
         }
 
         logger.info(
@@ -147,6 +160,28 @@ class TelegramBotService:
             response.raise_for_status()
             return response.json()
 
+    async def download_file(self, file_id: str) -> tuple[bytes, str] | None:
+        """Скачать файл по file_id. Возвращает (bytes, extension) или None."""
+        import os
+
+        if not self.base_url or not file_id:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                meta = await client.get(f"{self.base_url}/getFile", params={"file_id": file_id})
+                meta.raise_for_status()
+                file_path = meta.json().get("result", {}).get("file_path")
+                if not file_path:
+                    return None
+                url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+                resp = await client.get(url)
+                resp.raise_for_status()
+                ext = os.path.splitext(file_path)[1].lower() or ".jpg"
+                return resp.content, ext
+        except Exception:
+            logger.warning("TelegramBotService: failed to download file %s", file_id)
+            return None
+
     async def answer_callback_query(self, callback_query_id: str, text: str = "") -> None:
         """Acknowledge an inline button press (removes the loading spinner)."""
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -161,6 +196,8 @@ class TelegramBotService:
             {"command": "start",   "description": "Главное меню"},
             {"command": "book",    "description": "📅 Записаться на приём"},
             {"command": "ask",     "description": "💬 Задать вопрос"},
+            {"command": "history", "description": "📋 Мои визиты и оплаты"},
+            {"command": "bonus",   "description": "🎁 Бонусная программа"},
             {"command": "manager", "description": "📞 Связаться с менеджером"},
         ]
         if not self.base_url:

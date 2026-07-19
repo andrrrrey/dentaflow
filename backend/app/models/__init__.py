@@ -14,6 +14,8 @@ from app.models.directory_cache import DirectoryCache
 from app.models.bot_message import BotMessage
 from app.models.patient_segment import PatientSegment, PatientSegmentMember
 from app.models.ai_calling import AiCallingCampaign, AiCallingCampaignItem
+from app.models.loyalty_transaction import LoyaltyTransaction
+from app.models.patient_review import PatientReview
 
 __all__ = [
     "Base",
@@ -35,4 +37,6 @@ __all__ = [
     "PatientSegmentMember",
     "AiCallingCampaign",
     "AiCallingCampaignItem",
+    "LoyaltyTransaction",
+    "PatientReview",
 ]

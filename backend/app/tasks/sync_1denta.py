@@ -249,6 +249,7 @@ async def _sync_appointments_async(
                 obj = patient_map[pext]
                 patient_map[pext] = obj.id if hasattr(obj, "id") else obj
 
+        touched_appointments: list = []
         for a_data, ext_id in valid:
             patient_id = patient_map.get(a_data.get("patient_external_id"))
 
@@ -283,6 +284,7 @@ async def _sync_appointments_async(
                     synced_at=now_utc,
                 )
                 session.add(appointment)
+                touched_appointments.append(appointment)
                 created += 1
             else:
                 appointment.patient_id = patient_id or appointment.patient_id
@@ -322,7 +324,19 @@ async def _sync_appointments_async(
                 appointment.services_data = a_data.get("services_data", appointment.services_data)
                 appointment.comment = a_data.get("comment", appointment.comment)
                 appointment.synced_at = now_utc
+                touched_appointments.append(appointment)
                 updated += 1
+
+        # Программа лояльности: авто-начисление баллов за оплаченные визиты.
+        # Идемпотентно (проверка по source_appointment_id), нужен flush для id.
+        if touched_appointments:
+            from app.services import loyalty_service
+            await session.flush()
+            for appt in touched_appointments:
+                try:
+                    await loyalty_service.accrue_for_appointment(session, appt)
+                except Exception:
+                    logger.warning("loyalty: accrual failed for appointment %s", appt.external_id)
 
         # ── Propagate deletions from 1Denta ────────────────────────────────
         # 1) Visits explicitly flagged deleted in the feed.

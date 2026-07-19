@@ -157,6 +157,15 @@ async def apply_visit_event(db: AsyncSession, visit: dict) -> dict:
         appointment.synced_at = now_utc
         action = "updated"
 
+    # Программа лояльности: авто-начисление баллов за оплаченный визит
+    # (идемпотентно; коммит делает вызывающий вебхук-обработчик).
+    try:
+        from app.services import loyalty_service
+        await db.flush()
+        await loyalty_service.accrue_for_appointment(db, appointment)
+    except Exception:
+        logger.warning("loyalty: accrual failed for visit %s", ext_id)
+
     return {"action": action, "external_id": ext_id}
 
 

@@ -118,6 +118,25 @@ class MaxVkService:
                 json={"callback_id": callback_id, "notification": notification},
             )
 
+    async def download_image(self, url: str) -> tuple[bytes, str] | None:
+        """Скачать изображение по URL из вложения. Возвращает (bytes, ext) или None."""
+        import os
+        from urllib.parse import urlparse
+
+        if not url:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                ext = os.path.splitext(urlparse(url).path)[1].lower()
+                if not ext or len(ext) > 5:
+                    ext = ".jpg"
+                return resp.content, ext
+        except Exception:
+            logger.warning("MaxVkService: failed to download image")
+            return None
+
     async def register_webhook(self, url: str) -> dict:
         """Register (or update) the bot webhook URL."""
         headers = {"Authorization": self.bot_token}
@@ -170,6 +189,15 @@ class MaxVkService:
         text = body.get("text", "")
         mid = body.get("mid") or str(uuid.uuid4())
 
+        # Изображение-вложение (для скриншотов отзывов)
+        image_url = None
+        for att in body.get("attachments") or []:
+            if att.get("type") == "image":
+                payload = att.get("payload") or {}
+                image_url = payload.get("url") or payload.get("token")
+                if image_url:
+                    break
+
         return {
             "channel": "max",
             "direction": "inbound",
@@ -183,6 +211,7 @@ class MaxVkService:
             "sender_name": name or username or str(user_id),
             "update_type": "message_created",
             "is_booking_button": False,
+            "image_url": image_url,
         }
 
     def _parse_message_callback(self, data: dict) -> dict:

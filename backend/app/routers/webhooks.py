@@ -50,6 +50,32 @@ _tg_commands_registered = False
 # ------------------------------------------------------------------
 
 
+async def _handle_review_photo(
+    db, channel: str, user_id: str, image_bytes: bytes, ext: str
+) -> bool:
+    """Если пользователь в шаге review_wait — сохранить скриншот отзыва и создать
+    запись на модерацию. Возвращает True, если фото обработано как отзыв."""
+    from app.services import bot_flow, loyalty_service
+
+    state = await bot_flow.get_state(channel, user_id)
+    if state.get("step") != "review_wait":
+        return False
+    try:
+        image_url = loyalty_service.save_review_image(image_bytes, ext)
+        patient = await bot_flow._resolve_patient(db, channel, user_id)
+        await loyalty_service.create_review(
+            db,
+            patient_id=patient.id if patient else None,
+            image_url=image_url,
+            channel="telegram" if channel == "tg" else channel,
+        )
+        await bot_flow.clear_state(channel, user_id)
+        return True
+    except Exception:
+        logger.exception("bot: failed to store review screenshot")
+        return False
+
+
 async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: str | None = None) -> None:
     """Insert or update BotUser record (used for appointment reminders)."""
     try:
@@ -453,6 +479,27 @@ async def telegram_webhook(
     if user_id and chat_id:
         await _upsert_bot_user(db, "telegram", str(chat_id), str(user_id))
 
+    # Review screenshot: if user is in review_wait step and sent a photo, capture it
+    photo_file_id = result.get("photo_file_id")
+    if photo_file_id and not is_callback:
+        downloaded = await tg_svc.download_file(photo_file_id)
+        if downloaded is not None:
+            img_bytes, img_ext = downloaded
+            if await _handle_review_photo(db, "tg", str(user_id), img_bytes, img_ext):
+                await tg_svc.send_reply(
+                    chat_id,
+                    "Спасибо! Отзыв отправлен на проверку — баллы начислим после модерации. 🙌",
+                    reply_markup={"inline_keyboard": [[{"text": "🔙 Главное меню", "callback_data": "menu"}]]},
+                )
+                return {"status": "ok"}
+        # Not in review flow (or download failed) → gentle hint
+        await tg_svc.send_reply(
+            chat_id,
+            "Чтобы отправить скриншот отзыва, откройте «🎁 Бонусная программа» → "
+            "«Отправить скриншот отзыва».",
+        )
+        return {"status": "ok"}
+
     is_start = text.strip() == "/start"
 
     # Каждое текстовое сообщение попадает в тред раздела «Коммуникации»
@@ -470,7 +517,7 @@ async def telegram_webhook(
     cmd_payload = ""
     if not is_callback and text.strip().startswith("/") and not is_start:
         cmd = text.strip().lstrip("/").split("@")[0].lower()
-        if cmd in ("book", "ask", "manager", "menu"):
+        if cmd in ("book", "ask", "manager", "menu", "history", "bonus"):
             cmd_payload = cmd
             text = ""
 
@@ -485,11 +532,12 @@ async def telegram_webhook(
     )
     welcome_msg = await get_raw_value(db, "bot_welcome_message")
 
-    # If AI disabled: only respond to /start, button presses, and bot commands
+    # If AI disabled: only respond to /start, button presses, bot commands,
+    # active conversations, and users mid-flow (booking / phone linking / review).
     if ai_enabled != "true" and not is_start and not is_callback and not cmd_payload:
-        # Still allow messages in open conversation mode
-        from app.services.bot_flow import get_active_conv
-        if not await get_active_conv("tg", user_id):
+        from app.services.bot_flow import get_active_conv, get_state
+        _state = await get_state("tg", user_id)
+        if not _state.get("step") and not await get_active_conv("tg", user_id):
             return {"status": "ok"}
 
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
@@ -569,6 +617,26 @@ async def max_webhook(
     if is_callback:
         await max_svc.answer_callback(result.get("callback_id", ""))
 
+    # Review screenshot: image attachment while in review_wait step
+    image_url = result.get("image_url")
+    if image_url and not is_callback:
+        downloaded = await max_svc.download_image(image_url)
+        if downloaded is not None:
+            img_bytes, img_ext = downloaded
+            if await _handle_review_photo(db, "max", str(user_id), img_bytes, img_ext):
+                await max_svc.send_reply(
+                    chat_id,
+                    "Спасибо! Отзыв отправлен на проверку — баллы начислим после модерации. 🙌",
+                    buttons=[[{"type": "callback", "text": "🔙 Главное меню", "payload": "menu"}]],
+                )
+                return {"ok": True}
+        await max_svc.send_reply(
+            chat_id,
+            "Чтобы отправить скриншот отзыва, откройте «🎁 Бонусная программа» → "
+            "«Отправить скриншот отзыва».",
+        )
+        return {"ok": True}
+
     clinic_name = (
         await get_raw_value(db, "bot_clinic_name")
         or await get_raw_value(db, "max_clinic_name")
@@ -586,8 +654,11 @@ async def max_webhook(
             btn_payload = raw_payload[9:]
 
     if ai_enabled != "true" and not is_start and not btn_payload:
-        logger.warning("Max webhook: AI disabled, skipping text reply for update_type=%s", update_type)
-        return {"ok": True}
+        from app.services.bot_flow import get_state
+        _state = await get_state("max", user_id)
+        if not _state.get("step"):
+            logger.warning("Max webhook: AI disabled, skipping text reply for update_type=%s", update_type)
+            return {"ok": True}
 
     ai_key = await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY
     kb_ctx = await get_kb_context(db)
