@@ -519,10 +519,34 @@ async def create_patient(
                 passport_department_code=passport_department_code,
             )
             if result.get("id"):
-                patient.external_id = str(result["id"])
-                if doc_fields or result:
-                    merged = {**(doc_fields or {}), **{k: v for k, v in result.items() if k != "id"}}
-                    patient.raw_1denta_data = merged or None
+                ext_id = str(result["id"])
+                # 1Denta дедуплицирует клиентов по телефону и может вернуть id
+                # уже существующего клиента. Если такой external_id уже есть
+                # локально — не плодим дубликат и не роняем транзакцию
+                # (UniqueViolation по patients_external_id_key), а возвращаем
+                # существующую карту, дозаполнив недостающие контакты.
+                existing = (await db.execute(
+                    select(Patient).where(
+                        Patient.external_id == ext_id, Patient.id != patient.id
+                    )
+                )).scalars().first()
+                if existing is not None:
+                    if phone and not existing.phone:
+                        existing.phone = phone
+                    if email and not existing.email:
+                        existing.email = email
+                    await db.delete(patient)
+                    await db.flush()
+                    patient = existing
+                    warning = (
+                        "Пациент с такими данными уже есть в системе — "
+                        "открыта существующая карта."
+                    )
+                else:
+                    patient.external_id = ext_id
+                    if doc_fields or result:
+                        merged = {**(doc_fields or {}), **{k: v for k, v in result.items() if k != "id"}}
+                        patient.raw_1denta_data = merged or None
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning("Failed to create client in 1Denta: %s", exc)
