@@ -47,6 +47,9 @@ services:
     volumes:
       # Общий том с записями ИИ-звонков (Asterisk MixMonitor пишет сюда, backend отдаёт).
       - aicall_recordings:/recordings
+      # Загруженные файлы (аватары, скриншоты отзывов бонусной программы) —
+      # хранятся вне контейнера, чтобы не терялись при пересборке/пересоздании.
+      - backend_static:/app/static
     depends_on:
       - postgres
       - redis
@@ -178,3 +181,4 @@ volumes:
   aicallrobot_data:
   aicallrobot_kb:
   aicall_recordings:
+  backend_static:          # загруженные файлы бэкенда (аватары, скриншоты отзывов)
