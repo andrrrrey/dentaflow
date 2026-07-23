@@ -22,11 +22,45 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 
 
-def _max_webhook_url(request: Request) -> str:
+def _base_url(request: Request) -> str:
     # Respect X-Forwarded-Proto / Host set by nginx
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
-    return f"{proto}://{host}/api/v1/webhooks/max"
+    return f"{proto}://{host}"
+
+
+def _max_webhook_url(request: Request) -> str:
+    return f"{_base_url(request)}/api/v1/webhooks/max"
+
+
+async def _auto_register_telegram_webhook(
+    request: Request, db: AsyncSession, token: str, provided_secret: str | None
+) -> None:
+    """Автоматически регистрируем Telegram-webhook при сохранении токена.
+
+    Убирает ручной шаг с curl: секрет берём из формы, из БД, либо генерируем
+    сами (и сохраняем), затем вызываем setWebhook и обновляем меню команд.
+    """
+    import secrets as _secrets
+
+    from app.services.telegram_bot import TelegramBotService
+
+    # Определяем секрет: введённый в форме (не маскированный) → сохранённый → новый.
+    secret = (provided_secret or "").strip()
+    if not secret or "*" in secret:
+        secret = (await get_raw_value(db, "telegram_webhook_secret") or "").strip()
+    if not secret:
+        secret = _secrets.token_urlsafe(24)
+        await save_settings(db, {"telegram_webhook_secret": secret})
+
+    webhook_url = f"{_base_url(request)}/api/v1/webhooks/telegram?secret={secret}"
+    svc = TelegramBotService(bot_token=token.strip())
+    await svc.set_webhook(webhook_url)
+    # Сразу обновляем меню команд «/» под новый бот.
+    try:
+        await svc.set_my_commands()
+    except Exception:
+        logger.warning("Telegram set_my_commands after webhook registration failed", exc_info=True)
 
 
 @router.get("/")
@@ -60,7 +94,25 @@ async def update_integrations(
         except Exception:
             logger.warning("Max webhook auto-registration failed (will retry on next check)")
 
-    return {"ok": True}
+    # Auto-register Telegram webhook whenever a non-masked token is saved —
+    # избавляет от ручной curl-команды setWebhook.
+    tg_token = settings_data.get("telegram_bot_token", "")
+    telegram_registered = None
+    if tg_token and "*" not in tg_token:
+        try:
+            await _auto_register_telegram_webhook(
+                request, db, tg_token, settings_data.get("telegram_webhook_secret")
+            )
+            telegram_registered = True
+            logger.info("Telegram webhook auto-registered")
+        except Exception:
+            telegram_registered = False
+            logger.warning("Telegram webhook auto-registration failed", exc_info=True)
+
+    result: dict = {"ok": True}
+    if telegram_registered is not None:
+        result["telegram_webhook_registered"] = telegram_registered
+    return result
 
 
 @router.post("/sync-1denta")

@@ -97,6 +97,53 @@ async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: 
         logger.exception("_upsert_bot_user failed for %s:%s", channel, user_id)
 
 
+_CHANNEL_LABELS = {
+    "telegram": "Telegram",
+    "max": "Max / VK",
+    "site": "Заявка с сайта",
+    "novofon": "Звонок",
+}
+
+
+async def _announce_communication(
+    db,
+    comm,
+    *,
+    notif_type: str,
+    title: str,
+    body: str,
+    link: str,
+) -> None:
+    """Создать/поднять уведомление в колокольчике и разослать live-событие.
+
+    Событие `new_communication` уходит в realtime-шину (Redis→WS→браузер):
+    фронтенд по нему обновляет счётчики, колокольчик и показывает браузерный
+    пуш. Текст пуша берётся из title/body прямо из события.
+    """
+    try:
+        from app.services.notifications_service import upsert_event_notification
+
+        await upsert_event_notification(
+            db, type=notif_type, title=title, body=(body or "")[:300], link=link
+        )
+    except Exception:
+        logger.warning("Failed to create bell notification (%s)", notif_type, exc_info=True)
+
+    try:
+        await realtime.publish("new_communication", {
+            "id": str(comm.id),
+            "channel": comm.channel,
+            "type": comm.type,
+            "priority": comm.priority,
+            "notif_type": notif_type,
+            "title": title,
+            "body": (body or "")[:300],
+            "link": link,
+        })
+    except Exception:
+        logger.warning("Failed to publish realtime event", exc_info=True)
+
+
 async def _upsert_chat_comm(
     db,
     channel: str,
@@ -176,14 +223,17 @@ async def _upsert_chat_comm(
         ))
         await db.commit()
 
-        if created:
-            try:
-                await realtime.publish("new_communication", {
-                    "id": str(comm.id), "channel": channel,
-                    "type": "chat", "priority": "normal",
-                })
-            except Exception:
-                pass
+        # Уведомляем о КАЖДОМ входящем сообщении (не только при создании треда):
+        # обновляем счётчик непрочитанных, колокольчик и шлём браузерный пуш.
+        label = _CHANNEL_LABELS.get(channel, channel)
+        who = (sender_name or "").strip() or "Новый контакт"
+        await _announce_communication(
+            db, comm,
+            notif_type="new_message",
+            title=f"Новое сообщение · {label}",
+            body=f"{who}: {text}",
+            link=f"/chats?comm={comm.id}",
+        )
         return str(comm.id)
     except Exception:
         logger.exception("_upsert_chat_comm failed for %s:%s", channel, channel_uid)
@@ -926,12 +976,13 @@ async def site_form_webhook(
         db.add(comm)
         await db.commit()
 
-        await realtime.publish("new_communication", {
-            "id": str(comm.id),
-            "channel": comm.channel,
-            "type": comm.type,
-            "priority": comm.priority,
-        })
+        await _announce_communication(
+            db, comm,
+            notif_type="new_lead",
+            title="Новая заявка с сайта",
+            body=(". ".join(summary_parts) if summary_parts else content),
+            link=f"/communications?comm={comm.id}",
+        )
 
         from app.services.deals_service import maybe_create_auto_lead
         lead_title = f"Лид: {name}, {phone}" if (name and phone) else (

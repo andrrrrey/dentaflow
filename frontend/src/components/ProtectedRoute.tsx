@@ -2,10 +2,15 @@ import { type ReactNode, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { requestNotificationPermission } from "../utils/browserNotifications";
 
 function WebSocketProvider({ children }: { children: ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken);
   useWebSocket(accessToken);
+  // Просим разрешение на браузерные пуши один раз после входа.
+  useEffect(() => {
+    if (accessToken) requestNotificationPermission();
+  }, [accessToken]);
   return <>{children}</>;
 }
 

@@ -41,6 +41,44 @@ async def list_notifications(
     )
 
 
+async def upsert_event_notification(
+    db: AsyncSession,
+    *,
+    type: str,
+    title: str,
+    body: str,
+    link: str,
+) -> Notification:
+    """Создать (или «поднять») уведомление для колокольчика.
+
+    Чтобы поток входящих сообщений в одном чате не забивал колокольчик, мы
+    коалесцируем по ссылке: если по этой же `link` уже есть непрочитанное
+    уведомление — обновляем его текст и поднимаем в начало списка, иначе
+    создаём новое. Возвращает актуальную запись.
+    """
+    existing = (await db.execute(
+        select(Notification)
+        .where(Notification.link == link, Notification.is_read.is_(False))
+        .order_by(Notification.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    if existing is not None:
+        existing.type = type
+        existing.title = title
+        existing.body = body
+        existing.created_at = func.now()  # поднять наверх списка
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+
+    notif = Notification(type=type, title=title, body=body, link=link)
+    db.add(notif)
+    await db.commit()
+    await db.refresh(notif)
+    return notif
+
+
 async def mark_as_read(db: AsyncSession, notification_id: uuid.UUID) -> NotificationResponse | None:
     result = await db.execute(
         select(Notification).where(Notification.id == notification_id)
