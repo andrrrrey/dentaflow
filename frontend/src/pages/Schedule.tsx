@@ -36,6 +36,11 @@ const SLOT_HEIGHT = 150;
 const MIN_COL_W = 150;
 const TIME_COL_W = 64;
 const SNAP_MIN = 15;
+// Шаг позиционирования плашки «Новая запись» — 5 минут (было 30),
+// чтобы можно было ставить запись на любое удобное время.
+const NEW_APPT_SNAP = 5;
+// Длительность по умолчанию у новой записи, создаваемой из ховер-слота.
+const NEW_APPT_DURATION = 30;
 const CLINIC_START_MIN = CLINIC_START * 60;
 const CLINIC_END_MIN = CLINIC_END * 60;
 
@@ -692,14 +697,14 @@ export default function Schedule() {
                         if (drag) { if (hoverSlot) setHoverSlot(null); return; }
                         const rect = e.currentTarget.getBoundingClientRect();
                         const relY = e.clientY - rect.top;
-                        let slotMin = CLINIC_START_MIN + Math.floor((relY / SLOT_HEIGHT) * 60 / 30) * 30;
-                        slotMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - 30, slotMin));
+                        let slotMin = CLINIC_START_MIN + Math.round((relY / SLOT_HEIGHT) * 60 / NEW_APPT_SNAP) * NEW_APPT_SNAP;
+                        slotMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - NEW_APPT_DURATION, slotMin));
                         // Рамку показываем только на свободном времени
                         const busy = doctorAppts.some((a) => {
                           if (!a.scheduled_at) return false;
                           const s = parseISO(a.scheduled_at);
                           const sMin = s.getHours() * 60 + s.getMinutes();
-                          return sMin < slotMin + 30 && sMin + a.duration_min > slotMin;
+                          return sMin < slotMin + NEW_APPT_DURATION && sMin + a.duration_min > slotMin;
                         });
                         if (busy) {
                           if (hoverSlot) setHoverSlot(null);
@@ -719,7 +724,7 @@ export default function Schedule() {
                             top: ((hoverSlot.slotMin - CLINIC_START_MIN) / 60) * SLOT_HEIGHT,
                             left: 3,
                             right: 3,
-                            height: SLOT_HEIGHT / 2 - 3,
+                            height: (NEW_APPT_DURATION / 60) * SLOT_HEIGHT - 3,
                             border: "1.5px dashed #5B4CF5",
                             borderRadius: 10,
                             background: "rgba(91,76,245,0.05)",
@@ -734,7 +739,7 @@ export default function Schedule() {
                           }}
                         >
                           <span className="text-[12px] font-semibold px-2 py-1" style={{ color: "#5B4CF5" }}>
-                            {fmtMin(hoverSlot.slotMin)} – {fmtMin(hoverSlot.slotMin + 30)} · Новая запись
+                            {fmtMin(hoverSlot.slotMin)} – {fmtMin(hoverSlot.slotMin + NEW_APPT_DURATION)} · Новая запись
                           </span>
                         </div>
                       )}

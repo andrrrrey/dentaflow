@@ -193,12 +193,13 @@ class TelegramBotService:
     async def set_my_commands(self) -> None:
         """Register bot command menu visible when user types '/' in Telegram."""
         commands = [
-            {"command": "start",   "description": "Главное меню"},
+            {"command": "start",   "description": "🏠 Главное меню"},
             {"command": "book",    "description": "📅 Записаться на приём"},
             {"command": "ask",     "description": "💬 Задать вопрос"},
             {"command": "history", "description": "📋 Мои визиты и оплаты"},
             {"command": "bonus",   "description": "🎁 Бонусная программа"},
             {"command": "manager", "description": "📞 Связаться с менеджером"},
+            {"command": "help",    "description": "ℹ️ Помощь — все возможности"},
         ]
         if not self.base_url:
             return
