@@ -27,7 +27,11 @@ export default function ChatBox({ communicationId, channel, botChatId, fill }: P
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  const { data: messages = [], isLoading } = useCommunicationMessages(communicationId);
+  const { data: allMessages = [], isLoading } = useCommunicationMessages(communicationId);
+
+  // В разделе «Коммуникация» показываем только переписку клиента и оператора —
+  // автоматические ответы бота (sender_name === "Бот") здесь не отображаем.
+  const messages = allMessages.filter((m) => m.sender_name !== "Бот");
 
   // Scroll to bottom when messages change
   useEffect(() => {

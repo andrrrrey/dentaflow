@@ -517,7 +517,7 @@ async def telegram_webhook(
     cmd_payload = ""
     if not is_callback and text.strip().startswith("/") and not is_start:
         cmd = text.strip().lstrip("/").split("@")[0].lower()
-        if cmd in ("book", "ask", "manager", "menu", "history", "bonus"):
+        if cmd in ("book", "ask", "manager", "menu", "history", "bonus", "help"):
             cmd_payload = cmd
             text = ""
 
