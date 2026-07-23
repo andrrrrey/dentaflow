@@ -219,6 +219,8 @@ export default function Chats() {
     });
   }, [data]);
 
+  const unreadCount = useMemo(() => chats.filter(isUnread).length, [chats]);
+
   const selected = selectedId ? chats.find((i) => i.id === selectedId) ?? null : null;
 
   // Переход из уведомления: /chats?comm=<id> — авто-выбор треда
@@ -253,8 +255,16 @@ export default function Chats() {
               boxShadow: "0 4px 20px rgba(120,140,180,0.12)",
             }}
           >
-            <div className="px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)] flex-shrink-0">
+            <div className="px-[14px] py-[10px] border-b border-[rgba(91,76,245,0.08)] flex-shrink-0 flex items-center gap-2">
               <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Чаты · {chats.length}</span>
+              {unreadCount > 0 && (
+                <span
+                  className="ml-auto inline-flex items-center gap-1 text-white text-[10px] font-bold px-[7px] py-[2px] rounded-full bg-danger"
+                  title={`${unreadCount} непрочитанных`}
+                >
+                  {unreadCount} новых
+                </span>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto min-h-0">
               {chats.length === 0 ? (

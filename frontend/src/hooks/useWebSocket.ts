@@ -1,8 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useNotificationStore } from "../store/notificationStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { showBrowserNotification } from "../utils/browserNotifications";
 
 const MAX_RETRIES = 5;
 const PING_INTERVAL = 30_000;
+
+/** Событие realtime-шины, ретранслированное с бэкенда через WebSocket. */
+interface RealtimeEvent {
+  type: string;
+  data?: {
+    id?: string;
+    channel?: string;
+    notif_type?: string;
+    title?: string;
+    body?: string;
+    link?: string;
+    [k: string]: unknown;
+  };
+}
 
 export function useWebSocket(token: string | null) {
   const [connected, setConnected] = useState(false);
@@ -10,7 +25,7 @@ export function useWebSocket(token: string | null) {
   const retriesRef = useRef(0);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addNotification = useNotificationStore((s) => s.addNotification);
+  const queryClient = useQueryClient();
 
   const cleanup = useCallback(() => {
     if (pingTimerRef.current) {
@@ -28,6 +43,59 @@ export function useWebSocket(token: string | null) {
       wsRef.current.send(data);
     }
   }, []);
+
+  const handleEvent = useCallback(
+    (event: RealtimeEvent) => {
+      const data = event.data ?? {};
+      switch (event.type) {
+        case "new_communication": {
+          // Обновляем счётчик непрочитанных, колокольчик и списки чатов/заявок.
+          queryClient.invalidateQueries({ queryKey: ["unread-chats-count"] });
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
+          queryClient.invalidateQueries({ queryKey: ["communications"] });
+          if (data.id) {
+            queryClient.invalidateQueries({ queryKey: ["comm_messages", data.id] });
+          }
+          // Браузерный пуш о новом сообщении / заявке.
+          if (data.title) {
+            showBrowserNotification({
+              title: data.title,
+              body: data.body,
+              link: data.link,
+              tag: data.link || data.id,
+            });
+          }
+          break;
+        }
+        case "new_notification": {
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
+          if (data.title) {
+            showBrowserNotification({
+              title: data.title,
+              body: data.body,
+              link: data.link,
+              tag: data.link,
+            });
+          }
+          break;
+        }
+        case "communication_updated": {
+          queryClient.invalidateQueries({ queryKey: ["communications"] });
+          if (data.id) {
+            queryClient.invalidateQueries({ queryKey: ["comm_messages", data.id] });
+          }
+          break;
+        }
+        case "schedule_updated": {
+          queryClient.invalidateQueries({ queryKey: ["schedule"] });
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -59,14 +127,8 @@ export function useWebSocket(token: string | null) {
         if (event.data === "pong") return;
 
         try {
-          const message = JSON.parse(event.data);
-          if (message.type) {
-            addNotification({
-              type: message.type,
-              title: message.title ?? "Уведомление",
-              message: message.message ?? "",
-            });
-          }
+          const message = JSON.parse(event.data) as RealtimeEvent;
+          if (message.type) handleEvent(message);
         } catch {
           // Non-JSON message, ignore
         }
@@ -100,7 +162,7 @@ export function useWebSocket(token: string | null) {
       }
       setConnected(false);
     };
-  }, [token, addNotification, cleanup]);
+  }, [token, handleEvent, cleanup]);
 
   return { connected, send };
 }

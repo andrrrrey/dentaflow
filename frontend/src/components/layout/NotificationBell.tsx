@@ -9,6 +9,8 @@ import {
   CheckCheck,
   Trash2,
   X,
+  MessageCircle,
+  Inbox,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -18,6 +20,10 @@ import { useNotifications, type NotificationResponse } from "@/api/notifications
 
 function typeIcon(type: string | null) {
   switch (type) {
+    case "new_message":
+      return <MessageCircle size={14} className="text-accent2" />;
+    case "new_lead":
+      return <Inbox size={14} className="text-accent2" />;
     case "missed_call":
       return <PhoneMissed size={14} className="text-danger" />;
     case "stale_lead":

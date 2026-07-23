@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -61,12 +63,66 @@ async def _register_telegram_commands() -> None:
         logger.warning("Failed to register Telegram commands on startup", exc_info=True)
 
 
+async def _realtime_ws_bridge() -> None:
+    """Мост Redis Pub/Sub → WebSocket.
+
+    События (`realtime.publish`) публикуются в Redis-канал и здесь
+    ретранслируются всем подключённым по WebSocket клиентам этого воркера.
+    Без этого моста live-обновления (счётчики, колокольчик, пуши) не доходили
+    бы до браузера — при нескольких uvicorn-воркерах каждый держит свои
+    WS-соединения, а Redis раздаёт событие во все воркеры сразу.
+    """
+    from app.routers.ws import manager
+    from app.services.realtime import realtime
+
+    while True:  # переподключаемся после сбоев Redis, не теряя live-обновления
+        pubsub = await realtime.subscribe()
+        if pubsub is None:
+            logger.warning("Realtime→WS bridge: Redis unavailable, retry in 5s")
+            await asyncio.sleep(5)
+            continue
+        logger.info("Realtime→WS bridge started")
+        try:
+            async for message in pubsub.listen():
+                if not message or message.get("type") != "message":
+                    continue
+                try:
+                    event = json.loads(message.get("data"))
+                except (TypeError, ValueError):
+                    continue
+                await manager.broadcast(event)
+        except asyncio.CancelledError:
+            try:
+                await pubsub.unsubscribe(realtime.CHANNEL)
+                await pubsub.close()
+            except Exception:
+                pass
+            raise  # штатная остановка при shutdown
+        except Exception:
+            logger.warning("Realtime→WS bridge dropped, reconnecting in 5s", exc_info=True)
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+            await asyncio.sleep(5)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("DentaFlow backend starting up")
+    from app.services.realtime import realtime
+
+    await realtime.connect()
+    bridge_task = asyncio.create_task(_realtime_ws_bridge())
     await _register_telegram_commands()
     yield
     logger.info("DentaFlow backend shutting down")
+    bridge_task.cancel()
+    try:
+        await bridge_task
+    except asyncio.CancelledError:
+        pass
+    await realtime.disconnect()
 
 
 app = FastAPI(

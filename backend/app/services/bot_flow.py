@@ -648,9 +648,27 @@ async def _create_lead_comm(
         if channel_uid:
             await set_active_conv(channel, channel_uid, str(comm.id))
 
+        # Уведомление в колокольчик + live-событие (счётчик, браузерный пуш).
+        try:
+            from app.services.notifications_service import upsert_event_notification
+            _label = "Telegram" if ch == "telegram" else ("Max / VK" if ch == "max" else ch)
+            await upsert_event_notification(
+                db,
+                type="new_lead",
+                title=f"Новая заявка · {_label}",
+                body=(comment or "")[:300],
+                link=f"/communications?comm={comm.id}",
+            )
+        except Exception:
+            logger.warning("bot_flow: failed to create bell notification", exc_info=True)
+
         await realtime.publish("new_communication", {
             "id": str(comm.id), "channel": comm.channel,
             "type": comm.type, "priority": comm.priority,
+            "notif_type": "new_lead",
+            "title": f"Новая заявка · {'Telegram' if ch == 'telegram' else ('Max / VK' if ch == 'max' else ch)}",
+            "body": (comment or "")[:300],
+            "link": f"/communications?comm={comm.id}",
         })
 
         from app.services.deals_service import maybe_create_auto_lead
