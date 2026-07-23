@@ -466,22 +466,22 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     description: "AI-бот для записи пациентов и консультаций",
     infoBox: (
       <div className="flex flex-col gap-[6px] text-[12px]">
-        <b>Инструкция подключения:</b>
+        <b>Подключение за 3 шага:</b>
         <ol className="list-decimal list-inside space-y-1 text-text-muted">
           <li>Создайте бота у <b>@BotFather</b> командой <code>/newbot</code></li>
-          <li>Скопируйте Bot Token и вставьте ниже</li>
-          <li>Укажите Webhook Secret (любая случайная строка)</li>
-          <li>Зарегистрируйте вебхук: <code>curl -X POST https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook -d "url=https://ВАШ_ДОМЕН/api/v1/webhooks/telegram?secret=&lt;SECRET&gt;"</code></li>
-          <li>Включите «AI-ответы» — бот запустится с приветствием и меню</li>
+          <li>Скопируйте Bot Token, вставьте ниже и нажмите <b>«Сохранить»</b></li>
+          <li>Включите «AI-ответы» — бот сразу заработает с приветствием и меню</li>
         </ol>
         <div className="mt-1 text-text-muted">
-          Бот показывает меню «Записаться / Задать вопрос», ведёт по шагам выбора услуги, даты и времени.
+          Вебхук регистрируется <b>автоматически</b> при сохранении токена — вручную запускать
+          curl не нужно. Поле «Webhook Secret» можно оставить пустым: система создаст его сама.
+          Меняете бота — просто вставьте новый токен и сохраните.
         </div>
       </div>
     ),
     fields: [
       { key: "telegram_bot_token", label: "Bot Token", type: "password", placeholder: "123456:ABC..." },
-      { key: "telegram_webhook_secret", label: "Webhook Secret", type: "password", placeholder: "Секрет для setWebhook" },
+      { key: "telegram_webhook_secret", label: "Webhook Secret (необязательно — создастся автоматически)", type: "password", placeholder: "Можно оставить пустым" },
       { key: "telegram_owner_chat_id", label: "Chat ID владельца (для ежедневных отчётов)", placeholder: "123456789" },
       { key: "telegram_bot_ai_enabled", label: "AI-ответы включены", isToggle: true },
       { key: "telegram_bot_system_prompt", label: "Системный промпт (оставьте пустым для стандартного)", multiline: true, placeholder: "Ты — ассистент клиники..." },

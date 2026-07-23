@@ -190,6 +190,31 @@ class TelegramBotService:
                 json={"callback_query_id": callback_query_id, "text": text},
             )
 
+    async def set_webhook(self, webhook_url: str) -> dict:
+        """Зарегистрировать webhook у Telegram (заменяет setWebhook curl-командой).
+
+        Возвращает JSON-ответ Telegram. Бросает исключение при сетевой ошибке —
+        вызывающая сторона логирует и не роняет сохранение настроек.
+        """
+        if not self.base_url:
+            raise ValueError("Telegram bot token is not set")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{self.base_url}/setWebhook",
+                json={
+                    "url": webhook_url,
+                    # Игнорируем накопившиеся апдейты старого бота при смене токена.
+                    "drop_pending_updates": True,
+                    "allowed_updates": ["message", "edited_message", "callback_query"],
+                },
+            )
+            data = resp.json()
+            if resp.status_code != 200 or not data.get("ok"):
+                logger.warning("TelegramBotService: setWebhook failed: %s", resp.text[:300])
+            else:
+                logger.info("TelegramBotService: webhook set to %s", webhook_url)
+            return data
+
     async def set_my_commands(self) -> None:
         """Register bot command menu visible when user types '/' in Telegram."""
         commands = [
