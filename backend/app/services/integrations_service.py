@@ -27,6 +27,17 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "novofon_caller_id",
         "novofon_ami_password",
     ],
+    "rostelecom": [
+        # Выбор активного провайдера телефонии: "novofon" | "rostelecom".
+        "telephony_provider",
+        "rostelecom_client_id",
+        "rostelecom_signing_key",
+        "rostelecom_api_url",
+        "rostelecom_sip_login",
+        "rostelecom_sip_password",
+        "rostelecom_sip_server",
+        "rostelecom_caller_id",
+    ],
     "one_denta": [
         "one_denta_api_url",
         "one_denta_email",
@@ -60,6 +71,7 @@ ALL_KEYS = [k for keys in INTEGRATION_KEYS.values() for k in keys]
 
 MASKED_KEYS = {
     "novofon_api_key", "novofon_webhook_secret", "novofon_sip_password", "novofon_ami_password",
+    "rostelecom_signing_key", "rostelecom_sip_password",
     "one_denta_password", "one_denta_webhook_secret",
     "openai_api_key",
     "yandex_api_key",
@@ -123,10 +135,43 @@ async def get_raw_value(db: AsyncSession, key: str) -> str:
     return row or ""
 
 
+async def get_telephony_provider(db: AsyncSession) -> str:
+    """Активный провайдер телефонии: "rostelecom" | "novofon" (дефолт)."""
+    val = (await get_raw_value(db, "telephony_provider") or "").strip().lower()
+    return "rostelecom" if val == "rostelecom" else "novofon"
+
+
+async def get_telephony_service(db: AsyncSession):
+    """Фабрика: возвращает сервис активного провайдера с кредами из БД.
+
+    Оба сервиса (Novofon/Rostelecom) реализуют единый контракт
+    (handle_call_event / make_call / get_recording / download_recording_bytes /
+    get_call_history), поэтому роутеры работают с ними единообразно.
+    """
+    provider = await get_telephony_provider(db)
+    if provider == "rostelecom":
+        from app.services.rostelecom import RostelecomService
+
+        return RostelecomService(
+            signing_key=(await get_raw_value(db, "rostelecom_signing_key")) or None,
+            client_id=(await get_raw_value(db, "rostelecom_client_id")) or None,
+            api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
+        )
+
+    from app.services.novofon import NovofonService
+
+    return NovofonService(
+        api_key=(await get_raw_value(db, "novofon_api_key")) or None,
+        api_secret=(await get_raw_value(db, "novofon_webhook_secret")) or None,
+    )
+
+
 async def check_connection(service: str, db: AsyncSession, webhook_url: str | None = None) -> dict:
     try:
         if service == "novofon":
             return await _check_novofon(db)
+        elif service == "rostelecom":
+            return await _check_rostelecom(db)
         elif service == "one_denta":
             return await _check_one_denta(db)
         elif service == "openai":
@@ -189,6 +234,38 @@ async def _check_novofon(db: AsyncSession) -> dict:
             balance = data.get("balance", "")
             return {"ok": True, "message": f"Подключено. Баланс: {balance}"}
         return {"ok": False, "message": f"Ошибка API: {resp.status_code} — {resp.text[:200]}"}
+
+
+async def _check_rostelecom(db: AsyncSession) -> dict:
+    """Проверка кода/ключа Ростелеком ВАТС лёгким подписанным запросом.
+
+    Дёргаем ``users_info`` (без параметров) — если подпись/код верны, ВАТС
+    ответит 200; иначе вернёт ошибку авторизации.
+    """
+    from app.services.rostelecom import RostelecomService
+
+    client_id = await get_raw_value(db, "rostelecom_client_id") or settings.ROSTELECOM_CLIENT_ID
+    signing_key = await get_raw_value(db, "rostelecom_signing_key") or settings.ROSTELECOM_SIGNING_KEY
+    if not client_id:
+        return {"ok": False, "message": "Уникальный код идентификации не указан"}
+    if not signing_key:
+        return {"ok": False, "message": "Уникальный ключ для подписи не указан"}
+
+    svc = RostelecomService(
+        signing_key=signing_key,
+        client_id=client_id,
+        api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
+    )
+    try:
+        resp = await svc._post("users_info", {})
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "message": f"Нет связи с API Ростелеком: {e}"}
+
+    if resp.status_code == 200:
+        return {"ok": True, "message": "Подключено"}
+    if resp.status_code in (401, 403):
+        return {"ok": False, "message": f"Ошибка авторизации ({resp.status_code}): проверьте код/ключ и белый список IP"}
+    return {"ok": False, "message": f"Ошибка API: {resp.status_code} — {resp.text[:200]}"}
 
 
 async def _check_one_denta(db: AsyncSession) -> dict:
