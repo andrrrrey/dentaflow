@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     NOVOFON_API_KEY: str = ""
     NOVOFON_WEBHOOK_SECRET: str = ""
 
+    # Ростелеком «Виртуальная АТС» (интеграционный API). Реальные значения
+    # хранятся в админке (IntegrationSetting), env — фоллбэк как у Novofon.
+    ROSTELECOM_SIGNING_KEY: str = ""
+    ROSTELECOM_CLIENT_ID: str = ""
+    ROSTELECOM_API_URL: str = "https://api.cloudpbx.rt.ru"
+
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
     OWNER_TELEGRAM_CHAT_ID: str = ""

@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from app.services import ai_calling_service
 from app.services.asterisk_ami import AsteriskAMI, AMIError
-from app.services.integrations_service import get_raw_value
+from app.services.integrations_service import get_raw_value, get_telephony_provider
 from app.utils.security import decode_token
 
 logger = logging.getLogger(__name__)
@@ -97,11 +97,14 @@ async def internal_novofon_sip(
 ):
     if not settings.INTERNAL_API_TOKEN or x_internal_token != settings.INTERNAL_API_TOKEN:
         raise HTTPException(status_code=403, detail="forbidden")
+    # SIP-креды активного провайдера телефонии (Novofon либо Ростелеком).
+    # ami_password провайдер-независим (секрет между backend и Asterisk).
+    prefix = "rostelecom" if await get_telephony_provider(db) == "rostelecom" else "novofon"
     return {
-        "sip_login": await get_raw_value(db, "novofon_sip_login"),
-        "sip_password": await get_raw_value(db, "novofon_sip_password"),
-        "sip_server": await get_raw_value(db, "novofon_sip_server"),
-        "caller_id": await get_raw_value(db, "novofon_caller_id"),
+        "sip_login": await get_raw_value(db, f"{prefix}_sip_login"),
+        "sip_password": await get_raw_value(db, f"{prefix}_sip_password"),
+        "sip_server": await get_raw_value(db, f"{prefix}_sip_server"),
+        "caller_id": await get_raw_value(db, f"{prefix}_caller_id"),
         "ami_password": await get_raw_value(db, "novofon_ami_password"),
     }
 
@@ -530,7 +533,8 @@ async def test_call(
         raise HTTPException(status_code=400, detail="Укажите корректный номер телефона")
 
     await _sync_credentials(db)
-    caller_id = await get_raw_value(db, "novofon_caller_id")
+    _sip_prefix = "rostelecom" if await get_telephony_provider(db) == "rostelecom" else "novofon"
+    caller_id = await get_raw_value(db, f"{_sip_prefix}_caller_id")
     ami_password = await get_raw_value(db, "novofon_ami_password")
 
     start_payload = {"phone_number": phone, "scenario_id": body.scenario_id, "algo_version": "v1"}

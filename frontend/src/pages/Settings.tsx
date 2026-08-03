@@ -406,6 +406,38 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     ],
   },
   {
+    service: "rostelecom",
+    title: "Виртуальная АТС Ростелеком",
+    icon: <Phone size={15} />,
+    description: "Звонки, записи разговоров, история, вебхуки, SIP для ИИ-обзвона",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Подключение интеграционного API:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>В ЛК Ростелеком → «Настройки домена» → <b>«Интеграционный API»</b> включите сервис</li>
+          <li>Сгенерируйте <b>«Уникальный код идентификации»</b> и <b>«Уникальный ключ для подписи»</b>, вставьте их ниже</li>
+          <li>В поле <b>«Адрес внешней системы»</b> укажите: <code>https://&lt;ваш-домен&gt;/api/v1/webhooks/rostelecom</code></li>
+          <li>Включите запросы <code>call_events</code>, <code>get_number_info</code>, <code>history_file_completed</code></li>
+          <li>Добавьте IP-адрес сервера DentaFlow в <b>«Белый список IP-адресов»</b></li>
+          <li>Для ИИ-обзвона: на вкладке <b>«SIP-устройства»</b> прикрепите устройство и впишите его логин/пароль/сервер ниже</li>
+        </ol>
+        <div className="mt-1 text-text-muted">
+          Переключатель провайдера выше определяет, чья телефония используется — Novofon или Ростелеком.
+          Весь функционал (история, записи, ИИ-обзвон) работает одинаково.
+        </div>
+      </div>
+    ),
+    fields: [
+      { key: "rostelecom_client_id", label: "Уникальный код идентификации", placeholder: "7FBF2E15D4315D223C1ED65E7CA3OD5C" },
+      { key: "rostelecom_signing_key", label: "Уникальный ключ для подписи", type: "password", placeholder: "48866971D33E3A4589A96BBCDEEFE0F3" },
+      { key: "rostelecom_api_url", label: "Адрес API", placeholder: "https://api.cloudpbx.rt.ru" },
+      { key: "rostelecom_sip_login", label: "SIP-логин (SIP-устройства → логин)", placeholder: "Например, 100XXXXX" },
+      { key: "rostelecom_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-устройства" },
+      { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена)", placeholder: "Например, sip.cloudpbx.rt.ru" },
+      { key: "rostelecom_caller_id", label: "Исходящий номер (CallerID)", placeholder: "Номер, который видит пациент" },
+    ],
+  },
+  {
     service: "one_denta",
     title: "1Denta (CRM)",
     description: "Синхронизация пациентов и записей",
@@ -883,6 +915,51 @@ function OneDentaSyncInfo({ status, isOwner }: { status: OneDentaSyncStatus | un
 
 /* ---------- Integrations tab ---------- */
 
+/* ---------- Telephony provider switch ---------- */
+
+function TelephonyProviderCard({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string, val: string) => void;
+}) {
+  const provider = value === "rostelecom" ? "rostelecom" : "novofon";
+  const OPTIONS: { key: string; label: string }[] = [
+    { key: "novofon", label: "Novofon" },
+    { key: "rostelecom", label: "Ростелеком" },
+  ];
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Phone size={16} className="text-accent2" />
+        <div>
+          <h3 className="text-[14px] font-bold text-text-main">Провайдер телефонии</h3>
+          <p className="text-[11.5px] text-text-muted mt-[2px]">
+            Какая АТС используется для звонков, записей и ИИ-обзвона. Настройки обоих провайдеров ниже сохраняются, активен выбранный.
+          </p>
+        </div>
+      </div>
+      <div className="inline-flex p-[3px] rounded-[10px]" style={{ background: "rgba(91,76,245,0.08)" }}>
+        {OPTIONS.map((o) => (
+          <button
+            key={o.key}
+            onClick={() => onChange("telephony_provider", o.key)}
+            className="px-4 py-[7px] rounded-[8px] text-[12.5px] font-semibold border-none cursor-pointer transition-all"
+            style={
+              provider === o.key
+                ? { background: "#5B4CF5", color: "#fff" }
+                : { background: "transparent", color: "#5B4CF5" }
+            }
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function IntegrationsTab() {
   const { data: saved, isLoading } = useIntegrations();
   const saveMutation = useSaveIntegrations();
@@ -946,6 +1023,8 @@ function IntegrationsTab() {
   return (
     <div className="flex flex-col gap-[14px]">
       <AutoLeadCard values={values} onChange={handleChange} />
+
+      <TelephonyProviderCard value={values["telephony_provider"] ?? "novofon"} onChange={handleChange} />
 
       <KnowledgeBaseCard />
 

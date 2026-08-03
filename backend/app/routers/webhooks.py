@@ -374,7 +374,16 @@ async def novofon_webhook(
     body = _parse_novofon_notification(body)
 
     result = await _novofon.handle_call_event(body)
+    return await _store_call_event(db, result)
 
+
+async def _store_call_event(db: AsyncSession, result: dict) -> dict:
+    """Общий путь сохранения события звонка для любого провайдера телефонии.
+
+    Провайдер (Novofon/Ростелеком) лишь нормализует событие в единый ``result``;
+    привязка пациента, дедуп по ``external_id``, callback-задача, realtime и
+    автолид — общие. Канал ``result["channel"]`` = внутренний "novofon" (drop-in).
+    """
     patient_id = None
     phone = result.get("phone")
     if phone:
@@ -384,16 +393,16 @@ async def novofon_webhook(
         if patient:
             patient_id = patient.id
 
-    # Deduplication: Novofon sends several notifications per call (incoming /
-    # completed / missed) that all share the same call_session_id. Keep exactly one
-    # Communication per session and merge later notifications into it, so the call
-    # history matches the Novofon report (one row per call session).
+    # Deduplication: провайдер шлёт несколько уведомлений на звонок (входящий /
+    # завершённый / пропущенный) с одним call_session_id. Держим ровно одну
+    # Communication на сессию и сливаем последующие уведомления в неё.
     external_id = result.get("external_id")
+    channel = result["channel"]
     if external_id:
         existing_stmt = (
             select(Communication)
             .where(
-                Communication.channel == "novofon",
+                Communication.channel == channel,
                 Communication.external_id == external_id,
             )
             .limit(1)
@@ -439,12 +448,12 @@ async def novofon_webhook(
                 "type": existing_comm.type,
                 "priority": existing_comm.priority,
             })
-            logger.info("Novofon: merged notification into comm_id=%s call_id=%s type=%s", existing_comm.id, external_id, existing_comm.type)
+            logger.info("Telephony: merged notification into comm_id=%s call_id=%s type=%s", existing_comm.id, external_id, existing_comm.type)
             return {"status": "ok", "communication_id": str(existing_comm.id)}
 
     comm = Communication(
         patient_id=patient_id,
-        channel=result["channel"],
+        channel=channel,
         direction=result["direction"],
         type=result["type"],
         content=result.get("content"),
@@ -482,8 +491,144 @@ async def novofon_webhook(
         notes=comm.content,
     )
 
-    logger.info("Novofon webhook processed: comm_id=%s", comm.id)
+    logger.info("Telephony webhook processed: comm_id=%s", comm.id)
     return {"status": "ok", "communication_id": str(comm.id)}
+
+
+# ------------------------------------------------------------------
+# Rostelecom «Виртуальная АТС» (телефония)
+# ------------------------------------------------------------------
+# «Адрес внешней системы» в ЛК Ростелеком = базовый URL наших вебхуков, к нему
+# ВАТС дописывает пути call_events / get_number_info / history_file_completed.
+# Настройте его как: https://<домен>/api/v1/webhooks/rostelecom
+
+
+async def _rostelecom_read_and_verify(request: Request, db: AsyncSession) -> dict:
+    """Прочитать сырое тело, проверить подпись X-Client-Sign, вернуть JSON-dict."""
+    from app.services.rostelecom import RostelecomService
+
+    raw = await request.body()
+    raw_text = raw.decode("utf-8", errors="replace") if raw else ""
+
+    signing_key = await get_raw_value(db, "rostelecom_signing_key") or settings.ROSTELECOM_SIGNING_KEY
+    client_id = await get_raw_value(db, "rostelecom_client_id") or settings.ROSTELECOM_CLIENT_ID
+    svc = RostelecomService(signing_key=signing_key or None, client_id=client_id or None)
+
+    signature = request.headers.get("X-Client-Sign") or request.headers.get("x-client-sign") or ""
+    if signing_key and not svc.verify(raw_text, signature):
+        logger.warning("Rostelecom webhook: invalid X-Client-Sign — ignoring")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    import json as _json
+    try:
+        body = _json.loads(raw_text) if raw_text else {}
+    except Exception:
+        body = {}
+    return body if isinstance(body, dict) else {"data": body}
+
+
+@router.post("/rostelecom/call_events")
+async def rostelecom_call_events(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """События звонков от ВАТС Ростелеком (входящие/завершённые/пропущенные)."""
+    from app.services.rostelecom import RostelecomService
+
+    try:
+        body = await _rostelecom_read_and_verify(request, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Rostelecom call_events: read error")
+        return {"status": "ok"}
+
+    svc = RostelecomService()
+    try:
+        result = await svc.handle_call_event(body)
+        return await _store_call_event(db, result)
+    except Exception:
+        logger.exception("Rostelecom call_events processing failed")
+        return {"status": "ok"}
+
+
+@router.post("/rostelecom/history_file_completed")
+async def rostelecom_history_file_completed(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Уведомление о готовности файла записи разговора.
+
+    Записи тянутся по требованию (get_record) в «Контроль скриптов», поэтому
+    здесь достаточно best-effort: логируем и, если пришла прямая ссылка,
+    сохраняем её в content соответствующей Communication.
+    """
+    try:
+        body = await _rostelecom_read_and_verify(request, db)
+    except HTTPException:
+        raise
+    except Exception:
+        return {"status": "ok"}
+
+    from app.services.rostelecom import _first, TELEPHONY_CHANNEL
+
+    call_id = _first(body, "call_id", "callid", "call_session_id", "uuid", "id")
+    link = _first(body, "link", "url", "record", "recording", "file_url", "download_url")
+    logger.info("Rostelecom history_file_completed: call_id=%s link=%.80s", call_id, link)
+
+    if call_id and link:
+        try:
+            import json as _json
+            comm = (await db.execute(
+                select(Communication).where(
+                    Communication.channel == TELEPHONY_CHANNEL,
+                    Communication.external_id == call_id,
+                ).limit(1)
+            )).scalar_one_or_none()
+            if comm is not None:
+                try:
+                    meta = _json.loads(comm.content) if comm.content else {}
+                except Exception:
+                    meta = {}
+                if isinstance(meta, dict):
+                    meta["record_url"] = link
+                    comm.content = _json.dumps(meta, ensure_ascii=False)
+                    await db.commit()
+        except Exception:
+            logger.warning("Rostelecom history_file_completed: failed to attach link", exc_info=True)
+
+    return {"status": "ok"}
+
+
+@router.post("/rostelecom/get_number_info")
+async def rostelecom_get_number_info(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """ВАТС спрашивает у внешней системы данные о номере (карточка звонящего).
+
+    Возвращаем имя пациента, если номер известен, иначе пустой ответ.
+    """
+    try:
+        body = await _rostelecom_read_and_verify(request, db)
+    except HTTPException:
+        raise
+    except Exception:
+        return {}
+
+    from app.services.rostelecom import _first, _digits_phone
+
+    number = _digits_phone(_first(body, "phone", "phone_number", "number", "caller_id", "contact"))
+    if not number:
+        return {}
+
+    patient = (await db.execute(
+        select(Patient).where(Patient.phone == number).limit(1)
+    )).scalar_one_or_none()
+    if not patient:
+        return {}
+
+    return {"name": patient.name or "", "responsible": ""}
 
 
 # ------------------------------------------------------------------

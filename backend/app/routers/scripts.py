@@ -20,7 +20,6 @@ from app.models.script import Script
 from app.models.user import User
 from app.services.ai_service import AIService
 from app.services.integrations_service import get_raw_value
-from app.services.novofon import NovofonService
 
 router = APIRouter(prefix="/api/v1/scripts", tags=["scripts"])
 
@@ -192,19 +191,39 @@ async def upload_script_file(
     }
 
 
-async def _find_recording_url(call_id: str, db: AsyncSession, svc: NovofonService) -> str:
-    """Find a downloadable Novofon recording URL for the given call_id.
+async def _find_recording_url(call_id: str, db: AsyncSession, svc) -> str:
+    """Find a downloadable recording URL for the given call_id (active provider).
 
-    Strategy:
+    Strategy (Novofon):
     1. /v1/pbx/record/request/ with call_id → returns api.novofon.com URL (best)
     2. /v1/statistics/pbx/ → extract call IDs → retry /v1/pbx/record/request/ with those
     3. Last resort: use the my.novofon.ru URL from stats (requires auth to download)
+
+    Для Ростелеком стратегия проще: сначала ссылка, сохранённая вебхуком
+    history_file_completed (в content.record_url), затем метод get_record.
     """
     from datetime import timedelta
 
     from sqlalchemy import select as sa_select
 
     from app.models.communication import Communication
+
+    provider = getattr(svc, "provider", "novofon")
+
+    # --- Rostelecom: сохранённая вебхуком ссылка → get_record маркер ---
+    if provider == "rostelecom":
+        import json as _json
+        comm = (await db.execute(
+            sa_select(Communication).where(Communication.external_id == call_id)
+        )).scalar_one_or_none()
+        if comm is not None and comm.content:
+            try:
+                meta = _json.loads(comm.content)
+                if isinstance(meta, dict) and meta.get("record_url"):
+                    return str(meta["record_url"])
+            except Exception:
+                pass
+        return await svc.get_recording(call_id)
 
     # --- Method 1: direct recording request API ---
     url = await svc.get_recording(call_id)
@@ -318,42 +337,47 @@ async def transcribe_call(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Download a Novofon call recording and transcribe it with Whisper."""
-    from app.config import settings as app_settings
+    """Download the call recording from the active provider and transcribe it with Whisper."""
+    from app.services.integrations_service import get_telephony_provider, get_telephony_service
 
-    api_key = (await get_raw_value(db, "novofon_api_key")) or app_settings.NOVOFON_API_KEY
-    api_secret = (await get_raw_value(db, "novofon_webhook_secret")) or app_settings.NOVOFON_WEBHOOK_SECRET
+    provider = await get_telephony_provider(db)
+    if provider == "novofon":
+        api_key = await get_raw_value(db, "novofon_api_key")
+        api_secret = await get_raw_value(db, "novofon_webhook_secret")
+        if not api_key or not api_secret:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "API-ключ или секрет Новофон не настроены. "
+                    "Перейдите в Настройки → Интеграции → Новофон и сохраните ключи."
+                ),
+            )
+    else:  # rostelecom
+        if not await get_raw_value(db, "rostelecom_client_id"):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Ростелеком не настроен. Перейдите в Настройки → Интеграции → "
+                    "Ростелеком и сохраните код идентификации и ключ для подписи."
+                ),
+            )
 
-    logger.info(
-        "transcribe_call: call_id=%s api_key=%s api_secret=%s",
-        body.call_id,
-        (api_key[:8] + "...") if api_key else "MISSING",
-        "SET" if api_secret else "MISSING",
-    )
+    logger.info("transcribe_call: call_id=%s provider=%s", body.call_id, provider)
 
-    if not api_key or not api_secret:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "API-ключ или секрет Новофон не настроены. "
-                "Перейдите в Настройки → Интеграции → Новофон и сохраните ключи."
-            ),
-        )
-
-    svc = NovofonService(api_key=api_key, api_secret=api_secret)
+    svc = await get_telephony_service(db)
     url = await _find_recording_url(body.call_id, db, svc)
 
     if not url:
         raise HTTPException(
             status_code=404,
             detail=(
-                "Не удалось найти запись для этого звонка в Novofon. "
-                "Проверьте: включена ли запись разговоров в настройках Novofon, "
-                "и есть ли у API-ключа доступ к статистике и записям."
+                "Не удалось найти запись для этого звонка. "
+                "Проверьте, что запись разговоров включена в настройках телефонии "
+                "и у интеграции есть доступ к записям."
             ),
         )
 
-    logger.info("Downloading Novofon recording for call_id=%s url=%.80s", body.call_id, url)
+    logger.info("Downloading recording for call_id=%s url=%.80s", body.call_id, url)
 
     audio_bytes = await svc.download_recording_bytes(url)
     if not audio_bytes:
@@ -361,8 +385,8 @@ async def transcribe_call(
         raise HTTPException(
             status_code=502,
             detail=(
-                "Не удалось скачать файл записи из Новофон. "
-                "Убедитесь, что у API-ключа есть доступ к записям, "
+                "Не удалось скачать файл записи. "
+                "Убедитесь, что у интеграции есть доступ к записям, "
                 "и что запись не была удалена."
             ),
         )

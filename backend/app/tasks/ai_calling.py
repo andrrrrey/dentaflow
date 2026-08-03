@@ -22,7 +22,7 @@ from app.config import settings
 from app.database import async_session_factory
 from app.services import ai_calling_service as svc
 from app.services.asterisk_ami import AsteriskAMI, AMIError
-from app.services.integrations_service import get_raw_value
+from app.services.integrations_service import get_raw_value, get_telephony_provider
 from app.models.ai_calling import AiCallingCampaign, AiCallingCampaignItem
 from app.tasks.celery_app import celery_app
 from app.tasks.loop import run_async
@@ -136,7 +136,8 @@ async def _place_call(item_id: str) -> dict:
         tts_speed = campaign.tts_speed
 
         await _sync_credentials(db)
-        caller_id = await get_raw_value(db, "novofon_caller_id")
+        _sip_prefix = "rostelecom" if await get_telephony_provider(db) == "rostelecom" else "novofon"
+        caller_id = await get_raw_value(db, f"{_sip_prefix}_caller_id")
         ami_password = await get_raw_value(db, "novofon_ami_password")
 
     # 1. Создаём сессию диалога в aicallrobot.
