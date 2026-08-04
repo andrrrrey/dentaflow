@@ -462,6 +462,8 @@ async def _store_call_event(db: AsyncSession, result: dict) -> dict:
         priority=result["priority"],
         external_id=external_id,
     )
+    if result.get("created_at"):
+        comm.created_at = result["created_at"]
     db.add(comm)
     await db.flush()
 
@@ -503,19 +505,30 @@ async def _store_call_event(db: AsyncSession, result: dict) -> dict:
 # Настройте его как: https://<домен>/api/v1/webhooks/rostelecom
 
 
-async def _rostelecom_read_and_verify(request: Request, db: AsyncSession) -> dict:
-    """Прочитать сырое тело, проверить подпись X-Client-Sign, вернуть JSON-dict."""
+async def _rostelecom_service(db: AsyncSession):
+    """RostelecomService с кредами из админки (фоллбэк на env)."""
     from app.services.rostelecom import RostelecomService
 
+    return RostelecomService(
+        signing_key=(await get_raw_value(db, "rostelecom_signing_key")) or settings.ROSTELECOM_SIGNING_KEY or None,
+        client_id=(await get_raw_value(db, "rostelecom_client_id")) or settings.ROSTELECOM_CLIENT_ID or None,
+        api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
+        domain=(await get_raw_value(db, "rostelecom_domain")) or None,
+    )
+
+
+async def _rostelecom_read_and_verify(request: Request, db: AsyncSession):
+    """Прочитать сырое тело, проверить подпись X-Client-Sign.
+
+    Возвращает кортеж (body: dict, svc: RostelecomService).
+    """
     raw = await request.body()
     raw_text = raw.decode("utf-8", errors="replace") if raw else ""
 
-    signing_key = await get_raw_value(db, "rostelecom_signing_key") or settings.ROSTELECOM_SIGNING_KEY
-    client_id = await get_raw_value(db, "rostelecom_client_id") or settings.ROSTELECOM_CLIENT_ID
-    svc = RostelecomService(signing_key=signing_key or None, client_id=client_id or None)
+    svc = await _rostelecom_service(db)
 
     signature = request.headers.get("X-Client-Sign") or request.headers.get("x-client-sign") or ""
-    if signing_key and not svc.verify(raw_text, signature):
+    if svc.signing_key and not svc.verify(raw_text, signature):
         logger.warning("Rostelecom webhook: invalid X-Client-Sign — ignoring")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
@@ -524,7 +537,7 @@ async def _rostelecom_read_and_verify(request: Request, db: AsyncSession) -> dic
         body = _json.loads(raw_text) if raw_text else {}
     except Exception:
         body = {}
-    return body if isinstance(body, dict) else {"data": body}
+    return (body if isinstance(body, dict) else {"data": body}), svc
 
 
 @router.post("/rostelecom/call_events")
@@ -532,24 +545,26 @@ async def rostelecom_call_events(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """События звонков от ВАТС Ростелеком (входящие/завершённые/пропущенные)."""
-    from app.services.rostelecom import RostelecomService
+    """События звонков от ВАТС Ростелеком (new/calling/connected/end/…).
 
+    Реагируем на ``new`` (живая запись) и ``end`` (финализация через call_info);
+    остальные состояния и внутренние вызовы пропускаем.
+    """
     try:
-        body = await _rostelecom_read_and_verify(request, db)
+        body, svc = await _rostelecom_read_and_verify(request, db)
     except HTTPException:
         raise
     except Exception:
         logger.exception("Rostelecom call_events: read error")
         return {"status": "ok"}
 
-    svc = RostelecomService()
     try:
         result = await svc.handle_call_event(body)
-        return await _store_call_event(db, result)
+        if result:
+            return await _store_call_event(db, result)
     except Exception:
         logger.exception("Rostelecom call_events processing failed")
-        return {"status": "ok"}
+    return {"status": "ok"}
 
 
 @router.post("/rostelecom/history_file_completed")
@@ -557,45 +572,32 @@ async def rostelecom_history_file_completed(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Уведомление о готовности файла записи разговора.
+    """Уведомление о готовности файла журнала вызовов (асинхронная выгрузка).
 
-    Записи тянутся по требованию (get_record) в «Контроль скриптов», поэтому
-    здесь достаточно best-effort: логируем и, если пришла прямая ссылка,
-    сохраняем её в content соответствующей Communication.
+    По ``order_id`` скачиваем gzip-CSV (download_call_history) и импортируем
+    записи в историю звонков — так работает кнопка «Синхронизировать».
     """
     try:
-        body = await _rostelecom_read_and_verify(request, db)
+        body, svc = await _rostelecom_read_and_verify(request, db)
     except HTTPException:
         raise
     except Exception:
         return {"status": "ok"}
 
-    from app.services.rostelecom import _first, TELEPHONY_CHANNEL
+    from app.services.rostelecom import _first
 
-    call_id = _first(body, "call_id", "callid", "call_session_id", "uuid", "id")
-    link = _first(body, "link", "url", "record", "recording", "file_url", "download_url")
-    logger.info("Rostelecom history_file_completed: call_id=%s link=%.80s", call_id, link)
+    order_id = _first(body, "order_id")
+    result_code = _first(body, "result")
+    logger.info("Rostelecom history_file_completed: order_id=%s result=%s", order_id, result_code)
 
-    if call_id and link:
+    if order_id and result_code == "0":
         try:
-            import json as _json
-            comm = (await db.execute(
-                select(Communication).where(
-                    Communication.channel == TELEPHONY_CHANNEL,
-                    Communication.external_id == call_id,
-                ).limit(1)
-            )).scalar_one_or_none()
-            if comm is not None:
-                try:
-                    meta = _json.loads(comm.content) if comm.content else {}
-                except Exception:
-                    meta = {}
-                if isinstance(meta, dict):
-                    meta["record_url"] = link
-                    comm.content = _json.dumps(meta, ensure_ascii=False)
-                    await db.commit()
+            rows = await svc.download_call_history(order_id)
+            from app.routers.calls import import_rostelecom_history
+            summary = await import_rostelecom_history(db, rows)
+            logger.info("Rostelecom history imported: %s", summary)
         except Exception:
-            logger.warning("Rostelecom history_file_completed: failed to attach link", exc_info=True)
+            logger.exception("Rostelecom history_file_completed: import failed")
 
     return {"status": "ok"}
 
@@ -605,30 +607,32 @@ async def rostelecom_get_number_info(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """ВАТС спрашивает у внешней системы данные о номере (карточка звонящего).
+    """ВАТС запрашивает данные о вызывающем номере (карточка Display Name).
 
-    Возвращаем имя пациента, если номер известен, иначе пустой ответ.
+    Возвращаем displayName (ФИО пациента), если номер известен.
     """
     try:
-        body = await _rostelecom_read_and_verify(request, db)
+        body, _svc = await _rostelecom_read_and_verify(request, db)
     except HTTPException:
         raise
     except Exception:
-        return {}
+        return {"result": "1", "resultMessage": "error"}
 
-    from app.services.rostelecom import _first, _digits_phone
+    from app.services.rostelecom import _digits_phone
 
-    number = _digits_phone(_first(body, "phone", "phone_number", "number", "caller_id", "contact"))
+    number = _digits_phone(str(body.get("from_number") or ""))
     if not number:
-        return {}
+        return {"result": "0", "resultMessage": "ok", "displayName": ""}
 
     patient = (await db.execute(
         select(Patient).where(Patient.phone == number).limit(1)
     )).scalar_one_or_none()
-    if not patient:
-        return {}
 
-    return {"name": patient.name or "", "responsible": ""}
+    return {
+        "result": "0",
+        "resultMessage": "ok",
+        "displayName": (patient.name if patient else "") or "",
+    }
 
 
 # ------------------------------------------------------------------

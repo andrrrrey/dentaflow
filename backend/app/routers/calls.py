@@ -183,47 +183,42 @@ def _map_stat_to_comm(stat: dict) -> dict | None:
     }
 
 
-def _map_rostelecom_stat(stat: dict) -> dict | None:
-    """Map a Rostelecom domain_call_history record to Communication field values.
+def _map_rostelecom_stat(row: dict) -> dict | None:
+    """Map a Rostelecom download_call_history CSV row to Communication values.
 
-    Имена полей подтверждаются на боевом API (см. /sync/inspect), поэтому берём
-    defensive-набор синонимов.
+    Столбцы CSV (руководство v7.5, табл. А.3.14): session_id, call_type,
+    direction (1 входящий/2 исходящий/3 внутренний), state (1 принят/2 не
+    принят), orig_number, dest_number, start_call_date (unix), duration,
+    is_record. Внутренние вызовы (direction=3) пропускаем.
     """
     from app.services.rostelecom import _first, _first_int, _digits_phone
 
-    call_id = _first(stat, "call_id", "callid", "call_session_id", "uuid", "id", "session_id")
-    if not call_id:
+    session_id = _first(row, "session_id", "call_id")
+    if not session_id:
         return None
 
-    direction_raw = _first(stat, "direction", "type", "call_type", "way").lower()
-    direction = "outbound" if direction_raw in ("out", "outgoing", "outbound", "0") else "inbound"
+    dir_code = _first(row, "direction")
+    if dir_code == "3":
+        return None
+    direction = "outbound" if dir_code == "2" else "inbound"
 
-    contact = _digits_phone(_first(stat, "phone", "phone_number", "client_number", "caller_id",
-                                   "contact_phone_number", "src", "abonent", "from"))
-    virtual = _digits_phone(_first(stat, "diversion", "line_number", "virtual_phone_number",
-                                   "called", "dst", "did", "to"))
-    caller_id = contact if direction == "inbound" else virtual
-    called_did = virtual if direction == "inbound" else contact
+    caller_id = _digits_phone(_first(row, "orig_number"))
+    called_did = _digits_phone(_first(row, "dest_number"))
 
-    seconds = _first_int(stat, "talk_time", "talk_duration", "billsec", "duration")
-    status = _first(stat, "status", "disposition", "result", "type").lower()
-    answered = seconds > 0 or any(m in status for m in ("answered", "success", "completed", "accept", "talk"))
+    seconds = _first_int(row, "duration")
+    answered = _first(row, "state") == "1" or seconds > 0
     comm_type = "call" if answered else "missed_call"
 
     created_at = None
-    start_str = _first(stat, "start", "callstart", "date", "start_time", "call_date", "created_at")
-    if start_str:
-        from zoneinfo import ZoneInfo
-        moscow = ZoneInfo("Europe/Moscow")
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%d.%m.%Y %H:%M:%S"):
-            try:
-                created_at = datetime.strptime(start_str[:19], fmt).replace(tzinfo=moscow)
-                break
-            except ValueError:
-                continue
+    ts = _first(row, "start_call_date")
+    if ts:
+        try:
+            created_at = datetime.fromtimestamp(int(float(ts)), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            created_at = None
 
     return {
-        "external_id": str(call_id),
+        "external_id": str(session_id),
         "caller_id": caller_id,
         "called_did": called_did,
         "duration_sec": seconds,
@@ -233,79 +228,27 @@ def _map_rostelecom_stat(stat: dict) -> dict | None:
     }
 
 
-@router.get("/sync/inspect")
-async def inspect_novofon_stats(
-    days: int = Query(7, ge=1, le=30),
-    _current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Return raw telephony-provider statistics for debugging field names."""
-    provider = await get_telephony_provider(db)
-    if provider == "novofon" and not await get_raw_value(db, "novofon_api_key"):
-        return {"error": "Novofon API key not configured"}
-    if provider == "rostelecom" and not await get_raw_value(db, "rostelecom_client_id"):
-        return {"error": "Rostelecom client id not configured"}
+async def _upsert_mapped_calls(db: AsyncSession, mapped_list: list[dict | None]) -> dict:
+    """Идемпотентный импорт списка сопоставленных записей звонков в историю.
 
-    svc = await get_telephony_service(db)
-    date_from = datetime.now(timezone.utc) - timedelta(days=days)
-
-    from fastapi import HTTPException as _HTTPException
-    try:
-        stats = await svc.get_call_history(date_from=date_from)
-    except Exception as exc:
-        raise _HTTPException(status_code=502, detail=f"{provider} API error: {exc}")
-
-    return {
-        "provider": provider,
-        "total": len(stats),
-        "sample": stats[:3] if stats else [],
-        "all_keys": list(stats[0].keys()) if stats else [],
-    }
-
-
-@router.post("/sync")
-async def sync_calls(
-    days: int = Query(7, ge=1, le=30),
-    _current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Fetch call history from the active telephony provider and import missing records."""
-    provider = await get_telephony_provider(db)
-    if provider == "novofon" and not await get_raw_value(db, "novofon_api_key"):
-        return {"synced": 0, "skipped": 0, "message": "Novofon API key not configured"}
-    if provider == "rostelecom" and not await get_raw_value(db, "rostelecom_client_id"):
-        return {"synced": 0, "skipped": 0, "message": "Rostelecom client id not configured"}
-
-    svc = await get_telephony_service(db)
-    stat_mapper = _map_rostelecom_stat if provider == "rostelecom" else _map_stat_to_comm
-    date_from = datetime.now(timezone.utc) - timedelta(days=days)
-
-    from fastapi import HTTPException as _HTTPException
-    try:
-        stats = await svc.get_call_history(date_from=date_from)
-    except Exception as exc:
-        raise _HTTPException(status_code=502, detail=f"{provider} API error: {exc}")
-
-    if not stats:
-        return {"synced": 0, "skipped": 0, "total_from_api": 0}
-
-    # Map once, then fetch existing records for these external_ids in one query
-    mapped_list = [stat_mapper(s) for s in stats]
-    all_ext_ids = [m["external_id"] for m in mapped_list if m and m.get("external_id")]
-    existing_stmt = select(Communication).where(
-        Communication.channel == "novofon",
-        Communication.external_id.in_(all_ext_ids),
-    )
-    existing_result = await db.execute(existing_stmt)
-    existing_by_ext_id: dict[str, list[Communication]] = {}
-    for c in existing_result.scalars().all():
-        existing_by_ext_id.setdefault(c.external_id, []).append(c)
-
+    Дедуп по external_id, канал = "novofon" (общий телефонный канал). Общий код
+    для Novofon-синка и импорта журнала Ростелекома.
+    """
     import json as _json
 
-    synced = 0
-    updated = 0
-    skipped = 0
+    all_ext_ids = [m["external_id"] for m in mapped_list if m and m.get("external_id")]
+    existing_by_ext_id: dict[str, list[Communication]] = {}
+    if all_ext_ids:
+        existing_result = await db.execute(
+            select(Communication).where(
+                Communication.channel == "novofon",
+                Communication.external_id.in_(all_ext_ids),
+            )
+        )
+        for c in existing_result.scalars().all():
+            existing_by_ext_id.setdefault(c.external_id, []).append(c)
+
+    synced = updated = skipped = 0
     for mapped in mapped_list:
         if not mapped:
             skipped += 1
@@ -318,12 +261,9 @@ async def sync_calls(
         ext_id = mapped["external_id"]
 
         if ext_id in existing_by_ext_id:
-            # Reconcile every stored row for this call session to Novofon's
-            # authoritative result. Novofon derives the status from the call
-            # `disposition` (АТС outcome), while realtime webhooks guessed it
-            # from talk duration — so short "1 sec" calls were stored as
-            # answered while Novofon reports them missed. Always overwrite so
-            # the history matches the Novofon report.
+            # Приводим все хранимые строки этой сессии к авторитетному результату
+            # АТС (disposition/state), т.к. реалтайм-события могли угадать статус
+            # по длительности.
             for comm in existing_by_ext_id[ext_id]:
                 comm.content = content
                 comm.type = mapped["comm_type"]
@@ -352,8 +292,105 @@ async def sync_calls(
 
     if synced or updated:
         await db.commit()
+    return {"synced": synced, "updated": updated, "skipped": skipped}
 
-    return {"synced": synced, "updated": updated, "skipped": skipped, "total_from_api": len(stats)}
+
+async def import_rostelecom_history(db: AsyncSession, rows: list[dict]) -> dict:
+    """Импорт скачанного CSV-журнала Ростелекома (вызывается из вебхука
+    history_file_completed)."""
+    mapped = [_map_rostelecom_stat(r) for r in rows]
+    result = await _upsert_mapped_calls(db, mapped)
+    result["total_from_file"] = len(rows)
+    return result
+
+
+@router.get("/sync/inspect")
+async def inspect_novofon_stats(
+    days: int = Query(7, ge=1, le=30),
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return raw telephony-provider statistics for debugging field names."""
+    provider = await get_telephony_provider(db)
+    if provider == "rostelecom":
+        return {
+            "provider": "rostelecom",
+            "note": (
+                "История домена Ростелеком выгружается асинхронно "
+                "(domain_call_history → вебхук history_file_completed → "
+                "download_call_history). Импорт происходит после готовности файла."
+            ),
+        }
+    if not await get_raw_value(db, "novofon_api_key"):
+        return {"error": "Novofon API key not configured"}
+
+    svc = await get_telephony_service(db)
+    date_from = datetime.now(timezone.utc) - timedelta(days=days)
+
+    from fastapi import HTTPException as _HTTPException
+    try:
+        stats = await svc.get_call_history(date_from=date_from)
+    except Exception as exc:
+        raise _HTTPException(status_code=502, detail=f"{provider} API error: {exc}")
+
+    return {
+        "provider": provider,
+        "total": len(stats),
+        "sample": stats[:3] if stats else [],
+        "all_keys": list(stats[0].keys()) if stats else [],
+    }
+
+
+@router.post("/sync")
+async def sync_calls(
+    days: int = Query(7, ge=1, le=30),
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Импорт истории звонков активного провайдера телефонии.
+
+    Novofon — синхронно (statistics API). Ростелеком — асинхронно: запрашиваем
+    формирование файла журнала (domain_call_history); готовый файл приходит
+    вебхуком history_file_completed и импортируется автоматически.
+    """
+    from fastapi import HTTPException as _HTTPException
+
+    provider = await get_telephony_provider(db)
+    date_from = datetime.now(timezone.utc) - timedelta(days=days)
+
+    if provider == "rostelecom":
+        if not await get_raw_value(db, "rostelecom_client_id"):
+            return {"synced": 0, "skipped": 0, "message": "Rostelecom client id not configured"}
+        svc = await get_telephony_service(db)
+        try:
+            order_id = await svc.request_call_history(date_from, datetime.now(timezone.utc))
+        except Exception as exc:
+            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+        return {
+            "status": "requested",
+            "order_id": order_id,
+            "message": (
+                "История домена Ростелеком запрошена. Файл сформируется асинхронно "
+                "(обычно до нескольких минут) и импортируется автоматически."
+            ),
+        }
+
+    if not await get_raw_value(db, "novofon_api_key"):
+        return {"synced": 0, "skipped": 0, "message": "Novofon API key not configured"}
+
+    svc = await get_telephony_service(db)
+    try:
+        stats = await svc.get_call_history(date_from=date_from)
+    except Exception as exc:
+        raise _HTTPException(status_code=502, detail=f"novofon API error: {exc}")
+
+    if not stats:
+        return {"synced": 0, "skipped": 0, "total_from_api": 0}
+
+    mapped_list = [_map_stat_to_comm(s) for s in stats]
+    result = await _upsert_mapped_calls(db, mapped_list)
+    result["total_from_api"] = len(stats)
+    return result
 
 
 @router.get("/recording/{call_id}")

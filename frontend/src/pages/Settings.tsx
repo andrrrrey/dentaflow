@@ -431,6 +431,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "rostelecom_client_id", label: "Уникальный код идентификации", placeholder: "7FBF2E15D4315D223C1ED65E7CA3OD5C" },
       { key: "rostelecom_signing_key", label: "Уникальный ключ для подписи", type: "password", placeholder: "48866971D33E3A4589A96BBCDEEFE0F3" },
       { key: "rostelecom_api_url", label: "Адрес API", placeholder: "https://api.cloudpbx.rt.ru" },
+      { key: "rostelecom_domain", label: "Домен ВАТС (из шапки ЛК, напр. 636427.20.rt.ru)", placeholder: "636427.20.rt.ru" },
       { key: "rostelecom_sip_login", label: "SIP-логин (SIP-устройства → логин)", placeholder: "Например, 100XXXXX" },
       { key: "rostelecom_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-устройства" },
       { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена)", placeholder: "Например, sip.cloudpbx.rt.ru" },
