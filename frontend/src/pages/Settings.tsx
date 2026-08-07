@@ -431,6 +431,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "rostelecom_client_id", label: "Уникальный код идентификации", placeholder: "7FBF2E15D4315D223C1ED65E7CA3OD5C" },
       { key: "rostelecom_signing_key", label: "Уникальный ключ для подписи", type: "password", placeholder: "48866971D33E3A4589A96BBCDEEFE0F3" },
       { key: "rostelecom_api_url", label: "Адрес API", placeholder: "https://api.cloudpbx.rt.ru" },
+      { key: "rostelecom_domain", label: "Домен ВАТС (из шапки ЛК, напр. 636427.20.rt.ru)", placeholder: "636427.20.rt.ru" },
       { key: "rostelecom_sip_login", label: "SIP-логин (SIP-устройства → логин)", placeholder: "Например, 100XXXXX" },
       { key: "rostelecom_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-устройства" },
       { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена)", placeholder: "Например, sip.cloudpbx.rt.ru" },
@@ -596,6 +597,9 @@ function IntegrationCard({
   syncing,
   syncStatus,
   syncInfo,
+  onSave,
+  saving,
+  saved,
 }: {
   config: IntegrationCardConfig;
   values: Record<string, string>;
@@ -607,6 +611,9 @@ function IntegrationCard({
   syncing?: boolean;
   syncStatus?: string;
   syncInfo?: ReactNode;
+  onSave?: () => void;
+  saving?: boolean;
+  saved?: boolean;
 }) {
   return (
     <Card>
@@ -693,6 +700,17 @@ function IntegrationCard({
           {checking ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
           {checking ? "Проверка..." : "Проверить"}
         </button>
+        {onSave && (
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-60"
+            style={{ background: saved ? "#00c9a7" : "#5B4CF5", color: "#fff" }}
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <Save size={13} />}
+            {saving ? "Сохранение..." : saved ? "Сохранено" : "Сохранить"}
+          </button>
+        )}
       </div>
     </Card>
   );
@@ -710,9 +728,15 @@ const LEAD_CHANNELS: { key: string; label: string }[] = [
 function AutoLeadCard({
   values,
   onChange,
+  onSave,
+  saving,
+  saved,
 }: {
   values: Record<string, string>;
   onChange: (key: string, val: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
 }) {
   const { data: stages } = usePipelineStages();
   const enabled = values["auto_lead_enabled"] === "true";
@@ -788,6 +812,18 @@ function AutoLeadCard({
           </div>
         </div>
       )}
+
+      <div className="flex items-center justify-end mt-3">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-60"
+          style={{ background: saved ? "#00c9a7" : "#5B4CF5", color: "#fff" }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <Save size={13} />}
+          {saving ? "Сохранение..." : saved ? "Сохранено" : "Сохранить"}
+        </button>
+      </div>
     </Card>
   );
 }
@@ -920,9 +956,15 @@ function OneDentaSyncInfo({ status, isOwner }: { status: OneDentaSyncStatus | un
 function TelephonyProviderCard({
   value,
   onChange,
+  onSave,
+  saving,
+  saved,
 }: {
   value: string;
   onChange: (key: string, val: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
 }) {
   const provider = value === "rostelecom" ? "rostelecom" : "novofon";
   const OPTIONS: { key: string; label: string }[] = [
@@ -940,21 +982,32 @@ function TelephonyProviderCard({
           </p>
         </div>
       </div>
-      <div className="inline-flex p-[3px] rounded-[10px]" style={{ background: "rgba(91,76,245,0.08)" }}>
-        {OPTIONS.map((o) => (
-          <button
-            key={o.key}
-            onClick={() => onChange("telephony_provider", o.key)}
-            className="px-4 py-[7px] rounded-[8px] text-[12.5px] font-semibold border-none cursor-pointer transition-all"
-            style={
-              provider === o.key
-                ? { background: "#5B4CF5", color: "#fff" }
-                : { background: "transparent", color: "#5B4CF5" }
-            }
-          >
-            {o.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="inline-flex p-[3px] rounded-[10px]" style={{ background: "rgba(91,76,245,0.08)" }}>
+          {OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              onClick={() => onChange("telephony_provider", o.key)}
+              className="px-4 py-[7px] rounded-[8px] text-[12.5px] font-semibold border-none cursor-pointer transition-all"
+              style={
+                provider === o.key
+                  ? { background: "#5B4CF5", color: "#fff" }
+                  : { background: "transparent", color: "#5B4CF5" }
+              }
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-60"
+          style={{ background: saved ? "#00c9a7" : "#5B4CF5", color: "#fff" }}
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <Save size={13} />}
+          {saving ? "Сохранение..." : saved ? "Сохранено" : "Сохранить"}
+        </button>
       </div>
     </Card>
   );
@@ -974,6 +1027,8 @@ function IntegrationsTab() {
   const [syncStatus, setSyncStatus] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [savingService, setSavingService] = useState<string | null>(null);
+  const [savedService, setSavedService] = useState<string | null>(null);
 
   useEffect(() => {
     if (saved) setValues(saved);
@@ -991,6 +1046,23 @@ function IntegrationsTab() {
       setSaveSuccess("Настройки сохранены");
     } catch {
       setSaveError("Ошибка при сохранении");
+    }
+  }
+
+  // Сохранение из конкретного блока: PUT сохраняет все настройки разом
+  // (бэкенд мержит по ключам), поэтому кнопка в каждой карточке безопасна —
+  // просто даёт локальный отклик «Сохранено», не прокручивая страницу.
+  async function handleSaveCard(service: string) {
+    setSavingService(service);
+    setSaveError("");
+    try {
+      await saveMutation.mutateAsync(values);
+      setSavedService(service);
+      setTimeout(() => setSavedService((s) => (s === service ? null : s)), 2500);
+    } catch {
+      setSaveError("Ошибка при сохранении");
+    } finally {
+      setSavingService(null);
     }
   }
 
@@ -1022,9 +1094,21 @@ function IntegrationsTab() {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <AutoLeadCard values={values} onChange={handleChange} />
+      <AutoLeadCard
+        values={values}
+        onChange={handleChange}
+        onSave={() => handleSaveCard("auto_lead")}
+        saving={savingService === "auto_lead"}
+        saved={savedService === "auto_lead"}
+      />
 
-      <TelephonyProviderCard value={values["telephony_provider"] ?? "novofon"} onChange={handleChange} />
+      <TelephonyProviderCard
+        value={values["telephony_provider"] ?? "novofon"}
+        onChange={handleChange}
+        onSave={() => handleSaveCard("telephony_provider")}
+        saving={savingService === "telephony_provider"}
+        saved={savedService === "telephony_provider"}
+      />
 
       <KnowledgeBaseCard />
 
@@ -1046,6 +1130,9 @@ function IntegrationsTab() {
             syncing={showSync && syncOneDenta.isPending}
             syncStatus={showSync ? syncStatus : undefined}
             syncInfo={isOneDenta ? <OneDentaSyncInfo status={oneDentaStatus} isOwner={isOwner} /> : undefined}
+            onSave={() => handleSaveCard(cfg.service)}
+            saving={savingService === cfg.service}
+            saved={savedService === cfg.service}
           />
         );
       })}

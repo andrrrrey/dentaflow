@@ -33,6 +33,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "rostelecom_client_id",
         "rostelecom_signing_key",
         "rostelecom_api_url",
+        "rostelecom_domain",
         "rostelecom_sip_login",
         "rostelecom_sip_password",
         "rostelecom_sip_server",
@@ -251,17 +252,28 @@ async def _check_rostelecom(db: AsyncSession) -> dict:
     if not signing_key:
         return {"ok": False, "message": "Уникальный ключ для подписи не указан"}
 
+    domain = await get_raw_value(db, "rostelecom_domain")
     svc = RostelecomService(
         signing_key=signing_key,
         client_id=client_id,
         api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
+        domain=domain or None,
     )
+    # users_info — самый лёгкий метод. HTTP 200 подтверждает, что подпись принята
+    # (даже если result!=0 из-за пустого домена). 401/403 — неверные код/ключ или IP.
     try:
-        resp = await svc._post("users_info", {})
+        resp = await svc._post("users_info", {"domain": domain} if domain else {})
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "message": f"Нет связи с API Ростелеком: {e}"}
 
     if resp.status_code == 200:
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        if str(data.get("result")) not in ("0", ""):
+            msg = data.get("resultMessage") or "подпись принята"
+            return {"ok": True, "message": f"Подключено ({msg})"}
         return {"ok": True, "message": "Подключено"}
     if resp.status_code in (401, 403):
         return {"ok": False, "message": f"Ошибка авторизации ({resp.status_code}): проверьте код/ключ и белый список IP"}

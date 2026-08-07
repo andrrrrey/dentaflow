@@ -210,19 +210,8 @@ async def _find_recording_url(call_id: str, db: AsyncSession, svc) -> str:
 
     provider = getattr(svc, "provider", "novofon")
 
-    # --- Rostelecom: сохранённая вебхуком ссылка → get_record маркер ---
+    # --- Rostelecom: одноразовая ссылка на запись по session_id (get_record) ---
     if provider == "rostelecom":
-        import json as _json
-        comm = (await db.execute(
-            sa_select(Communication).where(Communication.external_id == call_id)
-        )).scalar_one_or_none()
-        if comm is not None and comm.content:
-            try:
-                meta = _json.loads(comm.content)
-                if isinstance(meta, dict) and meta.get("record_url"):
-                    return str(meta["record_url"])
-            except Exception:
-                pass
         return await svc.get_recording(call_id)
 
     # --- Method 1: direct recording request API ---

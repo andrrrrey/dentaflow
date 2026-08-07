@@ -21,8 +21,9 @@ import httpx
 BASE = "https://api.cloudpbx.rt.ru"
 
 
-def sign(signing_key: str, raw_body: str) -> str:
-    return hashlib.sha256((signing_key + raw_body).encode("utf-8")).hexdigest()
+def sign(client_id: str, signing_key: str, raw_body: str) -> str:
+    # По руководству v7.5: sha256hex(код идентификации + тело JSON + ключ подписи).
+    return hashlib.sha256((client_id + raw_body + signing_key).encode("utf-8")).hexdigest()
 
 
 def call(client_id: str, signing_key: str, method: str, payload: dict) -> None:
@@ -30,7 +31,7 @@ def call(client_id: str, signing_key: str, method: str, payload: dict) -> None:
     headers = {
         "Content-Type": "application/json",
         "X-Client-ID": client_id,
-        "X-Client-Sign": sign(signing_key, raw),
+        "X-Client-Sign": sign(client_id, signing_key, raw),
     }
     url = f"{BASE}/{method.lstrip('/')}"
     print(f"\nPOST {url}")
@@ -56,15 +57,17 @@ def main() -> None:
     signing_key = sys.argv[2]
     method = sys.argv[3] if len(sys.argv) > 3 else "users_info"
 
-    # Пустой запрос к users_info — быстрая проверка подписи/кода.
+    # Проверка подписи/кода на users_info.
     call(client_id, signing_key, method, {})
 
-    # Пример запроса истории звонков — сверить реальные имена полей ответа.
+    # Проверка формулы подписи на эталонном примере из руководства v7.5.
     if method == "users_info":
-        call(client_id, signing_key, "domain_call_history", {
-            "date_from": "2026-08-01 00:00:00",
-            "date_to": "2026-08-03 23:59:59",
-        })
+        ex_id = "000003C405E6525C64C184258C44EC99"
+        ex_key = "00000716ABDA6D4DFF10F82BCBBFC532"
+        ex_body = '{"request_number": "+74951234567","from_sipuri": "test_user@cloudpbx.rt.ru"}'
+        expected = "fc95a524342dc68df90f7488e6d821c5a8a3b667d585490b50ebf939f1202c36"
+        got = hashlib.sha256((ex_id + ex_body + ex_key).encode("utf-8")).hexdigest()
+        print(f"\nself-test подписи: {'OK' if got == expected else 'FAIL'} ({got})")
 
 
 if __name__ == "__main__":
