@@ -306,7 +306,7 @@ async def _sync_appointments_async(
                 # Inferred ones (gap/slot heuristics) may only shrink the stored
                 # value or replace the 30-min insert default — never inflate.
                 new_dur = a_data.get("duration_min")
-                if new_dur:
+                if new_dur and not getattr(appointment, "duration_manual", False):
                     if not a_data.get("duration_inferred"):
                         appointment.duration_min = new_dur
                     elif (

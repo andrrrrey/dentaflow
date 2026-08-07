@@ -221,7 +221,7 @@ function AppointmentBlock({ appt, onClick, col, totalCols, colWidth, onDragStart
       onMouseLeave={() => setHovered(false)}
     >
       <div className="px-[9px] py-[7px] h-full flex flex-col justify-start overflow-hidden">
-        <div className="text-[11.5px] font-mono font-semibold leading-tight" style={{ color: colors.text }}>
+        <div className="text-[11.5px] tabular-nums font-semibold leading-tight" style={{ color: colors.text }}>
           {fmtMin(displayStartMin)} – {fmtMin(displayEndMin)}
           {expanded && <span className="font-sans font-medium text-text-muted"> · {appt.duration_min} мин</span>}
         </div>
@@ -655,7 +655,7 @@ export default function Schedule() {
                         style={{ top, left: 0, right: 0, zIndex: 25 }}
                       >
                         <div
-                          className="absolute text-white text-[10.5px] font-bold font-mono rounded px-1 py-[1px]"
+                          className="absolute text-white text-[10.5px] font-bold tabular-nums rounded px-1 py-[1px]"
                           style={{ left: 4, top: -9, background: "#ef4444" }}
                         >
                           {fmtMin(nowMin)}
@@ -671,16 +671,18 @@ export default function Schedule() {
                       </div>
                     );
                   })()}
-                  {/* Time column — sticky on horizontal scroll */}
+                  {/* Time column — sticky on horizontal scroll.
+                      Метка часа выравнивается по началу его горизонтальной линии
+                      (верх ячейки), а не по центру слота. */}
                   <div
-                    className="flex-shrink-0 sticky left-0 z-30"
-                    style={{ width: TIME_COL_W, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
+                    className="flex-shrink-0 sticky left-0 z-30 relative"
+                    style={{ width: TIME_COL_W, height: gridHeight, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
                   >
                     {HOURS.map((h) => (
                       <div
                         key={h}
-                        className="text-[11.5px] text-text-muted text-right pr-2 font-mono"
-                        style={{ height: SLOT_HEIGHT, lineHeight: `${SLOT_HEIGHT}px` }}
+                        className="absolute right-0 text-[11.5px] text-text-muted pr-2 tabular-nums leading-none"
+                        style={{ top: (h - CLINIC_START) * SLOT_HEIGHT + 2 }}
                       >
                         {String(h).padStart(2, "0")}:00
                       </div>

@@ -204,6 +204,7 @@ export function useUpdateAppointment() {
       doctor_id?: string;
       comment?: string;
       scheduled_at?: string;
+      duration_min?: number;
     }) => {
       const { data } = await api.patch(`/schedule/${appointmentId}`, updates);
       return data;
