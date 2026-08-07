@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -30,6 +30,12 @@ class Appointment(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     duration_min: Mapped[int] = mapped_column(Integer, default=30)
+    # Длительность задана вручную в DentaFlow — синхронизация 1Denta её не
+    # перезаписывает (в 1Denta длительность определяется услугами и не
+    # редактируется через API визита).
+    duration_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     status: Mapped[str | None] = mapped_column(
         String(30), nullable=True
     )  # scheduled|confirmed|completed|cancelled|no_show

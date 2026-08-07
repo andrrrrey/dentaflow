@@ -145,7 +145,7 @@ async def apply_visit_event(db: AsyncSession, visit: dict) -> dict:
         appointment.branch = a_data.get("branch", appointment.branch)
         appointment.scheduled_at = scheduled_at or appointment.scheduled_at
         new_dur = a_data.get("duration_min")
-        if new_dur:
+        if new_dur and not getattr(appointment, "duration_manual", False):
             appointment.duration_min = new_dur
         appointment.status = a_data.get("status", appointment.status)
         appointment.revenue = a_data.get("revenue", appointment.revenue)

@@ -288,6 +288,15 @@ export default function ScriptsQC() {
   const { data: callsData } = useCalls({ days: 30, status: "answered" });
   const answeredCalls = (callsData?.calls ?? []).filter((c) => c.duration > 0);
 
+  const CALLS_PER_PAGE = 20;
+  const [callsPage, setCallsPage] = useState(0);
+  const callsPageCount = Math.max(1, Math.ceil(answeredCalls.length / CALLS_PER_PAGE));
+  const callsPageSafe = Math.min(callsPage, callsPageCount - 1);
+  const pagedCalls = answeredCalls.slice(
+    callsPageSafe * CALLS_PER_PAGE,
+    callsPageSafe * CALLS_PER_PAGE + CALLS_PER_PAGE,
+  );
+
   const scripts = data?.scripts ?? [];
 
   async function handleAnalyze(scriptId: string) {
@@ -467,7 +476,7 @@ export default function ScriptsQC() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-bold text-text-main flex items-center gap-2">
             <Phone size={16} className="text-accent3" />
-            Отвеченные звонки (Новофон)
+            Отвеченные звонки
           </h2>
           <span className="text-[12px] text-text-muted">{answeredCalls.length} за 30 дней</span>
         </div>
@@ -486,7 +495,7 @@ export default function ScriptsQC() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {answeredCalls.slice(0, 30).map((call) => (
+            {pagedCalls.map((call) => (
               <div key={call.call_id} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.08)" }}>
                 <div className="flex-shrink-0">
                   {call.direction === "outbound"
@@ -515,6 +524,31 @@ export default function ScriptsQC() {
                 </button>
               </div>
             ))}
+            {callsPageCount > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCallsPage((p) => Math.max(0, p - 1))}
+                  disabled={callsPageSafe === 0}
+                  className="px-3 py-[6px] rounded-lg text-[12px] font-semibold border-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+                >
+                  ← Назад
+                </button>
+                <span className="text-[12px] text-text-muted">
+                  Стр. {callsPageSafe + 1} из {callsPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCallsPage((p) => Math.min(callsPageCount - 1, p + 1))}
+                  disabled={callsPageSafe >= callsPageCount - 1}
+                  className="px-3 py-[6px] rounded-lg text-[12px] font-semibold border-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
+                >
+                  Вперёд →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Card>

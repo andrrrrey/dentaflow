@@ -321,6 +321,7 @@ class UpdateAppointmentBody(BaseModel):
     doctor_id: str | None = None
     comment: str | None = None
     scheduled_at: datetime | None = None
+    duration_min: int | None = None
 
 
 @router.patch("/{appointment_id}")
@@ -352,6 +353,11 @@ async def update_appointment(
         if new_dt.tzinfo is not None:
             new_dt = new_dt.replace(tzinfo=None)
         appt.scheduled_at = new_dt
+    if body.duration_min is not None:
+        # Длительность правим только локально: 1Denta не принимает её через API
+        # визита. Помечаем duration_manual, чтобы часовой синк не перезаписал.
+        appt.duration_min = max(5, min(600, int(body.duration_min)))
+        appt.duration_manual = True
 
     await db.commit()
 
@@ -380,6 +386,7 @@ async def update_appointment(
         "doctor_id": appt.doctor_id,
         "comment": appt.comment,
         "scheduled_at": appt.scheduled_at.strftime("%Y-%m-%dT%H:%M:%S") if appt.scheduled_at else None,
+        "duration_min": appt.duration_min,
     }
 
 

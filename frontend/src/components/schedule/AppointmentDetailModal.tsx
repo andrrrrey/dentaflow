@@ -83,6 +83,8 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const [commentSaved, setCommentSaved] = useState(false);
   const [editingDateTime, setEditingDateTime] = useState(false);
   const [dateTimeValue, setDateTimeValue] = useState<string>("");
+  const [editingDuration, setEditingDuration] = useState(false);
+  const [durationValue, setDurationValue] = useState<string>("");
   const [discountInput, setDiscountInput] = useState<string>("");
   const [paymentInput, setPaymentInput] = useState<string>("");
   const [paid, setPaid] = useState(false);
@@ -111,6 +113,8 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
       setCommentSaved(false);
       setEditingDateTime(false);
       setDateTimeValue(appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : "");
+      setEditingDuration(false);
+      setDurationValue(String(appt.duration_min ?? 30));
     }
   }, [appt?.id]); // reset only when appointment changes
 
@@ -164,6 +168,15 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
     updateAppt.mutate(
       { appointmentId, scheduled_at },
       { onSuccess: () => setEditingDateTime(false) }
+    );
+  }
+
+  function handleDurationSave() {
+    const mins = Math.round(Number(durationValue));
+    if (!mins || mins < 5) return;
+    updateAppt.mutate(
+      { appointmentId, duration_min: mins },
+      { onSuccess: () => setEditingDuration(false) }
     );
   }
 
@@ -428,7 +441,55 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                     )}
                   </div>
                 </div>
-                <InfoRow icon={<Clock size={13} />} label="Длительность" value={`${appt.duration_min} мин`} />
+                {/* Длительность — редактируемая (локально, без синка в 1Denta) */}
+                <div className="flex items-start gap-2">
+                  <span className="text-text-muted flex-shrink-0 mt-[1px]"><Clock size={13} /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] text-text-muted">Длительность</div>
+                    {editingDuration ? (
+                      <div className="flex flex-col gap-1 mt-1">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={5}
+                            max={600}
+                            step={5}
+                            value={durationValue}
+                            onChange={(e) => setDurationValue(e.target.value)}
+                            className="w-[80px] text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                            style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+                          />
+                          <span className="text-[12px] text-text-muted">мин</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleDurationSave}
+                            disabled={updateAppt.isPending}
+                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer disabled:opacity-50"
+                            style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
+                          >
+                            {updateAppt.isPending ? "Сохранение..." : "Сохранить"}
+                          </button>
+                          <button
+                            onClick={() => { setEditingDuration(false); setDurationValue(String(appt.duration_min ?? 30)); }}
+                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer"
+                            style={{ background: "rgba(120,130,150,0.1)", color: "#64748b" }}
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-text-muted">Только в DentaFlow — в 1Denta длительность не передаётся</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setEditingDuration(true)}
+                        className="text-[12.5px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0 text-left"
+                      >
+                        {appt.duration_min} мин
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <InfoRow icon={<MapPin size={13} />} label="Филиал" value={appt.branch || "—"} />
               </div>
 
