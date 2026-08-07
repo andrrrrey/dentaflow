@@ -420,7 +420,7 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
           <li>Включите запросы <code>call_events</code>, <code>get_number_info</code>, <code>history_file_completed</code></li>
           <li>Добавьте IP-адрес сервера DentaFlow в <b>«Белый список IP-адресов»</b></li>
           <li>Если при «Проверить» ошибка SSL — нажмите <b>«Скачать сертификат API»</b> в ЛК и вставьте его в поле «Сертификат API ВАТС» ниже</li>
-          <li><b>SIP нужен только для ИИ-обзвона</b> (звонки/записи/история работают и без него). SIP-логин/пароль берутся из раздела <b>«Пользователи»</b> → SIP-аккаунт пользователя (не с вкладки «SIP-устройства» — там только брендированные телефоны Ростелекома по MAC)</li>
+          <li><b>SIP нужен только для ИИ-обзвона</b> (звонки/записи/история работают и без него). Ростелеком ВАТС поддерживает сторонний софтфон/Asterisk: в разделе <b>«Пользователи»</b> → пользователь → «Телефоны» → добавьте <b>«Внутренний SIP»</b> — получите логин/пароль. SIP-сервер = домен ВАТС (напр. 636427.20.rt.ru). Вкладка «SIP-устройства» (MAC/серийник) — только для брендированных телефонов Ростелекома, она не нужна</li>
         </ol>
         <div className="mt-1 text-text-muted">
           Переключатель провайдера выше определяет, чья телефония используется — Novofon или Ростелеком.
@@ -435,9 +435,9 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "rostelecom_domain", label: "Домен ВАТС (из шапки ЛК, напр. 636427.20.rt.ru)", placeholder: "636427.20.rt.ru" },
       { key: "rostelecom_server_cert", label: "Сертификат API ВАТС (PEM) — кнопка «Скачать сертификат API» в ЛК, вставьте содержимое", multiline: true, placeholder: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----" },
       { key: "rostelecom_ssl_insecure", label: "Не проверять SSL-сертификат API (небезопасно — только для теста, если нет сертификата)", isToggle: true },
-      { key: "rostelecom_sip_login", label: "SIP-логин (из раздела «Пользователи» → SIP-аккаунт)", placeholder: "Например, 100XXXXX" },
-      { key: "rostelecom_sip_password", label: "SIP-пароль (пароль SIP-аккаунта пользователя)", type: "password", placeholder: "Пароль SIP-аккаунта" },
-      { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена — уточните в ЛК/поддержке)", placeholder: "Например, sip.cloudpbx.rt.ru" },
+      { key: "rostelecom_sip_login", label: "SIP-логин (Пользователи → пользователь → Телефоны → «Внутренний SIP»)", placeholder: "Например, 100XXXXX" },
+      { key: "rostelecom_sip_password", label: "SIP-пароль (пароль внутреннего SIP-аккаунта)", type: "password", placeholder: "Пароль SIP-аккаунта" },
+      { key: "rostelecom_sip_server", label: "SIP-сервер = домен ВАТС (из шапки ЛК)", placeholder: "636427.20.rt.ru" },
       { key: "rostelecom_caller_id", label: "Исходящий номер (Общие настройки → Номер для исходящих)", placeholder: "+7 301 227-61-76" },
     ],
   },
