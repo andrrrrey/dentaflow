@@ -142,6 +142,21 @@ async def list_items(db: AsyncSession, campaign_id: uuid.UUID) -> list[AiCalling
     )
 
 
+async def delete_campaign(db: AsyncSession, campaign_id: uuid.UUID) -> bool:
+    """Удалить кампанию вместе с её звонками (элементы удаляются каскадом на
+    уровне БД: FK ondelete=CASCADE). Возвращает False, если кампании нет.
+
+    Оркестратор безопасно пропускает исчезнувшую кампанию (get_campaign→None),
+    поэтому удалять можно в любом статусе.
+    """
+    campaign = await get_campaign(db, campaign_id)
+    if campaign is None:
+        return False
+    await db.delete(campaign)
+    await db.commit()
+    return True
+
+
 async def control_campaign(
     db: AsyncSession, campaign_id: uuid.UUID, action: str
 ) -> AiCallingCampaign | None:

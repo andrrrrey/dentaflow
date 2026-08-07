@@ -308,6 +308,17 @@ export function useCreateCampaign() {
   });
 }
 
+export function useDeleteCampaign() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, string>({
+    mutationFn: async (id) => {
+      const { data } = await api.delete(`/ai-calling/campaigns/${id}`);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-calling", "campaigns"] }),
+  });
+}
+
 export function useCampaignControl() {
   const qc = useQueryClient();
   return useMutation<Campaign, Error, { id: string; action: "start" | "pause" | "resume" | "cancel" }>({
