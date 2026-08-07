@@ -119,21 +119,35 @@ class RostelecomService:
     def _build_verify(self):
         """Материал для проверки TLS сервера ВАТС.
 
-        API Ростелекома отдаёт сертификат, которого нет в стандартном хранилище
-        (нужно «Скачать сертификат API» в ЛК и добавить в доверенные — рук-во
-        v7.5, §1.3.3). Если сертификат вставлен в настройках — доверяем ему
-        вдобавок к системным CA. Если проверка отключена — verify=False.
+        API Ростелекома отдаёт сертификат, выпущенный «Russian Trusted CA»
+        (Минцифры), которого нет в стандартном хранилище (нужно «Скачать
+        сертификат API» в ЛК — рук-во v7.5, §1.3.3). Вставленный сертификат
+        добавляем к системным CA и включаем PARTIAL_CHAIN: тогда доверия к
+        самому листу/промежуточному сертификату достаточно и OpenSSL не требует
+        достраивать цепочку до самоподписанного российского корня (иначе —
+        ошибка "self-signed certificate in certificate chain").
         """
         if not self.verify_ssl:
             return False
         if self.server_cert:
             try:
                 ctx = ssl.create_default_context()
-                ctx.load_verify_locations(cadata=self.server_cert)
+                ctx.load_verify_locations(cadata=self._normalize_pem(self.server_cert))
+                # Доверять вставленному сертификату как якорю, не требуя
+                # полной цепочки до доверенного корня.
+                partial = getattr(ssl, "VERIFY_X509_PARTIAL_CHAIN", 0)
+                if partial:
+                    ctx.verify_flags |= partial
                 return ctx
             except (ssl.SSLError, ValueError) as exc:
                 logger.warning("Rostelecom: не удалось загрузить сертификат API: %s", exc)
         return True
+
+    @staticmethod
+    def _normalize_pem(text: str) -> str:
+        """Привести вставленный PEM к валидному виду (CRLF→LF, финальный перенос)."""
+        pem = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        return pem + "\n" if pem else pem
 
     # ------------------------------------------------------------------
     # Подпись
