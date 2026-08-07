@@ -509,6 +509,19 @@ async def campaign_control(
     return _campaign_dict(campaign)
 
 
+@router.delete("/campaigns/{campaign_id}")
+async def campaign_delete(
+    campaign_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner", "manager")),
+):
+    """Удалить кампанию обзвона вместе со всеми её звонками."""
+    deleted = await ai_calling_service.delete_campaign(db, campaign_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Кампания не найдена")
+    return {"ok": True}
+
+
 # ── Тестовый звонок на реальный телефон ──────────────────────────────────────
 # Разовый звонок роботом на указанный номер: aicallrobot создаёт сессию диалога,
 # Asterisk (AMI Originate) звонит, при ответе робот здоровается и ведёт диалог.
@@ -563,8 +576,8 @@ async def test_call(
             detail=(
                 "Звонок не инициирован (Originate отклонён"
                 + (f": {reason}" if reason else "")
-                + "). Обычно причина — SIP-транк Novofon не зарегистрирован. "
-                "Проверьте: pjsip show registrations = Registered, AMI-пароль, исходящие в Novofon."
+                + "). Обычно причина — SIP-транк провайдера телефонии не зарегистрирован. "
+                "Проверьте: pjsip show registrations = Registered, AMI-пароль и исходящие звонки у активного провайдера."
             ),
         )
     return {"call_id": call_id, "status": "calling", "greeting": (start or {}).get("greeting")}

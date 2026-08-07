@@ -21,6 +21,7 @@ import {
   fetchCampaignItemRecording,
   useCreateCampaign,
   useCampaignControl,
+  useDeleteCampaign,
   type Campaign,
   type CampaignItem,
 } from "../api/aicalling";
@@ -282,7 +283,7 @@ function TestCallCard() {
       <h3 className="text-sm font-extrabold mb-1">Тестовый звонок на телефон</h3>
       <p className="text-[12px] text-text-muted mb-3">
         Робот позвонит на указанный номер, поздоровается и проведёт диалог по сценарию.
-        Нужны настроенный SIP-транк Novofon и AMI-пароль (Интеграции → Novofon).
+        Звонок идёт через активного провайдера телефонии (Novofon или Ростелеком).
       </p>
       <div className="flex flex-col gap-3">
         <div className="flex gap-3 flex-wrap items-center">
@@ -848,6 +849,7 @@ function CampaignsTab() {
   const campaigns = useCampaigns();
   const create = useCreateCampaign();
   const control = useCampaignControl();
+  const removeCampaign = useDeleteCampaign();
   const { data: voices } = useTtsVoices();
 
   const [name, setName] = useState("");
@@ -992,6 +994,19 @@ function CampaignsTab() {
                     ))}
                     <Button variant="ghost" size="sm" onClick={() => setOpenId(open ? null : c.id)}>
                       {open ? "Скрыть" : "Результаты"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={removeCampaign.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Удалить кампанию «${c.name}» вместе со всеми звонками? Действие необратимо.`)) {
+                          if (openId === c.id) setOpenId(null);
+                          removeCampaign.mutate(c.id);
+                        }
+                      }}
+                    >
+                      <Trash2 size={14} className="text-[#f44b6e]" />
                     </Button>
                   </div>
                 </div>
