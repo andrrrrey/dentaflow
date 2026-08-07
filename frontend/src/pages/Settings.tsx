@@ -419,7 +419,8 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
           <li>В поле <b>«Адрес внешней системы»</b> укажите: <code>https://&lt;ваш-домен&gt;/api/v1/webhooks/rostelecom</code></li>
           <li>Включите запросы <code>call_events</code>, <code>get_number_info</code>, <code>history_file_completed</code></li>
           <li>Добавьте IP-адрес сервера DentaFlow в <b>«Белый список IP-адресов»</b></li>
-          <li>Для ИИ-обзвона: на вкладке <b>«SIP-устройства»</b> прикрепите устройство и впишите его логин/пароль/сервер ниже</li>
+          <li>Если при «Проверить» ошибка SSL — нажмите <b>«Скачать сертификат API»</b> в ЛК и вставьте его в поле «Сертификат API ВАТС» ниже</li>
+          <li><b>SIP нужен только для ИИ-обзвона</b> (звонки/записи/история работают и без него). SIP-логин/пароль берутся из раздела <b>«Пользователи»</b> → SIP-аккаунт пользователя (не с вкладки «SIP-устройства» — там только брендированные телефоны Ростелекома по MAC)</li>
         </ol>
         <div className="mt-1 text-text-muted">
           Переключатель провайдера выше определяет, чья телефония используется — Novofon или Ростелеком.
@@ -432,10 +433,12 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
       { key: "rostelecom_signing_key", label: "Уникальный ключ для подписи", type: "password", placeholder: "48866971D33E3A4589A96BBCDEEFE0F3" },
       { key: "rostelecom_api_url", label: "Адрес API", placeholder: "https://api.cloudpbx.rt.ru" },
       { key: "rostelecom_domain", label: "Домен ВАТС (из шапки ЛК, напр. 636427.20.rt.ru)", placeholder: "636427.20.rt.ru" },
-      { key: "rostelecom_sip_login", label: "SIP-логин (SIP-устройства → логин)", placeholder: "Например, 100XXXXX" },
-      { key: "rostelecom_sip_password", label: "SIP-пароль", type: "password", placeholder: "Пароль SIP-устройства" },
-      { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена)", placeholder: "Например, sip.cloudpbx.rt.ru" },
-      { key: "rostelecom_caller_id", label: "Исходящий номер (CallerID)", placeholder: "Номер, который видит пациент" },
+      { key: "rostelecom_server_cert", label: "Сертификат API ВАТС (PEM) — кнопка «Скачать сертификат API» в ЛК, вставьте содержимое", multiline: true, placeholder: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----" },
+      { key: "rostelecom_ssl_insecure", label: "Не проверять SSL-сертификат API (небезопасно — только для теста, если нет сертификата)", isToggle: true },
+      { key: "rostelecom_sip_login", label: "SIP-логин (из раздела «Пользователи» → SIP-аккаунт)", placeholder: "Например, 100XXXXX" },
+      { key: "rostelecom_sip_password", label: "SIP-пароль (пароль SIP-аккаунта пользователя)", type: "password", placeholder: "Пароль SIP-аккаунта" },
+      { key: "rostelecom_sip_server", label: "SIP-сервер (FQDN прокси домена — уточните в ЛК/поддержке)", placeholder: "Например, sip.cloudpbx.rt.ru" },
+      { key: "rostelecom_caller_id", label: "Исходящий номер (Общие настройки → Номер для исходящих)", placeholder: "+7 301 227-61-76" },
     ],
   },
   {
