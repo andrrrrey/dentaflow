@@ -34,6 +34,8 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "rostelecom_signing_key",
         "rostelecom_api_url",
         "rostelecom_domain",
+        "rostelecom_server_cert",
+        "rostelecom_ssl_insecure",
         "rostelecom_sip_login",
         "rostelecom_sip_password",
         "rostelecom_sip_server",
@@ -142,6 +144,25 @@ async def get_telephony_provider(db: AsyncSession) -> str:
     return "rostelecom" if val == "rostelecom" else "novofon"
 
 
+async def build_rostelecom_service(db: AsyncSession):
+    """Собрать RostelecomService со всеми настройками из БД (фоллбэк на env).
+
+    Единая точка сборки — используется фабрикой, проверкой соединения и
+    обработчиками вебхуков, чтобы SSL/подпись/домен настраивались одинаково.
+    """
+    from app.services.rostelecom import RostelecomService
+
+    insecure = (await get_raw_value(db, "rostelecom_ssl_insecure") or "").strip().lower() == "true"
+    return RostelecomService(
+        signing_key=(await get_raw_value(db, "rostelecom_signing_key")) or settings.ROSTELECOM_SIGNING_KEY or None,
+        client_id=(await get_raw_value(db, "rostelecom_client_id")) or settings.ROSTELECOM_CLIENT_ID or None,
+        api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
+        domain=(await get_raw_value(db, "rostelecom_domain")) or None,
+        server_cert=(await get_raw_value(db, "rostelecom_server_cert")) or None,
+        verify_ssl=(not insecure),  # по умолчанию проверяем; toggle отключает
+    )
+
+
 async def get_telephony_service(db: AsyncSession):
     """Фабрика: возвращает сервис активного провайдера с кредами из БД.
 
@@ -151,13 +172,7 @@ async def get_telephony_service(db: AsyncSession):
     """
     provider = await get_telephony_provider(db)
     if provider == "rostelecom":
-        from app.services.rostelecom import RostelecomService
-
-        return RostelecomService(
-            signing_key=(await get_raw_value(db, "rostelecom_signing_key")) or None,
-            client_id=(await get_raw_value(db, "rostelecom_client_id")) or None,
-            api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
-        )
+        return await build_rostelecom_service(db)
 
     from app.services.novofon import NovofonService
 
@@ -243,8 +258,6 @@ async def _check_rostelecom(db: AsyncSession) -> dict:
     Дёргаем ``users_info`` (без параметров) — если подпись/код верны, ВАТС
     ответит 200; иначе вернёт ошибку авторизации.
     """
-    from app.services.rostelecom import RostelecomService
-
     client_id = await get_raw_value(db, "rostelecom_client_id") or settings.ROSTELECOM_CLIENT_ID
     signing_key = await get_raw_value(db, "rostelecom_signing_key") or settings.ROSTELECOM_SIGNING_KEY
     if not client_id:
@@ -253,18 +266,20 @@ async def _check_rostelecom(db: AsyncSession) -> dict:
         return {"ok": False, "message": "Уникальный ключ для подписи не указан"}
 
     domain = await get_raw_value(db, "rostelecom_domain")
-    svc = RostelecomService(
-        signing_key=signing_key,
-        client_id=client_id,
-        api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
-        domain=domain or None,
-    )
+    svc = await build_rostelecom_service(db)
     # users_info — самый лёгкий метод. HTTP 200 подтверждает, что подпись принята
     # (даже если result!=0 из-за пустого домена). 401/403 — неверные код/ключ или IP.
     try:
         resp = await svc._post("users_info", {"domain": domain} if domain else {})
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "message": f"Нет связи с API Ростелеком: {e}"}
+        msg = str(e)
+        if "CERTIFICATE_VERIFY_FAILED" in msg or "self-signed" in msg or "self signed" in msg:
+            return {"ok": False, "message": (
+                "SSL: сертификат API ВАТС не в доверенных. Вставьте сертификат в поле "
+                "«Сертификат API ВАТС» (кнопка «Скачать сертификат API» в ЛК) или временно "
+                "отключите «Проверять SSL-сертификат»."
+            )}
+        return {"ok": False, "message": f"Нет связи с API Ростелеком: {msg}"}
 
     if resp.status_code == 200:
         try:

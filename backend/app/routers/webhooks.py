@@ -506,15 +506,10 @@ async def _store_call_event(db: AsyncSession, result: dict) -> dict:
 
 
 async def _rostelecom_service(db: AsyncSession):
-    """RostelecomService с кредами из админки (фоллбэк на env)."""
-    from app.services.rostelecom import RostelecomService
+    """RostelecomService с настройками из админки (SSL/подпись/домен)."""
+    from app.services.integrations_service import build_rostelecom_service
 
-    return RostelecomService(
-        signing_key=(await get_raw_value(db, "rostelecom_signing_key")) or settings.ROSTELECOM_SIGNING_KEY or None,
-        client_id=(await get_raw_value(db, "rostelecom_client_id")) or settings.ROSTELECOM_CLIENT_ID or None,
-        api_url=(await get_raw_value(db, "rostelecom_api_url")) or None,
-        domain=(await get_raw_value(db, "rostelecom_domain")) or None,
-    )
+    return await build_rostelecom_service(db)
 
 
 async def _rostelecom_read_and_verify(request: Request, db: AsyncSession):

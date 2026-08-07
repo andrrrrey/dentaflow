@@ -37,6 +37,7 @@ import io
 import json as _json
 import logging
 import re
+import ssl
 from datetime import datetime, timezone
 
 import httpx
@@ -104,11 +105,35 @@ class RostelecomService:
         client_id: str | None = None,
         api_url: str | None = None,
         domain: str | None = None,
+        server_cert: str | None = None,
+        verify_ssl: bool = True,
     ) -> None:
         self.signing_key = signing_key or settings.ROSTELECOM_SIGNING_KEY
         self.client_id = client_id or settings.ROSTELECOM_CLIENT_ID
         self.base_url = (api_url or settings.ROSTELECOM_API_URL or DEFAULT_API_URL).rstrip("/")
         self.domain = domain or ""
+        self.server_cert = (server_cert or "").strip()
+        self.verify_ssl = verify_ssl
+        self._verify = self._build_verify()
+
+    def _build_verify(self):
+        """Материал для проверки TLS сервера ВАТС.
+
+        API Ростелекома отдаёт сертификат, которого нет в стандартном хранилище
+        (нужно «Скачать сертификат API» в ЛК и добавить в доверенные — рук-во
+        v7.5, §1.3.3). Если сертификат вставлен в настройках — доверяем ему
+        вдобавок к системным CA. Если проверка отключена — verify=False.
+        """
+        if not self.verify_ssl:
+            return False
+        if self.server_cert:
+            try:
+                ctx = ssl.create_default_context()
+                ctx.load_verify_locations(cadata=self.server_cert)
+                return ctx
+            except (ssl.SSLError, ValueError) as exc:
+                logger.warning("Rostelecom: не удалось загрузить сертификат API: %s", exc)
+        return True
 
     # ------------------------------------------------------------------
     # Подпись
@@ -139,7 +164,7 @@ class RostelecomService:
         Тело сериализуется один раз и той же строкой подписывается — подпись
         должна считаться ровно по отправляемым байтам."""
         raw = _json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=self._verify) as client:
             return await client.post(
                 f"{self.base_url}/{method.lstrip('/')}",
                 headers=self._headers(raw),
@@ -316,7 +341,7 @@ class RostelecomService:
         if not url:
             return None
         try:
-            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True, verify=self._verify) as client:
                 resp = await client.get(url)
                 if resp.status_code == 200 and len(resp.content) > 1000:
                     return resp.content
