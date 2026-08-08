@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     audio_channels: int = 1
     recordings_dir: str = "/app/recordings"
 
+    # VAD: пауза (сек) тишины, после которой реплика абонента считается
+    # завершённой и запускается распознавание. Меньше → быстрее ответ робота,
+    # но выше риск вклиниться в естественную паузу человека.
+    vad_pause_duration: float = 0.6
+
     # AudioSocket-мост (телефония: Asterisk ⇄ WS /ws/audio/{call_id})
     audiosocket_host: str = "0.0.0.0"
     audiosocket_port: int = 9092
@@ -68,6 +73,13 @@ class Settings(BaseSettings):
     salutespeech_auth_key: str = ""
     salutespeech_scope: str = "SALUTE_SPEECH_PERS"
     salutespeech_voice: str = "Bys"
+
+    # fish.audio (TTS). Ключ и голос обычно приходят из DentaFlow в рантайме
+    # (см. app/core/runtime_credentials.py). fish_audio_voice — reference_id
+    # выбранной пользователем модели голоса.
+    fish_audio_api_key: str = ""
+    fish_audio_model: str = "speech-1.6"
+    fish_audio_voice: str = ""
 
     class Config:
         env_file = ".env"

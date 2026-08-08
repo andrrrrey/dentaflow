@@ -40,6 +40,9 @@ async def _sync_credentials(db) -> None:
         "yandex_folder_id": await get_raw_value(db, "yandex_folder_id"),
         "openai_api_key": await get_raw_value(db, "openai_api_key") or settings.OPENAI_API_KEY,
         "openai_model": await get_raw_value(db, "openai_model") or settings.OPENAI_MODEL,
+        "fish_audio_api_key": await get_raw_value(db, "fish_api_key"),
+        "fish_audio_model": await get_raw_value(db, "fish_model"),
+        "fish_audio_voice": await get_raw_value(db, "fish_voice_id"),
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -134,6 +137,7 @@ async def _place_call(item_id: str) -> dict:
         tts_voice = campaign.tts_voice
         tts_role = campaign.tts_role
         tts_speed = campaign.tts_speed
+        tts_provider = campaign.tts_provider
 
         await _sync_credentials(db)
         _sip_prefix = "rostelecom" if await get_telephony_provider(db) == "rostelecom" else "novofon"
@@ -154,6 +158,8 @@ async def _place_call(item_id: str) -> dict:
             start_payload["tts_role"] = tts_role
         if tts_speed:
             start_payload["tts_speed"] = tts_speed
+        if tts_provider:
+            start_payload["tts_provider"] = tts_provider
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{settings.AICALLROBOT_URL}/api/v1/calls/start",

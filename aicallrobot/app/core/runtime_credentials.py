@@ -15,6 +15,9 @@ def set_runtime_credentials(
     yandex_folder_id: str | None = None,
     openai_api_key: str | None = None,
     openai_model: str | None = None,
+    fish_audio_api_key: str | None = None,
+    fish_audio_model: str | None = None,
+    fish_audio_voice: str | None = None,
 ):
     """Обновляет учётные данные в закешированных настройках. Возвращает их."""
     settings = get_settings()
@@ -26,4 +29,10 @@ def set_runtime_credentials(
         settings.openai_api_key = openai_api_key
     if openai_model:
         settings.openai_model = openai_model
+    if fish_audio_api_key:
+        settings.fish_audio_api_key = fish_audio_api_key
+    if fish_audio_model:
+        settings.fish_audio_model = fish_audio_model
+    if fish_audio_voice:
+        settings.fish_audio_voice = fish_audio_voice
     return settings

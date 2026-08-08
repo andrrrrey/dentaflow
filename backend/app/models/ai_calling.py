@@ -38,9 +38,12 @@ class AiCallingCampaign(Base):
     window_end: Mapped[str | None] = mapped_column(String(5), nullable=True)    # "20:00"
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     # Голос TTS для звонков кампании (голос/амплуа/скорость).
+    # Для провайдера fish.audio в tts_voice хранится reference_id голоса.
     tts_voice: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tts_role: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tts_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Провайдер синтеза речи: "yandex" (дефолт) | "fish".
+    tts_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Счётчики прогресса.
     total: Mapped[int] = mapped_column(Integer, default=0)
     completed: Mapped[int] = mapped_column(Integer, default=0)

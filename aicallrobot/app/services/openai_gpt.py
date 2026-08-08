@@ -7,7 +7,10 @@
 DentaFlow задаёт в рантайме (см. app/core/runtime_credentials.py).
 """
 
+import json
+
 import httpx
+from collections.abc import AsyncGenerator
 from loguru import logger
 
 from app.core.config import get_settings
@@ -82,4 +85,69 @@ class OpenAIGPTService:
             raise
         except Exception as e:
             logger.error(f"OpenAI error: {e}")
+            raise
+
+    async def complete_stream(
+        self,
+        messages: list[dict],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Стриминг генерации: отдаёт куски текста ответа по мере поступления.
+
+        Позволяет начать синтез речи (TTS) на первой готовой фразе, не дожидаясь
+        полной генерации — главный рычаг снижения паузы перед ответом робота.
+        """
+        api_key = self.settings.openai_api_key
+        if not api_key:
+            raise RuntimeError("OpenAI API key is not configured")
+
+        oai_messages = [
+            {
+                "role": m.get("role", "user"),
+                "content": m.get("text") if m.get("text") is not None else m.get("content", ""),
+            }
+            for m in messages
+        ]
+
+        body: dict = {
+            "model": self.settings.openai_model,
+            "messages": oai_messages,
+            "temperature": temperature if temperature is not None else 0.3,
+            "stream": True,
+        }
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+
+        try:
+            async with self._client.stream(
+                "POST",
+                self.COMPLETION_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            ) as response:
+                if response.status_code != 200:
+                    err = await response.aread()
+                    logger.error(f"OpenAI stream error {response.status_code}: {err[:300]}")
+                    raise Exception(f"OpenAI stream failed: {response.status_code}")
+
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[len("data:"):].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(payload)
+                        delta = data["choices"][0].get("delta", {}).get("content")
+                        if delta:
+                            yield delta
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+        except Exception as e:
+            logger.error(f"OpenAI stream error: {e}")
             raise

@@ -23,6 +23,24 @@ export function useTtsVoices() {
   });
 }
 
+/* Голоса fish.audio (собственные модели пользователя). */
+export interface FishVoice {
+  id: string;
+  title: string;
+}
+
+export function useFishVoices(enabled = true) {
+  return useQuery<FishVoice[]>({
+    queryKey: ["ai-calling", "fish-voices"],
+    queryFn: async () => {
+      const { data } = await api.get("/ai-calling/fish-voices");
+      return data.voices ?? [];
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export interface TtsTestRequest {
   text: string;
   voice?: string;
@@ -192,6 +210,7 @@ export interface Campaign {
   tts_voice: string | null;
   tts_role: string | null;
   tts_speed: number | null;
+  tts_provider: string | null;
   total: number;
   completed: number;
   succeeded: number;
@@ -264,6 +283,7 @@ export interface CampaignCreateRequest {
   tts_voice?: string | null;
   tts_role?: string | null;
   tts_speed?: number | null;
+  tts_provider?: string | null;
 }
 
 function campaignsActive(items: Campaign[]): boolean {
@@ -342,7 +362,7 @@ export function useTestCall() {
   return useMutation<
     TestCallResponse,
     Error,
-    { phone: string; scenario_id?: string; tts_voice?: string; tts_role?: string; tts_speed?: number }
+    { phone: string; scenario_id?: string; tts_voice?: string; tts_role?: string; tts_speed?: number; tts_provider?: string }
   >({
     mutationFn: async (body) => {
       const { data } = await api.post("/ai-calling/test-call", body);
