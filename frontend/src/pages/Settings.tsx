@@ -835,7 +835,9 @@ function AutoLeadCard({
 /* ---------- fish.audio (TTS для ИИ-обзвона) ---------- */
 
 const FISH_MODELS = [
-  { id: "speech-1.6", label: "speech-1.6 (рекомендуется)" },
+  { id: "s2.1-pro", label: "S2.1 Pro (рекомендуется)" },
+  { id: "s2.1-pro-free", label: "S2.1 Pro — бесплатный тариф" },
+  { id: "speech-1.6", label: "speech-1.6" },
   { id: "speech-1.5", label: "speech-1.5" },
   { id: "s1", label: "s1" },
 ];
@@ -895,7 +897,7 @@ function FishAudioCard({
         <div className="flex flex-col gap-1">
           <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Модель</label>
           <select
-            value={values["fish_model"] || "speech-1.6"}
+            value={values["fish_model"] || "s2.1-pro"}
             onChange={(e) => onChange("fish_model", e.target.value)}
             className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none w-full cursor-pointer"
             style={selectStyle}

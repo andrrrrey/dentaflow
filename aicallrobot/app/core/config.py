@@ -78,7 +78,9 @@ class Settings(BaseSettings):
     # (см. app/core/runtime_credentials.py). fish_audio_voice — reference_id
     # выбранной пользователем модели голоса.
     fish_audio_api_key: str = ""
-    fish_audio_model: str = "speech-1.6"
+    # Модель синтеза (заголовок `model` в /v1/tts): s2.1-pro (лучшее качество),
+    # s2.1-pro-free (бесплатный тариф), speech-1.6, speech-1.5, s1.
+    fish_audio_model: str = "s2.1-pro"
     fish_audio_voice: str = ""
 
     class Config:
