@@ -116,21 +116,16 @@ class DialogueEngine:
             logger.error(f"classify_intent error: {e}")
             return "unknown"
 
-    async def generate_response(
+    def _build_response_messages(
         self,
         step,
         transcript: list[dict],
         knowledge_context: list[str],
         ai_config: dict,
-    ) -> str:
-        """
-        Генерирует AI-ответ для текущего шага диалога.
+    ) -> list[dict]:
+        """Собирает сообщения (system + история) для генерации ответа.
 
-        Args:
-            step: ScenarioStep с полями id, greeting, prompt
-            transcript: история разговора
-            knowledge_context: релевантные чанки из базы знаний
-            ai_config: {"system_prompt": str, "scenario_context": str}
+        Общий код для потокового и непотокового вариантов генерации.
         """
         system_parts = []
 
@@ -189,26 +184,65 @@ class DialogueEngine:
                 role = "user"
             messages.append({"role": role, "text": entry.get("text", "")})
 
+        return messages
+
+    def _minimal_messages(self, step, transcript: list[dict]) -> list[dict]:
+        """Запасной минимальный промпт (при срабатывании фильтра безопасности)."""
+        minimal_system = (
+            "Ты — вежливый администратор стоматологической клиники, ведёшь телефонный разговор. "
+            "Отвечай кратко и по делу, 1-2 предложения на русском языке."
+        )
+        if step and (step.prompt or step.greeting):
+            minimal_system += f"\nТекущая задача: {step.prompt or step.greeting}"
+        minimal_messages = [{"role": "system", "text": minimal_system}]
+        for entry in transcript[-4:]:
+            role = "assistant" if entry.get("role") == "robot" else "user"
+            minimal_messages.append({"role": role, "text": entry.get("text", "")})
+        return minimal_messages
+
+    async def generate_response(
+        self,
+        step,
+        transcript: list[dict],
+        knowledge_context: list[str],
+        ai_config: dict,
+    ) -> str:
+        """
+        Генерирует AI-ответ для текущего шага диалога.
+
+        Args:
+            step: ScenarioStep с полями id, greeting, prompt
+            transcript: история разговора
+            knowledge_context: релевантные чанки из базы знаний
+            ai_config: {"system_prompt": str, "scenario_context": str}
+        """
+        messages = self._build_response_messages(step, transcript, knowledge_context, ai_config)
         try:
             return await self.gpt.complete(messages)
         except SafetyRefusalError:
             # Фильтр безопасности сработал на сложном промпте — повторяем с минимальным
             logger.warning(f"Safety refusal on step '{step.id if step else '?'}', retrying with minimal prompt")
-            minimal_system = (
-                "Ты — вежливый администратор стоматологической клиники, ведёшь телефонный разговор. "
-                "Отвечай кратко и по делу, 1-2 предложения на русском языке."
-            )
-            if step and (step.prompt or step.greeting):
-                minimal_system += f"\nТекущая задача: {step.prompt or step.greeting}"
-            minimal_messages = [{"role": "system", "text": minimal_system}]
-            for entry in transcript[-4:]:
-                role = "assistant" if entry.get("role") == "robot" else "user"
-                minimal_messages.append({"role": role, "text": entry.get("text", "")})
             try:
-                return await self.gpt.complete(minimal_messages)
+                return await self.gpt.complete(self._minimal_messages(step, transcript))
             except SafetyRefusalError:
                 logger.error("Safety refusal on minimal prompt too, using step fallback")
                 return step.greeting if step and step.greeting else "Понял. Продолжайте, пожалуйста."
+
+    async def generate_response_stream(
+        self,
+        step,
+        transcript: list[dict],
+        knowledge_context: list[str],
+        ai_config: dict,
+    ):
+        """Потоковая генерация AI-ответа: отдаёт куски текста по мере готовности.
+
+        Тот же промпт, что и в generate_response, но через gpt.complete_stream —
+        даёт озвучить первую фразу, пока генерируется остальное.
+        """
+        messages = self._build_response_messages(step, transcript, knowledge_context, ai_config)
+        async for chunk in self.gpt.complete_stream(messages):
+            yield chunk
 
     async def generate_with_intent(
         self,

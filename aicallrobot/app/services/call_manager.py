@@ -41,6 +41,8 @@ class CallSession:
     tts_voice: str | None = None
     tts_role: str | None = None
     tts_speed: float | None = None
+    # Провайдер TTS для этого звонка: "yandex" (дефолт) | "salutespeech" | "fish".
+    tts_provider: str | None = None
 
 
 class CallManager:
@@ -63,6 +65,7 @@ class CallManager:
         tts_voice: str | None = None,
         tts_role: str | None = None,
         tts_speed: float | None = None,
+        tts_provider: str | None = None,
     ) -> CallSession:
         """Создаёт новую сессию звонка."""
         async with self._lock:
@@ -74,6 +77,7 @@ class CallManager:
                 tts_voice=tts_voice,
                 tts_role=tts_role,
                 tts_speed=tts_speed,
+                tts_provider=tts_provider,
             )
             self.active_calls[session.call_id] = session
             logger.bind(call=True).info(

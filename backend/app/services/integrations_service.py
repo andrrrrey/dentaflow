@@ -50,6 +50,7 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
     ],
     "openai": ["openai_api_key", "openai_model", "segment_ai_model", "segment_ai_concurrency"],
     "yandex_speechkit": ["yandex_api_key", "yandex_folder_id"],
+    "fish": ["fish_api_key", "fish_model", "fish_voice_id"],
     "bots": ["bot_welcome_message", "bot_clinic_name"],
     "telegram": [
         "telegram_bot_token",
@@ -78,6 +79,7 @@ MASKED_KEYS = {
     "one_denta_password", "one_denta_webhook_secret",
     "openai_api_key",
     "yandex_api_key",
+    "fish_api_key",
     "telegram_bot_token", "telegram_webhook_secret",
     "max_bot_token",
     "tilda_secret",
@@ -194,6 +196,8 @@ async def check_connection(service: str, db: AsyncSession, webhook_url: str | No
             return await _check_openai(db)
         elif service == "yandex_speechkit":
             return await _check_yandex_speechkit(db)
+        elif service == "fish":
+            return await _check_fish(db)
         elif service == "telegram":
             return await _check_telegram(db)
         elif service == "max_vk":
@@ -408,6 +412,30 @@ async def _check_yandex_speechkit(db: AsyncSession) -> dict:
         if resp.status_code in (401, 403):
             return {"ok": False, "message": "Неверный API-ключ или нет доступа к папке"}
         return {"ok": False, "message": f"Ошибка API: {resp.status_code} — {resp.text[:200]}"}
+
+
+async def _check_fish(db: AsyncSession) -> dict:
+    api_key = await get_raw_value(db, "fish_api_key")
+    if not api_key:
+        return {"ok": False, "message": "API-ключ не указан"}
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://api.fish.audio/model",
+            headers=headers,
+            params={"self": "true", "page_size": 1},
+        )
+        if resp.status_code in (401, 403):
+            return {"ok": False, "message": "Неверный API-ключ (401/403)"}
+        if resp.status_code != 200:
+            return {"ok": False, "message": f"Ошибка API: {resp.status_code} — {resp.text[:200]}"}
+        try:
+            data = resp.json()
+            total = data.get("total", len(data.get("items", []))) if isinstance(data, dict) else 0
+        except Exception:
+            total = 0
+        return {"ok": True, "message": f"Подключено (голосов: {total})"}
 
 
 async def _check_telegram(db: AsyncSession) -> dict:

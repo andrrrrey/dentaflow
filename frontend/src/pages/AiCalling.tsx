@@ -4,6 +4,7 @@ import Button from "../components/ui/Button";
 import { Loader2, Play, Send, Trash2, Plus, Mic, Square, Phone, FileText, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useTtsVoices,
+  useFishVoices,
   useTtsTest,
   useDialogStart,
   useDialogTurn,
@@ -139,6 +140,55 @@ function VoiceControls({
   );
 }
 
+/* Выбор провайдера TTS + голоса. Для Yandex — голос/амплуа/скорость,
+   для fish.audio — только голос (из собственных моделей пользователя). */
+function TtsProviderPicker({
+  provider, setProvider,
+  yandexVoices, voice, setVoice, role, setRole, speed, setSpeed,
+}: {
+  provider: string; setProvider: (v: string) => void;
+  yandexVoices?: { id: string; roles: { id: string; label: string }[] }[];
+  voice: string; setVoice: (v: string) => void;
+  role: string; setRole: (v: string) => void;
+  speed: string; setSpeed: (v: string) => void;
+}) {
+  const { data: fishVoices } = useFishVoices(provider === "fish");
+  const cls = "rounded-xl border border-[rgba(91,76,245,0.18)] p-2 text-[13px] outline-none bg-white";
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] font-semibold text-text-muted">Провайдер синтеза</label>
+        <select
+          value={provider}
+          onChange={(e) => { setProvider(e.target.value); setVoice(""); setRole(""); }}
+          className={cls}
+        >
+          <option value="yandex">Yandex SpeechKit</option>
+          <option value="fish">fish.audio</option>
+        </select>
+      </div>
+      {provider === "fish" ? (
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-semibold text-text-muted">Голос fish.audio</label>
+          <select value={voice} onChange={(e) => setVoice(e.target.value)} className={cls}>
+            <option value="">— по умолчанию (из настроек) —</option>
+            {(fishVoices ?? []).map((v) => (
+              <option key={v.id} value={v.id}>{v.title || v.id}</option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <VoiceControls
+          voices={yandexVoices}
+          voice={voice} setVoice={setVoice}
+          role={role} setRole={setRole}
+          speed={speed} setSpeed={setSpeed}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ---------- Тест TTS ---------- */
 
 function TtsTab() {
@@ -269,6 +319,7 @@ function TestCallCard() {
   const { data: voices } = useTtsVoices();
   const [phone, setPhone] = useState("");
   const [scenarioId, setScenarioId] = useState("plan_unfinished");
+  const [tProvider, setTProvider] = useState("yandex");
   const [tVoice, setTVoice] = useState("alena");
   const [tRole, setTRole] = useState("");
   const [tSpeed, setTSpeed] = useState("1.0");
@@ -299,13 +350,14 @@ function TestCallCard() {
               <option key={sc.id} value={sc.id}>{sc.name}</option>
             ))}
           </select>
-          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId, tts_voice: tVoice, tts_role: tRole || undefined, tts_speed: parseFloat(tSpeed) || undefined }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
+          <Button onClick={() => { setActiveCallId(null); testCall.mutate({ phone, scenario_id: scenarioId, tts_provider: tProvider === "fish" ? "fish" : undefined, tts_voice: tVoice || undefined, tts_role: tProvider === "fish" ? undefined : (tRole || undefined), tts_speed: tProvider === "fish" ? undefined : (parseFloat(tSpeed) || undefined) }, { onSuccess: (d) => setActiveCallId(d.call_id) }); }} disabled={testCall.isPending || !phone.trim()}>
             {testCall.isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
             <span className="ml-1">Позвонить</span>
           </Button>
         </div>
-        <VoiceControls
-          voices={voices}
+        <TtsProviderPicker
+          provider={tProvider} setProvider={setTProvider}
+          yandexVoices={voices}
           voice={tVoice} setVoice={setTVoice}
           role={tRole} setRole={setTRole}
           speed={tSpeed} setSpeed={setTSpeed}
@@ -853,6 +905,7 @@ function CampaignsTab() {
   const { data: voices } = useTtsVoices();
 
   const [name, setName] = useState("");
+  const [cProvider, setCProvider] = useState("yandex");
   const [cVoice, setCVoice] = useState("alena");
   const [cRole, setCRole] = useState("");
   const [cSpeed, setCSpeed] = useState("1.0");
@@ -881,9 +934,10 @@ function CampaignsTab() {
         window_start: winStart || null,
         window_end: winEnd || null,
         timezone,
-        tts_voice: cVoice,
-        tts_role: cRole || undefined,
-        tts_speed: parseFloat(cSpeed) || undefined,
+        tts_provider: cProvider === "fish" ? "fish" : undefined,
+        tts_voice: cVoice || undefined,
+        tts_role: cProvider === "fish" ? undefined : (cRole || undefined),
+        tts_speed: cProvider === "fish" ? undefined : (parseFloat(cSpeed) || undefined),
       },
       { onSuccess: () => setName("") },
     );
@@ -947,8 +1001,9 @@ function CampaignsTab() {
         </div>
         <div className="mt-3">
           <div className="text-[12px] text-text-muted mb-1">Голос робота</div>
-          <VoiceControls
-            voices={voices}
+          <TtsProviderPicker
+            provider={cProvider} setProvider={setCProvider}
+            yandexVoices={voices}
             voice={cVoice} setVoice={setCVoice}
             role={cRole} setRole={setCRole}
             speed={cSpeed} setSpeed={setCSpeed}

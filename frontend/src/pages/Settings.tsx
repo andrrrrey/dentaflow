@@ -23,6 +23,7 @@ import {
 } from "../api/integrations";
 import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
 import { usePipelineStages } from "../api/pipelineStages";
+import { useFishVoices } from "../api/aicalling";
 import { GitBranch } from "lucide-react";
 
 /* ---------- helpers ---------- */
@@ -831,6 +832,150 @@ function AutoLeadCard({
   );
 }
 
+/* ---------- fish.audio (TTS для ИИ-обзвона) ---------- */
+
+const FISH_MODELS = [
+  { id: "speech-1.6", label: "speech-1.6 (рекомендуется)" },
+  { id: "speech-1.5", label: "speech-1.5" },
+  { id: "s1", label: "s1" },
+];
+
+function FishAudioCard({
+  values,
+  onChange,
+  onSave,
+  saving,
+  saved,
+  onCheck,
+  checkResult,
+  checking,
+}: {
+  values: Record<string, string>;
+  onChange: (key: string, val: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  saved: boolean;
+  onCheck: () => void;
+  checkResult: { ok: boolean; message: string } | null;
+  checking: boolean;
+}) {
+  const keySet = !!(values["fish_api_key"] || "").trim();
+  const { data: voices, isFetching, refetch } = useFishVoices(keySet);
+  const selectStyle: React.CSSProperties = {
+    border: "1px solid rgba(91,76,245,0.15)",
+    background: "rgba(255,255,255,0.5)",
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Phone size={16} className="text-accent2" />
+        <div>
+          <h3 className="text-[14px] font-bold text-text-main">fish.audio (синтез речи)</h3>
+          <p className="text-[11.5px] text-text-muted mt-[2px]">
+            Голоса fish.audio для ИИ-обзвона. Провайдер и голос выбираются при создании кампании.
+          </p>
+        </div>
+      </div>
+
+      <InfoBox>
+        Введите API-ключ из личного кабинета fish.audio (Settings → API Keys) и сохраните.
+        После этого список ваших голосов подтянется автоматически.
+      </InfoBox>
+
+      <div className="flex flex-col gap-3 mt-3">
+        <InputField
+          label="API Key"
+          type="password"
+          value={values["fish_api_key"] ?? ""}
+          onChange={(v) => onChange("fish_api_key", v)}
+          placeholder="fish-..."
+        />
+
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Модель</label>
+          <select
+            value={values["fish_model"] || "speech-1.6"}
+            onChange={(e) => onChange("fish_model", e.target.value)}
+            className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none w-full cursor-pointer"
+            style={selectStyle}
+          >
+            {FISH_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+            Голос по умолчанию
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={values["fish_voice_id"] ?? ""}
+              onChange={(e) => onChange("fish_voice_id", e.target.value)}
+              className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none w-full cursor-pointer"
+              style={selectStyle}
+            >
+              <option value="">— выберите голос —</option>
+              {(voices ?? []).map((v) => (
+                <option key={v.id} value={v.id}>{v.title || v.id}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={!keySet || isFetching}
+              title="Обновить список голосов"
+              className="flex items-center justify-center p-[9px] rounded-[9px] border-none cursor-pointer disabled:opacity-50"
+              style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
+            >
+              <RefreshCw size={14} className={isFetching ? "animate-spin" : ""} />
+            </button>
+          </div>
+          {!keySet && (
+            <span className="text-[11px] text-text-muted">Сначала сохраните API-ключ, чтобы загрузить голоса.</span>
+          )}
+        </div>
+
+        {checkResult && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-[12px]"
+            style={{
+              background: checkResult.ok ? "rgba(0,201,167,0.1)" : "rgba(244,75,110,0.1)",
+              color: checkResult.ok ? "#007d6e" : "#c52048",
+            }}
+          >
+            {checkResult.ok ? <Wifi size={13} /> : <WifiOff size={13} />}
+            {checkResult.message}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 mt-1">
+          <button
+            onClick={onCheck}
+            disabled={checking || !keySet}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold cursor-pointer transition-all disabled:opacity-60"
+            style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5", border: "none" }}
+          >
+            {checking ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+            Проверить
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-[6px] rounded-[9px] text-[12px] font-semibold border-none cursor-pointer transition-all disabled:opacity-60"
+            style={{ background: saved ? "#00c9a7" : "#5B4CF5", color: "#fff" }}
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <Check size={13} /> : <Save size={13} />}
+            {saving ? "Сохранение..." : saved ? "Сохранено" : "Сохранить"}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- 1Denta sync status ---------- */
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -1114,6 +1259,17 @@ function IntegrationsTab() {
       />
 
       <KnowledgeBaseCard />
+
+      <FishAudioCard
+        values={values}
+        onChange={handleChange}
+        onSave={() => handleSaveCard("fish")}
+        saving={savingService === "fish"}
+        saved={savedService === "fish"}
+        onCheck={() => handleCheck("fish")}
+        checkResult={checkResults["fish"] ?? null}
+        checking={checkingService === "fish"}
+      />
 
       {INTEGRATIONS.map((cfg) => {
         // Единая ручная синхронизация с 1Denta — только у владельца.

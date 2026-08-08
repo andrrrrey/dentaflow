@@ -52,6 +52,10 @@ async def _collect_credentials(db: AsyncSession) -> dict:
         "yandex_folder_id": yandex_folder_id,
         "openai_api_key": openai_api_key,
         "openai_model": openai_model,
+        # fish.audio (имена полей — как ожидает aicallrobot runtime-credentials).
+        "fish_audio_api_key": await get_raw_value(db, "fish_api_key"),
+        "fish_audio_model": await get_raw_value(db, "fish_model"),
+        "fish_audio_voice": await get_raw_value(db, "fish_voice_id"),
     }
 
 
@@ -124,6 +128,36 @@ async def tts_test(
 @router.get("/voices")
 async def voices(_user: User = Depends(role_required("owner", "manager"))):
     return await _proxy("GET", "/api/v1/voices")
+
+
+@router.get("/fish-voices")
+async def fish_voices(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(role_required("owner", "manager")),
+):
+    """Список собственных голосов пользователя из fish.audio (по сохранённому ключу)."""
+    api_key = await get_raw_value(db, "fish_api_key")
+    if not api_key:
+        return {"voices": []}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                "https://api.fish.audio/model",
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"self": "true", "page_size": 100},
+            )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"fish.audio недоступен: {e}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text[:300])
+    data = resp.json()
+    items = data.get("items", []) if isinstance(data, dict) else (data or [])
+    voices_list = [
+        {"id": it.get("_id") or it.get("id"), "title": it.get("title", "")}
+        for it in items
+        if it.get("_id") or it.get("id")
+    ]
+    return {"voices": voices_list}
 
 
 # ── Тест диалога (v2.0, текстовый) ──────────────────────────────────────────────
@@ -310,6 +344,7 @@ class CampaignCreate(BaseModel):
     tts_voice: str | None = None
     tts_role: str | None = None
     tts_speed: float | None = None
+    tts_provider: str | None = None  # "yandex" (дефолт) | "fish"
 
 
 class CampaignControl(BaseModel):
@@ -333,6 +368,7 @@ def _campaign_dict(c) -> dict:
         "tts_voice": c.tts_voice,
         "tts_role": c.tts_role,
         "tts_speed": c.tts_speed,
+        "tts_provider": c.tts_provider,
         "total": total,
         "completed": c.completed,
         "succeeded": c.succeeded,
@@ -399,6 +435,7 @@ async def campaigns_create(
         tts_voice=body.tts_voice,
         tts_role=body.tts_role,
         tts_speed=body.tts_speed,
+        tts_provider=body.tts_provider,
         created_by=user.id,
     )
     if campaign.total == 0:
@@ -533,6 +570,7 @@ class TestCallRequest(BaseModel):
     tts_voice: str | None = None
     tts_role: str | None = None
     tts_speed: float | None = None
+    tts_provider: str | None = None
 
 
 @router.post("/test-call")
@@ -557,6 +595,8 @@ async def test_call(
         start_payload["tts_role"] = body.tts_role
     if body.tts_speed:
         start_payload["tts_speed"] = body.tts_speed
+    if body.tts_provider:
+        start_payload["tts_provider"] = body.tts_provider
     start = await _proxy("POST", "/api/v1/calls/start", json=start_payload)
     call_id = (start or {}).get("call_id") if isinstance(start, dict) else None
     if not call_id:

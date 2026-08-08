@@ -10,6 +10,7 @@ from loguru import logger
 
 from app.services.tts import TTSService
 from app.services.salutespeech_tts import SaluteSpeechTTSService
+from app.services.fish_audio_tts import FishAudioTTSService
 from app.services.asr import ASRService
 from app.services.call_manager import CallManager
 from app.services.scenario_engine import ScenarioManager
@@ -28,6 +29,7 @@ router = APIRouter()
 # Singletons
 tts_service = TTSService()
 salutespeech_tts_service = SaluteSpeechTTSService()
+fish_tts_service = FishAudioTTSService()
 asr_service = ASRService()
 call_manager = CallManager()
 scenario_manager = ScenarioManager()
@@ -67,6 +69,7 @@ class StartCallRequest(BaseModel):
     tts_voice: str | None = None
     tts_role: str | None = None
     tts_speed: float | None = None
+    tts_provider: str | None = None
 
 
 class AIConfigUpdate(BaseModel):
@@ -106,11 +109,14 @@ class RuntimeCredentialsRequest(BaseModel):
     yandex_folder_id: str | None = None
     openai_api_key: str | None = None
     openai_model: str | None = None
+    fish_audio_api_key: str | None = None
+    fish_audio_model: str | None = None
+    fish_audio_voice: str | None = None
 
 
 @router.post("/api/v1/runtime-credentials")
 async def update_runtime_credentials(request: RuntimeCredentialsRequest):
-    """Обновляет учётные данные (Yandex SpeechKit, OpenAI) в рантайме."""
+    """Обновляет учётные данные (Yandex SpeechKit, OpenAI, fish.audio) в рантайме."""
     creds = set_runtime_credentials(**request.model_dump(exclude_none=True))
     return {
         "ok": True,
@@ -118,6 +124,8 @@ async def update_runtime_credentials(request: RuntimeCredentialsRequest):
         "yandex_folder_id_set": bool(creds.yandex_folder_id),
         "openai_api_key_set": bool(creds.openai_api_key),
         "openai_model": creds.openai_model,
+        "fish_audio_api_key_set": bool(creds.fish_audio_api_key),
+        "fish_audio_model": creds.fish_audio_model,
     }
 
 
@@ -445,6 +453,7 @@ async def start_call(request: StartCallRequest):
             tts_voice=request.tts_voice,
             tts_role=request.tts_role,
             tts_speed=request.tts_speed,
+            tts_provider=request.tts_provider,
         )
         if request.algo_version == "v2":
             v2_greeting = script_v2_engine.greeting(session.call_id)
@@ -569,46 +578,104 @@ async def audio_websocket(websocket: WebSocket, call_id: str):
         tts_voice_config["role"] = session.tts_role
     if session.tts_speed:
         tts_voice_config["speed"] = session.tts_speed
+    if session.tts_provider:
+        tts_voice_config["provider"] = session.tts_provider
 
-    async def synthesize_response(text: str) -> bytes:
+    async def _tts_stream_provider(text: str):
+        """Возвращает async-генератор PCM-чанков для текущего провайдера TTS."""
         provider = tts_voice_config.get("provider", "yandex")
         voice = tts_voice_config.get("voice") or None
-        if provider == "salutespeech":
-            return await salutespeech_tts_service.synthesize(text=text, voice=voice)
-        return await tts_service.synthesize(
-            text=text,
-            voice=voice,
-            role=tts_voice_config.get("role") or None,
-            speed=float(tts_voice_config.get("speed") or 1.0) or None,
-        )
+        if provider == "fish":
+            async for chunk in fish_tts_service.synthesize_stream(text=text, voice=voice):
+                yield chunk
+        elif provider == "salutespeech":
+            # SaluteSpeech не поддерживает стриминг — отдаём одним куском.
+            sr = tts_voice_config.get("sample_rate")
+            audio = await salutespeech_tts_service.synthesize(
+                text=text, voice=voice, sample_rate=int(sr) if sr else None,
+            )
+            yield audio
+        else:
+            async for chunk in tts_service.synthesize_stream(
+                text=text,
+                voice=voice,
+                role=tts_voice_config.get("role") or None,
+                speed=float(tts_voice_config.get("speed") or 1.0) or None,
+            ):
+                yield chunk
+
+    async def synthesize_response(text: str) -> bytes:
+        chunks = [chunk async for chunk in _tts_stream_provider(text)]
+        return b"".join(chunks)
 
     async def stream_tts_to_ws(text: str):
         """Стриминг TTS: шлём аудиочанки клиенту по мере поступления от API."""
-        provider = tts_voice_config.get("provider", "yandex")
-        voice = tts_voice_config.get("voice") or None
         pipeline._is_speaking = True
         try:
-            if provider == "salutespeech":
-                # SaluteSpeech не поддерживает стриминг — отдаём одним куском
-                sr = tts_voice_config.get("sample_rate")
-                audio = await salutespeech_tts_service.synthesize(
-                    text=text, voice=voice,
-                    sample_rate=int(sr) if sr else None,
-                )
-                await websocket.send_bytes(audio)
-            else:
-                async for chunk in tts_service.synthesize_stream(
-                    text=text,
-                    voice=voice,
-                    role=tts_voice_config.get("role") or None,
-                    speed=float(tts_voice_config.get("speed") or 1.0) or None,
-                ):
-                    await websocket.send_bytes(chunk)
+            async for chunk in _tts_stream_provider(text):
+                await websocket.send_bytes(chunk)
         except Exception as tts_err:
             logger.warning(f"TTS stream failed, session continues: {tts_err}")
             await websocket.send_json({"type": "interrupt"})
         finally:
             pipeline._is_speaking = False
+
+    async def stream_llm_speech(text_chunks, *, first_audio_log: str = "") -> str:
+        """Пофразовый стриминг: копит токены LLM, на границе фразы синтезирует и
+        отправляет аудио в WS — робот начинает говорить, пока генерируется остаток.
+
+        Возвращает полный собранный текст ответа (для транскрипта).
+        """
+        import time as _time
+
+        pipeline._is_speaking = True
+        full_parts: list[str] = []
+        buffer = ""
+        started_at = _time.monotonic()
+        first_audio_sent = False
+
+        async def _speak_segment(segment: str):
+            nonlocal first_audio_sent
+            segment = segment.strip()
+            if not segment:
+                return
+            async for chunk in _tts_stream_provider(segment):
+                if not first_audio_sent:
+                    first_audio_sent = True
+                    logger.info(
+                        f"TTFA {(_time.monotonic() - started_at) * 1000:.0f}ms {first_audio_log}"
+                    )
+                await websocket.send_bytes(chunk)
+
+        try:
+            async for token in text_chunks:
+                if not token:
+                    continue
+                full_parts.append(token)
+                buffer += token
+                # Синтезируем, как только накопилась законченная фраза.
+                boundary = max(
+                    buffer.rfind(". "), buffer.rfind("! "), buffer.rfind("? "),
+                    buffer.rfind("… "), buffer.rfind(".\n"), buffer.rfind("\n"),
+                )
+                if boundary >= 0 and boundary + 1 >= 12:
+                    segment, buffer = buffer[: boundary + 1], buffer[boundary + 1:]
+                    await _speak_segment(segment)
+                elif len(buffer) >= 160:
+                    # Очень длинная фраза без пунктуации — режем по пробелу.
+                    cut = buffer.rfind(" ", 0, 160)
+                    cut = cut if cut > 0 else len(buffer)
+                    segment, buffer = buffer[:cut], buffer[cut:]
+                    await _speak_segment(segment)
+            if buffer.strip():
+                await _speak_segment(buffer)
+        except Exception as tts_err:
+            logger.warning(f"LLM/TTS stream failed, session continues: {tts_err}")
+            await websocket.send_json({"type": "interrupt"})
+        finally:
+            pipeline._is_speaking = False
+
+        return "".join(full_parts).strip()
 
     try:
         while True:
@@ -643,6 +710,8 @@ async def audio_websocket(websocket: WebSocket, call_id: str):
 
                     kb_context = await kb_task
 
+                    already_spoke = False
+
                     if session.algo_version == "v2":
                         # v2: строгий скриптовый алгоритм
                         try:
@@ -662,22 +731,44 @@ async def audio_websocket(websocket: WebSocket, call_id: str):
                             response_text = "Понял. Продолжайте, пожалуйста."
                         next_step = current_step
                     else:
-                        # v1: один GPT-вызов: intent + ответ одновременно
-                        try:
-                            intent, response_text = await dialogue_engine.generate_with_intent(
-                                step=current_step,
-                                transcript=session.transcript,
-                                knowledge_context=kb_context,
-                                ai_config=ai_config,
+                        # v1: классификацию намерения запускаем параллельно, а ответ
+                        # стримим LLM→TTS — робот начинает говорить первую фразу,
+                        # пока генерируется остальное (снижает паузу перед ответом).
+                        robot_entries = [e for e in session.transcript if e.get("role") == "robot"]
+                        last_robot = robot_entries[-1].get("text", "") if robot_entries else ""
+                        intent_task = asyncio.create_task(
+                            dialogue_engine.classify_intent(
+                                text, step_id=current_step_id, last_robot=last_robot,
                             )
+                        )
+                        try:
+                            response_text = await stream_llm_speech(
+                                dialogue_engine.generate_response_stream(
+                                    step=current_step,
+                                    transcript=session.transcript,
+                                    knowledge_context=kb_context,
+                                    ai_config=ai_config,
+                                ),
+                                first_audio_log=f"step={current_step_id}",
+                            )
+                            already_spoke = bool(response_text)
                         except Exception as e:
                             logger.error(f"AI generation failed: {e}")
-                            intent = "unknown"
+                            response_text = ""
+
+                        if not response_text:
                             response_text = (
                                 current_step.greeting
                                 if current_step and current_step.greeting
                                 else "Понял. Продолжайте, пожалуйста."
                             )
+                            already_spoke = False
+
+                        try:
+                            intent = await intent_task
+                        except Exception as e:
+                            logger.error(f"classify_intent failed: {e}")
+                            intent = "unknown"
 
                         # Определяем сигнал передачи трубки — переключаем на ЛПР вне зависимости от шага
                         _TRANSFER_SIGNALS = ("переведу", "соединяю", "передаю трубку", "переключаю")
@@ -723,8 +814,10 @@ async def audio_websocket(websocket: WebSocket, call_id: str):
                         "step": next_step.id if next_step else current_step_id,
                     })
 
-                    # Стриминг TTS: первый аудиочанк клиенту сразу как он придёт от API
-                    await stream_tts_to_ws(response_text)
+                    # Озвучиваем, только если ответ ещё не был проигран в стриминге
+                    # (v1 уже говорит по мере генерации; v2/фоллбэк — здесь).
+                    if not already_spoke:
+                        await stream_tts_to_ws(response_text)
 
                     # Проверяем финальность следующего шага
                     if next_step and next_step.is_final:

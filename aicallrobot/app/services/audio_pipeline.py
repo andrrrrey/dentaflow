@@ -19,7 +19,7 @@ class AudioBuffer:
 
     sample_rate: int = 8000
     silence_threshold: int = 350       # абсолютный минимум порога голоса
-    pause_duration: float = 1.0        # пауза = конец реплики (сек)
+    pause_duration: float = 0.6        # пауза = конец реплики (сек)
     interrupt_duration: float = 0.15   # порог для перебивания (сек)
     noise_factor: float = 2.2          # речь = энергия выше шумового пола ×коэффициент
     max_utterance_sec: float = 12.0    # страховка: форс ASR при бесконечной «речи»
@@ -126,7 +126,13 @@ class AudioPipeline:
     def __init__(self, asr_service, tts_service, on_text_recognized=None, on_audio_ready=None):
         self.asr = asr_service
         self.tts = tts_service
-        self.buffer = AudioBuffer()
+        # Пауза VAD берётся из настроек (можно тюнить без правки кода).
+        try:
+            from app.core.config import get_settings
+            pause = get_settings().vad_pause_duration
+            self.buffer = AudioBuffer(pause_duration=pause)
+        except Exception:
+            self.buffer = AudioBuffer()
         self.on_text_recognized = on_text_recognized
         self.on_audio_ready = on_audio_ready
         self._is_speaking = False  # робот сейчас говорит

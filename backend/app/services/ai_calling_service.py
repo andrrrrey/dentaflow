@@ -78,6 +78,7 @@ async def create_campaign(
     tts_voice: str | None = None,
     tts_role: str | None = None,
     tts_speed: float | None = None,
+    tts_provider: str | None = None,
     created_by: uuid.UUID | None = None,
 ) -> AiCallingCampaign:
     members = await resolve_segment_patients(db, segment_key)
@@ -94,6 +95,7 @@ async def create_campaign(
         tts_voice=tts_voice,
         tts_role=tts_role,
         tts_speed=tts_speed,
+        tts_provider=tts_provider,
         total=len(members),
         created_by=created_by,
     )
