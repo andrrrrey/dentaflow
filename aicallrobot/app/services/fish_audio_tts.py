@@ -34,7 +34,7 @@ class FishAudioTTSService:
         return {
             "Authorization": f"Bearer {self.settings.fish_audio_api_key}",
             "Content-Type": "application/json",
-            "model": self.settings.fish_audio_model or "speech-1.6",
+            "model": self.settings.fish_audio_model or "s2.1-pro",
         }
 
     def _build_body(self, text: str, voice: str | None, sample_rate: int) -> dict:
