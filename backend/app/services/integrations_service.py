@@ -66,6 +66,12 @@ INTEGRATION_KEYS: dict[str, list[str]] = {
         "max_bot_system_prompt",
         "max_clinic_name",
     ],
+    "vk": [
+        "vk_bot_token",
+        "vk_group_id",
+        "vk_confirmation",
+        "vk_secret",
+    ],
     "site": ["site_webhook_url", "tilda_secret"],
     "mail": ["mail_host", "mail_port", "mail_user", "mail_password"],
     "auto_lead": ["auto_lead_enabled", "auto_lead_stage", "auto_lead_channels"],
@@ -82,6 +88,7 @@ MASKED_KEYS = {
     "fish_api_key",
     "telegram_bot_token", "telegram_webhook_secret",
     "max_bot_token",
+    "vk_bot_token", "vk_secret",
     "tilda_secret",
     "mail_password",
 }
@@ -202,6 +209,8 @@ async def check_connection(service: str, db: AsyncSession, webhook_url: str | No
             return await _check_telegram(db)
         elif service == "max_vk":
             return await _check_max_vk(db, webhook_url=webhook_url)
+        elif service == "vk":
+            return await _check_vk(db)
         elif service == "bots":
             return {"ok": True, "message": "Настройки сохранены"}
         elif service == "site":
@@ -481,6 +490,14 @@ async def _check_max_vk(db: AsyncSession, webhook_url: str | None = None) -> dic
             return {"ok": True, "message": f"Подключено ({name})"}
 
         return {"ok": False, "message": f"Ошибка {resp.status_code}: {resp.text[:300]}"}
+
+
+async def _check_vk(db: AsyncSession) -> dict:
+    token = await get_raw_value(db, "vk_bot_token")
+    if not token:
+        return {"ok": False, "message": "Ключ доступа сообщества не указан"}
+    from app.services.vk import VkService
+    return await VkService(access_token=token).check()
 
 
 async def _check_site(db: AsyncSession) -> dict:

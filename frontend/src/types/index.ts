@@ -70,7 +70,7 @@ export interface CommunicationItem {
   id: string;
   patient_id: string | null;
   patient_name: string | null;
-  channel: "telegram" | "novofon" | "max" | "site" | "manual";
+  channel: "telegram" | "novofon" | "max" | "vk" | "site" | "manual";
   direction: "inbound" | "outbound";
   type: "message" | "chat" | "call" | "form" | "missed_call";
   content: string | null;

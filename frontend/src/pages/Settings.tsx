@@ -6,7 +6,7 @@ import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
   Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone, RefreshCw,
-  Plus, X, Megaphone,
+  Plus, X, Megaphone, MessageSquare,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -553,6 +553,33 @@ const INTEGRATIONS: IntegrationCardConfig[] = [
     ],
   },
   {
+    service: "vk",
+    title: "ВКонтакте",
+    icon: <MessageSquare size={15} />,
+    description: "Приём сообщений из сообщества ВКонтакте в раздел «Чаты»",
+    infoBox: (
+      <div className="flex flex-col gap-[6px] text-[12px]">
+        <b>Подключение сообщества через Callback API:</b>
+        <ol className="list-decimal list-inside space-y-1 text-text-muted">
+          <li>Сообщество → <b>Управление</b> → <b>Настройки</b> → <b>Работа с API</b> → <b>Ключи доступа</b>: создайте ключ сообщества (доступ к сообщениям) и вставьте его в «Ключ доступа сообщества» ниже</li>
+          <li>Там же → вкладка <b>Callback API</b>: в поле «Адрес» вставьте <code>https://&lt;ваш-домен&gt;/api/v1/webhooks/vk</code></li>
+          <li>Скопируйте <b>строку, которую должен вернуть сервер</b>, в поле «Строка подтверждения» ниже и нажмите <b>«Сохранить»</b>. Затем в ВК нажмите <b>«Подтвердить»</b></li>
+          <li>(Необязательно) задайте <b>секретный ключ</b> в ВК и продублируйте его в поле ниже</li>
+          <li>Во вкладке <b>Типы событий</b> включите <b>«Входящее сообщение»</b> (message_new)</li>
+        </ol>
+        <div className="mt-1 text-text-muted">
+          Сообщения из сообщества появятся в разделе «Чаты» — отвечать можно прямо из интерфейса.
+        </div>
+      </div>
+    ),
+    fields: [
+      { key: "vk_bot_token", label: "Ключ доступа сообщества", type: "password", placeholder: "vk1.a.xxx..." },
+      { key: "vk_group_id", label: "ID сообщества (число)", placeholder: "123456789" },
+      { key: "vk_confirmation", label: "Строка подтверждения (из Callback API)", placeholder: "Напр. a1b2c3d4" },
+      { key: "vk_secret", label: "Секретный ключ (необязательно)", type: "password", placeholder: "Секрет Callback API" },
+    ],
+  },
+  {
     service: "site",
     title: "Форма на сайте / Тильда",
     icon: <Globe size={15} />,
@@ -729,6 +756,7 @@ const LEAD_CHANNELS: { key: string; label: string }[] = [
   { key: "novofon", label: "Телефония" },
   { key: "telegram", label: "Telegram" },
   { key: "max", label: "Max/VK" },
+  { key: "vk", label: "ВКонтакте" },
 ];
 
 function AutoLeadCard({

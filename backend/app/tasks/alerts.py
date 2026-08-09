@@ -77,7 +77,7 @@ async def _check_stale_leads_async() -> dict:
             # Чаты открываем в разделе «Коммуникация», остальное — в «Заявках».
             # Ссылка обязана быть роутабельной (раньше хранился голый UUID и
             # клик по уведомлению вёл на несуществующий маршрут — пустая страница).
-            page = "/chats" if comm.channel in ("telegram", "max") else "/communications"
+            page = "/chats" if comm.channel in ("telegram", "max", "vk") else "/communications"
             notification = Notification(
                 type="stale_lead",
                 title=f"Не обработано: {channel_label}",

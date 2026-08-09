@@ -11,7 +11,7 @@ class BotUser(Base):
     __tablename__ = "bot_users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # max | telegram
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # max | telegram | vk
     chat_id: Mapped[str] = mapped_column(String(100), nullable=False)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)

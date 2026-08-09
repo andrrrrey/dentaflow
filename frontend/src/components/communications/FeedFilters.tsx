@@ -22,6 +22,7 @@ const DEFAULT_CHANNEL_OPTIONS: ChannelOption[] = [
   { key: "telegram", label: "Telegram" },
   { key: "novofon", label: "Телефония" },
   { key: "max", label: "Max/VK" },
+  { key: "vk", label: "ВКонтакте" },
   { key: "site", label: "Сайт" },
 ];
 
