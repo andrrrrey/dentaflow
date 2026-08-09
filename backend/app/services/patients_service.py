@@ -138,6 +138,7 @@ async def get_patients(
             email=p.email,
             birth_date=p.birth_date,
             source_channel=p.source_channel,
+            referral_source=p.referral_source,
             is_new_patient=p.is_new_patient,
             last_visit_at=p.last_visit_at,
             total_revenue=float(p.total_revenue),
@@ -388,6 +389,7 @@ async def get_patient_detail(
         email=patient.email,
         birth_date=patient.birth_date,
         source_channel=patient.source_channel,
+        referral_source=patient.referral_source,
         is_new_patient=patient.is_new_patient,
         last_visit_at=patient.last_visit_at,
         total_revenue=float(patient.total_revenue),
@@ -422,6 +424,7 @@ async def create_patient(
     gender: str | None = None,
     comment: str | None = None,
     source_channel: str | None = None,
+    referral_source: str | None = None,
     tags: list[str] | None = None,
     snils: str | None = None,
     inn: str | None = None,
@@ -473,6 +476,7 @@ async def create_patient(
         phone=phone,
         email=email,
         source_channel=source_channel,
+        referral_source=(referral_source or None),
         gender=gender,
         comment=comment,
         is_new_patient=True,
@@ -562,6 +566,7 @@ async def create_patient(
         email=patient.email,
         birth_date=patient.birth_date,
         source_channel=patient.source_channel,
+        referral_source=patient.referral_source,
         is_new_patient=patient.is_new_patient,
         last_visit_at=patient.last_visit_at,
         total_revenue=float(patient.total_revenue),
@@ -580,6 +585,7 @@ async def update_patient(
     email: str | None = None,
     birth_date: str | None = None,
     source_channel: str | None = None,
+    referral_source: str | None = None,
     tags: list[str] | None = None,
     ltv_score: int | None = None,
     representative_name: str | None = None,
@@ -604,6 +610,8 @@ async def update_patient(
             pass
     if source_channel is not None:
         patient.source_channel = source_channel
+    if referral_source is not None:
+        patient.referral_source = referral_source.strip() or None
     if tags is not None:
         patient.tags = tags
     if ltv_score is not None:
@@ -625,6 +633,7 @@ async def update_patient(
         email=patient.email,
         birth_date=patient.birth_date,
         source_channel=patient.source_channel,
+        referral_source=patient.referral_source,
         is_new_patient=patient.is_new_patient,
         last_visit_at=patient.last_visit_at,
         total_revenue=float(patient.total_revenue),
@@ -637,3 +646,84 @@ async def update_patient(
         representative_relation=patient.representative_relation,
         created_at=patient.created_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Источники пациентов («откуда узнал о клинике»)
+# ---------------------------------------------------------------------------
+# Редактируемый в Настройках список меток. Храним JSON-массив строк в
+# integration_settings (ключ patient_sources), чтобы менять без миграций.
+
+_PATIENT_SOURCES_KEY = "patient_sources"
+
+DEFAULT_PATIENT_SOURCES: list[str] = [
+    "Рекомендации",
+    "2ГИС",
+    "Яндекс Карты",
+    "ПроДокторов",
+    "Блогеры",
+    "Инстаграм",
+    "ВК",
+    "Реклама в интернете",
+    "Билборд",
+    "Реактивация",
+    "Сайт",
+]
+
+
+async def get_patient_sources(db: AsyncSession) -> list[str]:
+    """Список источников привлечения. Если не настроен — дефолтный набор."""
+    import json
+
+    from app.models.integration_setting import IntegrationSetting
+
+    row = (await db.execute(
+        select(IntegrationSetting.value).where(
+            IntegrationSetting.key == _PATIENT_SOURCES_KEY
+        )
+    )).scalar_one_or_none()
+    if not row:
+        return list(DEFAULT_PATIENT_SOURCES)
+    try:
+        parsed = json.loads(row)
+    except (ValueError, TypeError):
+        return list(DEFAULT_PATIENT_SOURCES)
+    if not isinstance(parsed, list):
+        return list(DEFAULT_PATIENT_SOURCES)
+    # Уникальные непустые метки, порядок сохраняем
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in parsed:
+        label = str(item).strip()
+        if label and label not in seen:
+            seen.add(label)
+            result.append(label)
+    return result or list(DEFAULT_PATIENT_SOURCES)
+
+
+async def set_patient_sources(db: AsyncSession, sources: list[str]) -> list[str]:
+    """Сохранить список источников; возвращает нормализованный список."""
+    import json
+
+    from app.models.integration_setting import IntegrationSetting
+
+    seen: set[str] = set()
+    clean: list[str] = []
+    for item in sources or []:
+        label = str(item).strip()
+        if label and label not in seen:
+            seen.add(label)
+            clean.append(label)
+
+    value = json.dumps(clean, ensure_ascii=False)
+    row = (await db.execute(
+        select(IntegrationSetting).where(
+            IntegrationSetting.key == _PATIENT_SOURCES_KEY
+        )
+    )).scalar_one_or_none()
+    if row is None:
+        db.add(IntegrationSetting(key=_PATIENT_SOURCES_KEY, value=value))
+    else:
+        row.value = value
+    await db.flush()
+    return clean

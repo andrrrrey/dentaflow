@@ -2,12 +2,14 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { X, ChevronDown, ChevronUp, Plus, AlertCircle } from "lucide-react";
-import { useCreatePatient, type PatientCreatePayload } from "../../api/patients";
+import { useCreatePatient, usePatientSources, type PatientCreatePayload } from "../../api/patients";
 
 interface Props {
   onClose: () => void;
   prefillName?: string;
   prefillPhone?: string;
+  /** Предзаполнить источник привлечения (напр. из заявки с сайта/мессенджера). */
+  prefillSource?: string;
 }
 
 const inp = "px-3 py-[9px] rounded-[10px] text-[13px] text-text-main outline-none w-full";
@@ -74,9 +76,10 @@ const CHANNELS: [string, string][] = [
   ["referral", "Реферал"],
 ];
 
-export default function CreatePatientModal({ onClose, prefillName = "", prefillPhone = "" }: Props) {
+export default function CreatePatientModal({ onClose, prefillName = "", prefillPhone = "", prefillSource = "" }: Props) {
   const navigate = useNavigate();
   const createMutation = useCreatePatient();
+  const { data: sourceOptions = [] } = usePatientSources();
 
   // Split prefillName into parts if provided
   const nameParts = prefillName.trim().split(/\s+/);
@@ -107,6 +110,7 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
 
   const [address, setAddress] = useState("");
   const [sourceChannel, setSourceChannel] = useState("");
+  const [referralSource, setReferralSource] = useState(prefillSource);
   const [pushTo1denta, setPushTo1denta] = useState(true);
 
   const [open, setOpen] = useState({
@@ -154,6 +158,7 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
       passport_department_code: passportDeptCode || undefined,
       address: address || undefined,
       source_channel: sourceChannel || undefined,
+      referral_source: referralSource || undefined,
       push_to_1denta: pushTo1denta,
     };
 
@@ -461,11 +466,29 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
 
           {/* ── Источник + 1Denta ── */}
           <div
-            className="rounded-[14px] px-5 py-4 flex items-center gap-6"
+            className="rounded-[14px] px-5 py-4 flex flex-wrap items-end gap-4"
             style={{ background: "rgba(255,255,255,0.6)", border: "1px solid rgba(91,76,245,0.10)" }}
           >
-            <div className="flex-1">
-              <label className={lbl}>Источник</label>
+            <div className="flex-1 min-w-[180px]">
+              <label className={lbl}>Источник (откуда узнал о клинике)</label>
+              <select
+                value={referralSource}
+                onChange={(e) => setReferralSource(e.target.value)}
+                className={inp}
+                style={inpStyle}
+              >
+                <option value="">Не указан</option>
+                {/* Если предзаполненного значения нет в списке — покажем его тоже */}
+                {referralSource && !sourceOptions.includes(referralSource) && (
+                  <option value={referralSource}>{referralSource}</option>
+                )}
+                {sourceOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[160px]">
+              <label className={lbl}>Канал обращения</label>
               <select
                 value={sourceChannel}
                 onChange={(e) => setSourceChannel(e.target.value)}
@@ -477,7 +500,7 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer mt-4">
+            <label className="flex items-center gap-2 cursor-pointer h-[38px]">
               <input
                 type="checkbox"
                 checked={pushTo1denta}

@@ -11,6 +11,7 @@ export interface PatientResponse {
   email: string | null;
   birth_date: string | null;
   source_channel: string | null;
+  referral_source: string | null;
   is_new_patient: boolean;
   last_visit_at: string | null;
   total_revenue: number;
@@ -125,6 +126,7 @@ export interface PatientUpdatePayload {
   name?: string;
   phone?: string;
   email?: string;
+  referral_source?: string;
   representative_name?: string;
   representative_phone?: string;
   representative_relation?: string;
@@ -233,6 +235,7 @@ export interface PatientCreatePayload {
   // Прочее
   address?: string;
   source_channel?: string;
+  referral_source?: string;
   tags?: string[];
   push_to_1denta?: boolean;
 }
@@ -261,6 +264,32 @@ export async function downloadAllPatientsExcel() {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+}
+
+/* ── Источники привлечения («откуда узнал о клинике») ────── */
+
+export function usePatientSources() {
+  return useQuery<string[]>({
+    queryKey: ["patient-sources"],
+    queryFn: async () => {
+      const { data } = await api.get("/patients/sources");
+      return (data?.sources ?? []) as string[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdatePatientSources() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sources: string[]) => {
+      const { data } = await api.put("/patients/sources", { sources });
+      return (data?.sources ?? []) as string[];
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(["patient-sources"], data);
+    },
+  });
 }
 
 export function usePatientSearch(search: string) {
