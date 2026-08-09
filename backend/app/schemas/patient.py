@@ -74,6 +74,7 @@ class PatientResponse(BaseModel):
     email: str | None
     birth_date: date | None
     source_channel: str | None
+    referral_source: str | None = None
     is_new_patient: bool
     last_visit_at: datetime | None
     total_revenue: float
@@ -148,6 +149,7 @@ class PatientCreate(BaseModel):
     # Адрес и прочее
     address: str | None = None
     source_channel: str | None = None
+    referral_source: str | None = None
     tags: list[str] | None = None
     push_to_1denta: bool = True
 
@@ -156,12 +158,17 @@ class PatientCreateResponse(PatientResponse):
     warning: str | None = None
 
 
+class PatientSourcesUpdate(BaseModel):
+    sources: list[str] = []
+
+
 class PatientUpdate(BaseModel):
     name: str | None = None
     phone: str | None = None
     email: str | None = None
     birth_date: date | None = None
     source_channel: str | None = None
+    referral_source: str | None = None
     tags: list[str] | None = None
     ltv_score: int | None = None
     representative_name: str | None = None

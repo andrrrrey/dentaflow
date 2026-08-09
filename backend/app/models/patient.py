@@ -26,6 +26,11 @@ class Patient(Base):
     source_channel: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # telegram|call|site|max|referral
+    # Маркетинговый источник — «откуда пациент узнал о клинике» (рекомендации,
+    # 2ГИС, Яндекс Карты, реклама и т.д.). Свободный редактируемый список,
+    # управляется в Настройках; хранится как читаемая метка. В отличие от
+    # source_channel (канал обращения), это атрибуция привлечения.
+    referral_source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_new_patient: Mapped[bool] = mapped_column(Boolean, default=True)
     last_visit_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

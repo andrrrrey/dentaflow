@@ -6,6 +6,7 @@ import Button from "../components/ui/Button";
 import {
   Save, KeyRound, Check, AlertCircle, Wifi, WifiOff, Loader2, Camera,
   Upload, Trash2, FileText, Info, Bot, Globe, Trophy, Star, Phone, RefreshCw,
+  Plus, X, Megaphone,
 } from "lucide-react";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/authStore";
@@ -22,6 +23,7 @@ import {
   type OneDentaSyncStatus,
 } from "../api/integrations";
 import { useRewardsConfig, useSaveRewardsConfig, useLeaderboard, type RewardsConfig } from "../api/rewards";
+import { usePatientSources, useUpdatePatientSources } from "../api/patients";
 import { usePipelineStages } from "../api/pipelineStages";
 import { GitBranch } from "lucide-react";
 
@@ -1199,6 +1201,120 @@ function MotivationTab() {
   );
 }
 
+/* ---------- Patient sources editor ---------- */
+
+function PatientSourcesCard() {
+  const { data: saved, isLoading } = usePatientSources();
+  const updateMutation = useUpdatePatientSources();
+  const [items, setItems] = useState<string[]>([]);
+  const [newItem, setNewItem] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (saved) setItems(saved);
+  }, [saved]);
+
+  function addItem() {
+    const v = newItem.trim();
+    if (!v) return;
+    if (items.some((s) => s.toLowerCase() === v.toLowerCase())) {
+      setNewItem("");
+      return;
+    }
+    setItems((prev) => [...prev, v]);
+    setNewItem("");
+  }
+
+  function updateItem(idx: number, value: string) {
+    setItems((prev) => prev.map((s, i) => (i === idx ? value : s)));
+  }
+
+  function removeItem(idx: number) {
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleSave() {
+    setSaveSuccess("");
+    setSaveError("");
+    const clean = items.map((s) => s.trim()).filter(Boolean);
+    try {
+      await updateMutation.mutateAsync(clean);
+      setSaveSuccess("Источники сохранены");
+    } catch {
+      setSaveError("Ошибка при сохранении");
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Megaphone size={16} className="text-accent2" />
+        <div>
+          <h2 className="text-[15px] font-bold text-text-main">Источники пациентов</h2>
+          <p className="text-[11.5px] text-text-muted mt-[2px]">
+            Варианты «откуда пациент узнал о клинике». Используются в карточке пациента и аналитике.
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-[13px] text-text-muted py-3">Загрузка...</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <input
+                value={item}
+                onChange={(e) => updateItem(idx, e.target.value)}
+                className="flex-1 px-3 py-[8px] rounded-[10px] text-[13px] text-text-main outline-none"
+                style={{ border: "1px solid rgba(91,76,245,0.18)", background: "rgba(255,255,255,0.7)" }}
+              />
+              <button
+                onClick={() => removeItem(idx)}
+                title="Удалить"
+                className="w-8 h-8 flex items-center justify-center rounded-[10px] border-none cursor-pointer text-[#f44b6e]"
+                style={{ background: "rgba(244,75,110,0.08)" }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              value={newItem}
+              onChange={(e) => setNewItem(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+              placeholder="Новый источник..."
+              className="flex-1 px-3 py-[8px] rounded-[10px] text-[13px] text-text-main outline-none"
+              style={{ border: "1px dashed rgba(91,76,245,0.3)", background: "rgba(255,255,255,0.5)" }}
+            />
+            <button
+              onClick={addItem}
+              title="Добавить"
+              className="flex items-center gap-1 px-3 h-8 rounded-[10px] border-none cursor-pointer text-[12px] font-semibold text-accent2"
+              style={{ background: "rgba(91,76,245,0.1)" }}
+            >
+              <Plus size={14} /> Добавить
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-3">
+        <StatusBanner success={saveSuccess} error={saveError} />
+        <div className="flex justify-end">
+          <Button variant="primary" size="md" onClick={handleSave} disabled={updateMutation.isPending}>
+            <Save size={14} className="mr-2" />
+            {updateMutation.isPending ? "Сохранение..." : "Сохранить"}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- component ---------- */
 
 type Tab = "profile" | "clinic" | "integrations" | "notifications" | "motivation";
@@ -1250,20 +1366,24 @@ export default function Settings() {
       {activeTab === "profile" && <ProfileTab />}
 
       {activeTab === "clinic" && (
-        <Card>
-          <h2 className="text-[15px] font-bold text-text-main mb-4">Клиника</h2>
-          <div className="flex flex-col gap-3">
-            <InputField label="Название" value={clinic.name} onChange={(v) => setClinic((p) => ({ ...p, name: v }))} />
-            <InputField label="Адрес" value={clinic.address} onChange={(v) => setClinic((p) => ({ ...p, address: v }))} />
-            <InputField label="Телефон" value={clinic.phone} onChange={(v) => setClinic((p) => ({ ...p, phone: v }))} type="tel" />
-          </div>
-          <div className="flex justify-end mt-4">
-            <Button variant="primary" size="md">
-              <Save size={14} className="mr-2" />
-              Сохранить
-            </Button>
-          </div>
-        </Card>
+        <div className="flex flex-col gap-[18px]">
+          <Card>
+            <h2 className="text-[15px] font-bold text-text-main mb-4">Клиника</h2>
+            <div className="flex flex-col gap-3">
+              <InputField label="Название" value={clinic.name} onChange={(v) => setClinic((p) => ({ ...p, name: v }))} />
+              <InputField label="Адрес" value={clinic.address} onChange={(v) => setClinic((p) => ({ ...p, address: v }))} />
+              <InputField label="Телефон" value={clinic.phone} onChange={(v) => setClinic((p) => ({ ...p, phone: v }))} type="tel" />
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button variant="primary" size="md">
+                <Save size={14} className="mr-2" />
+                Сохранить
+              </Button>
+            </div>
+          </Card>
+
+          <PatientSourcesCard />
+        </div>
       )}
 
       {activeTab === "integrations" && <IntegrationsTab />}

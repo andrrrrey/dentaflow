@@ -121,6 +121,115 @@ async def patients_report(
     }
 
 
+@router.get("/sources")
+async def sources_report(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Источники обращений: сколько пациентов пришло из каждого источника
+    привлечения (``referral_source``) за период (по дате появления пациента).
+    """
+    dt_from, dt_to = _default_range(date_from, date_to)
+
+    stmt = (
+        select(
+            Patient.referral_source.label("source"),
+            func.count().label("count"),
+        )
+        .where(Patient.created_at >= dt_from, Patient.created_at <= dt_to)
+        .group_by(Patient.referral_source)
+        .order_by(func.count().desc())
+    )
+    rows = (await db.execute(stmt)).all()
+
+    items = []
+    total = 0
+    for r in rows:
+        cnt = int(r.count or 0)
+        total += cnt
+        items.append({"source": r.source or "Не указан", "count": cnt})
+
+    return {"total": total, "sources": items}
+
+
+@router.get("/primary-patients")
+async def primary_patients_report(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Показатели по первичным пациентам за период.
+
+    Первичный пациент — тот, чей самый ранний визит (min ``scheduled_at``)
+    приходится на выбранный период. Делим на взрослых (18+) и детей (<18) по
+    ``birth_date`` и отдаём разбивку по дням для графика.
+    """
+    dt_from, dt_to = _default_range(date_from, date_to)
+
+    # Самый ранний визит каждого пациента
+    first_visit = (
+        select(
+            Appointment.patient_id.label("patient_id"),
+            func.min(Appointment.scheduled_at).label("first_at"),
+        )
+        .where(Appointment.patient_id.isnot(None))
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            cast(first_visit.c.first_at, Date).label("day"),
+            Patient.birth_date,
+        )
+        .join(Patient, Patient.id == first_visit.c.patient_id)
+        .where(
+            first_visit.c.first_at >= dt_from,
+            first_visit.c.first_at <= dt_to,
+        )
+    )
+    rows = (await db.execute(stmt)).all()
+
+    today = date.today()
+
+    def _is_child(bd: date | None) -> bool:
+        if bd is None:
+            return False
+        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        return age < 18
+
+    adults = 0
+    children = 0
+    by_day: dict[str, dict[str, int]] = {}
+    for r in rows:
+        child = _is_child(r.birth_date)
+        if child:
+            children += 1
+        else:
+            adults += 1
+        key = str(r.day)
+        bucket = by_day.setdefault(key, {"adults": 0, "children": 0})
+        if child:
+            bucket["children"] += 1
+        else:
+            bucket["adults"] += 1
+
+    by_day_list = [
+        {"date": k, "adults": v["adults"], "children": v["children"], "total": v["adults"] + v["children"]}
+        for k, v in sorted(by_day.items())
+    ]
+
+    return {
+        "total": adults + children,
+        "adults": adults,
+        "children": children,
+        "by_day": by_day_list,
+    }
+
+
 @router.get("/services")
 async def services_report(
     date_from: date | None = Query(None),

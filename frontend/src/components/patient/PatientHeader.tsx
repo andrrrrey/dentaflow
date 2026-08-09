@@ -14,10 +14,11 @@ import {
   Percent,
   FileText,
   Pencil,
+  Megaphone,
 } from "lucide-react";
 import Pill from "../ui/Pill";
 import Button from "../ui/Button";
-import { useDeletePatient, useUpdatePatient } from "../../api/patients";
+import { useDeletePatient, useUpdatePatient, usePatientSources } from "../../api/patients";
 import type { PatientDetailResponse } from "../../api/patients";
 
 interface PatientHeaderProps {
@@ -168,6 +169,45 @@ function RepresentativeBlock({ patient }: { patient: PatientDetailResponse }) {
   );
 }
 
+/** Источник привлечения («откуда узнал о клинике») — редактируемое поле.
+ *  Значение из заявки подставляется автоматически, но всегда можно изменить. */
+function ReferralSourceControl({ patient }: { patient: PatientDetailResponse }) {
+  const updatePatient = useUpdatePatient();
+  const { data: sources = [] } = usePatientSources();
+  const current = patient.referral_source ?? "";
+
+  function handleChange(value: string) {
+    if (value === current) return;
+    updatePatient.mutate({ patientId: patient.id, referral_source: value });
+  }
+
+  return (
+    <span
+      className="flex items-center gap-1.5 px-2.5 py-[3px] rounded-lg text-[12px] font-semibold"
+      style={{ background: "rgba(91,76,245,0.06)", color: "#5B4CF5" }}
+      title="Источник — откуда пациент узнал о клинике"
+    >
+      <Megaphone size={12} />
+      <span className="text-text-muted font-medium">Источник:</span>
+      <select
+        value={sources.includes(current) || current === "" ? current : "__other__"}
+        onChange={(e) => handleChange(e.target.value === "__other__" ? current : e.target.value)}
+        disabled={updatePatient.isPending}
+        className="bg-transparent border-none outline-none text-[12px] font-semibold cursor-pointer"
+        style={{ color: "#5B4CF5" }}
+      >
+        <option value="">не указан</option>
+        {current !== "" && !sources.includes(current) && (
+          <option value="__other__">{current}</option>
+        )}
+        {sources.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
 export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: PatientHeaderProps) {
   const navigate = useNavigate();
   const deletePatient = useDeletePatient();
@@ -245,6 +285,7 @@ export default function PatientHeader({ patient, onAddDeal, onAddAppointment }: 
                 {patient.email}
               </span>
             )}
+            <ReferralSourceControl patient={patient} />
           </div>
 
           {/* 1Denta financial info */}

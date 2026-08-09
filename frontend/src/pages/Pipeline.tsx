@@ -25,6 +25,14 @@ function formatValue(v: number): string {
 
 const TABLE_PAGE = 20;
 
+// Заявки из раздела «Заявки» приходят с каналом — предзаполняем источник
+// привлечения при создании пациента из сделки (поле остаётся редактируемым).
+const CHANNEL_TO_SOURCE: Record<string, string> = {
+  site: "Сайт",
+  max: "ВК",
+  referral: "Рекомендации",
+};
+
 const FALLBACK_STAGE_LABELS: Record<string, string> = {
   waiting_list: "Лист ожидания",
   new: "Новые",
@@ -459,6 +467,7 @@ export default function Pipeline() {
         <CreatePatientModal
           onClose={() => setCreatePatientDeal(null)}
           prefillName={createPatientDeal.patient_name ?? ""}
+          prefillSource={CHANNEL_TO_SOURCE[createPatientDeal.source_channel ?? ""] ?? ""}
         />
       )}
     </div>

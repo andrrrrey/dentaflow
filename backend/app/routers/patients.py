@@ -15,6 +15,7 @@ from app.schemas.patient import (
     PatientDetailResponse,
     PatientListResponse,
     PatientResponse,
+    PatientSourcesUpdate,
     PatientUpdate,
 )
 from app.services.patients_service import (
@@ -94,6 +95,34 @@ async def export_patients_xlsx(
     )
 
 
+@router.get("/sources")
+async def list_patient_sources(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Редактируемый список источников привлечения («откуда узнал о клинике»).
+
+    Declared before ``/{patient_id}`` so FastAPI does not parse the literal
+    ``sources`` as a UUID.
+    """
+    from app.services.patients_service import get_patient_sources
+
+    return {"sources": await get_patient_sources(db)}
+
+
+@router.put("/sources")
+async def update_patient_sources(
+    body: PatientSourcesUpdate,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    from app.services.patients_service import set_patient_sources
+
+    saved = await set_patient_sources(db, body.sources)
+    await db.commit()
+    return {"sources": saved}
+
+
 @router.get("/{patient_id}", response_model=PatientDetailResponse)
 async def read_patient(
     patient_id: uuid.UUID,
@@ -128,6 +157,7 @@ async def create_new_patient(
         gender=body.gender,
         comment=body.comment,
         source_channel=body.source_channel,
+        referral_source=body.referral_source,
         tags=body.tags,
         snils=body.snils,
         inn=body.inn,
@@ -267,6 +297,7 @@ async def patch_patient(
         email=body.email,
         birth_date=str(body.birth_date) if body.birth_date else None,
         source_channel=body.source_channel,
+        referral_source=body.referral_source,
         tags=body.tags,
         ltv_score=body.ltv_score,
         representative_name=body.representative_name,

@@ -18,6 +18,18 @@ export interface ServicesReport {
   services: { service: string; count: number; revenue: number }[];
 }
 
+export interface SourcesReport {
+  total: number;
+  sources: { source: string; count: number }[];
+}
+
+export interface PrimaryPatientsReport {
+  total: number;
+  adults: number;
+  children: number;
+  by_day: { date: string; adults: number; children: number; total: number }[];
+}
+
 export interface DoctorsReport {
   doctors: { doctor_name: string; count: number; revenue: number; completed: number }[];
 }
@@ -54,6 +66,28 @@ export function useServicesReport(params: ReportParams = {}) {
     queryKey: ["report-services", params],
     queryFn: async () => {
       const { data } = await api.get("/reports/services", { params });
+      return data;
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useSourcesReport(params: ReportParams = {}) {
+  return useQuery<SourcesReport>({
+    queryKey: ["report-sources", params],
+    queryFn: async () => {
+      const { data } = await api.get("/reports/sources", { params });
+      return data;
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function usePrimaryPatientsReport(params: ReportParams = {}) {
+  return useQuery<PrimaryPatientsReport>({
+    queryKey: ["report-primary-patients", params],
+    queryFn: async () => {
+      const { data } = await api.get("/reports/primary-patients", { params });
       return data;
     },
     staleTime: 60_000,
