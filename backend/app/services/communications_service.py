@@ -146,7 +146,7 @@ async def delete_communication(
     return True
 
 
-CHAT_CHANNELS = ("telegram", "max")
+CHAT_CHANNELS = ("telegram", "max", "vk")
 
 
 async def get_unread_chats_count(db: AsyncSession) -> int:

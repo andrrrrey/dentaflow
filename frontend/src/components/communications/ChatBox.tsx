@@ -62,7 +62,7 @@ export default function ChatBox({ communicationId, channel, botChatId, fill }: P
     }
   }
 
-  const canReply = (channel === "telegram" || channel === "max") && !!botChatId;
+  const canReply = (channel === "telegram" || channel === "max" || channel === "vk") && !!botChatId;
 
   return (
     <div

@@ -23,6 +23,7 @@ from app.models.task import Task
 from app.services.novofon import NovofonService
 from app.services.telegram_bot import TelegramBotService
 from app.services.max_vk import MaxVkService
+from app.services.vk import VkService
 from app.services.realtime import realtime
 from app.services.integrations_service import get_raw_value
 from app.services.ai_service import AIService
@@ -100,6 +101,7 @@ async def _upsert_bot_user(db, channel: str, chat_id: str, user_id: str, phone: 
 _CHANNEL_LABELS = {
     "telegram": "Telegram",
     "max": "Max / VK",
+    "vk": "ВКонтакте",
     "site": "Заявка с сайта",
     "novofon": "Звонок",
 }
@@ -885,6 +887,67 @@ async def max_webhook(
         logger.exception("Max webhook: failed to send reply to chat_id=%s", chat_id)
 
     return {"ok": True}
+
+
+# ------------------------------------------------------------------
+# VKontakte (Callback API)
+# ------------------------------------------------------------------
+
+@router.post("/vk")
+async def vk_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Обработка событий сообщества ВКонтакте (Callback API).
+
+    Особенности VK Callback API (в отличие от Telegram/Max):
+      * на ``type == "confirmation"`` нужно вернуть строку-подтверждение
+        простым текстом (не JSON);
+      * на остальные события — простой текст ``ok``;
+      * события могут содержать ``secret`` — сверяем со своим, если задан.
+
+    v1 — только ручной чат: входящее сохраняется в тред раздела «Коммуникации»,
+    автоответов (bot_flow) нет.
+    """
+    body = await request.json()
+    event_type = body.get("type", "")
+    logger.warning("VK webhook raw: type=%s group_id=%s", event_type, body.get("group_id"))
+
+    # Проверка секрета (если настроен в сообществе и сохранён у нас)
+    expected_secret = await get_raw_value(db, "vk_secret")
+    if expected_secret and body.get("secret") and body.get("secret") != expected_secret:
+        logger.warning("VK webhook: secret mismatch, ignoring event")
+        return Response(content="ok", media_type="text/plain")
+
+    # Хендшейк подтверждения Callback API
+    if event_type == "confirmation":
+        confirmation = await get_raw_value(db, "vk_confirmation") or settings.VK_CONFIRMATION
+        return Response(content=(confirmation or ""), media_type="text/plain")
+
+    if event_type != "message_new":
+        return Response(content="ok", media_type="text/plain")
+
+    token = await get_raw_value(db, "vk_bot_token") or settings.VK_BOT_TOKEN
+    vk_svc = VkService(access_token=token)
+
+    parsed = vk_svc.parse_message_new(body)
+    from_id = parsed.get("vk_user_id")
+    peer_id = parsed.get("vk_peer_id")
+    text = (parsed.get("content") or "").strip()
+
+    # Игнорируем сообщения от самого сообщества (from_id < 0) и пустые
+    if from_id is None or int(from_id) < 0 or not text or not peer_id:
+        return Response(content="ok", media_type="text/plain")
+
+    await _upsert_bot_user(db, "vk", str(peer_id), str(from_id))
+
+    sender_name = None
+    if token:
+        sender_name = await vk_svc.get_user_name(from_id)
+
+    await _upsert_chat_comm(db, "vk", str(peer_id), str(from_id), text, sender_name)
+
+    return Response(content="ok", media_type="text/plain")
 
 
 def _default_system_prompt(clinic_name: str) -> str:

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     MAX_API_KEY: str = ""
     MAX_CONFIRMATION_TOKEN: str = ""
 
+    VK_BOT_TOKEN: str = ""
+    VK_GROUP_ID: str = ""
+    VK_CONFIRMATION: str = ""
+    VK_SECRET: str = ""
+
     MAIL_HOST: str = ""
     MAIL_PORT: int = 465
     MAIL_USER: str = ""

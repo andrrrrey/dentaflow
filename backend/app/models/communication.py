@@ -20,7 +20,7 @@ class Communication(Base):
     )
     channel: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # telegram|novofon|max|site|manual
+    )  # telegram|novofon|max|vk|site|manual
     direction: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # inbound|outbound

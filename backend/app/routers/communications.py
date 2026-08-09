@@ -161,6 +161,12 @@ async def reply_to_communication(
         if max_token:
             max_svc = MaxVkService(bot_token=max_token)
             await max_svc.send_reply(comm_row.bot_chat_id, body.text, buttons=[])
+    elif comm_row.channel == "vk":
+        from app.services.vk import VkService
+        vk_token = await get_raw_value(db, "vk_bot_token") or settings.VK_BOT_TOKEN
+        if vk_token:
+            vk_svc = VkService(access_token=vk_token)
+            await vk_svc.send_message(int(comm_row.bot_chat_id), body.text)
 
     sender = current_user.name or current_user.email
     msg = BotMessage(

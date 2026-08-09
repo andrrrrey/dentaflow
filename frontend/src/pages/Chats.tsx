@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  MessageCircle, Send, ArrowDownLeft, ArrowUpRight,
+  MessageCircle, Send, MessageSquare, ArrowDownLeft, ArrowUpRight,
   GitBranch, CheckCircle2, XCircle, Trash2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -14,16 +14,18 @@ import type { CommunicationItem } from "../types";
 
 /* ── helpers ── */
 
-const CHAT_CHANNELS = ["telegram", "max"];
+const CHAT_CHANNELS = ["telegram", "max", "vk"];
 
 const channelIcon: Record<string, React.ReactNode> = {
   telegram: <MessageCircle size={14} className="text-[#229ED9]" />,
   max: <Send size={14} className="text-[#5B4CF5]" />,
+  vk: <MessageSquare size={14} className="text-[#0077FF]" />,
 };
 
 const channelLabel: Record<string, string> = {
   telegram: "Telegram",
   max: "Max / VK",
+  vk: "ВКонтакте",
 };
 
 function extractNameFromContent(content: string | null | undefined): string | null {
