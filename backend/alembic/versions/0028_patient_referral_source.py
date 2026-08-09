@@ -4,15 +4,15 @@
 Яндекс Карты, реклама и т.д.). Свободный редактируемый список хранится в
 integration_settings под ключом ``patient_sources`` (JSON-массив меток).
 
-Revision ID: 0026_patient_referral_source
-Revises: 0025_loyalty_program
+Revision ID: 0028_patient_referral_source
+Revises: 0027_campaign_tts_provider
 Create Date: 2026-08-08
 """
 
 from alembic import op
 
-revision = "0026_patient_referral_source"
-down_revision = "0025_loyalty_program"
+revision = "0028_patient_referral_source"
+down_revision = "0027_campaign_tts_provider"
 branch_labels = None
 depends_on = None
 
