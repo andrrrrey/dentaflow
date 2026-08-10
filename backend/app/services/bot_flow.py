@@ -515,9 +515,14 @@ async def process(
         # Add user message to history
         await add_to_history(channel, uid, "user", text)
         history = await get_history(channel, uid)
+        # Дополняем базу знаний описанием бонусной программы, чтобы ассистент
+        # мог отвечать на вопросы о баллах, а не отправлял звонить в клинику.
+        from app.services import loyalty_service
+        loyalty_ctx = await loyalty_service.get_ai_context(db)
+        full_kb = f"{kb_ctx}\n\n{loyalty_ctx}".strip() if loyalty_ctx else kb_ctx
         r = await ai_svc.chat_with_patient(
             text,
-            kb_context=kb_ctx,
+            kb_context=full_kb,
             system_prompt=system_prompt,
             history=history[:-1],  # exclude last added
         )
@@ -851,9 +856,10 @@ async def _format_history(db, patient) -> str:
 
 
 async def _format_bonus(db, patient) -> str:
-    """Текст раздела бонусной программы: баланс, код, последние начисления."""
+    """Текст раздела бонусной программы: баланс, правила начисления, код, история."""
     from app.services import loyalty_service
 
+    config = await loyalty_service.get_config(db)
     code = await loyalty_service.get_or_create_referral_code(db, patient.id)
     balance = int(patient.bonus_balance or 0)
     ledger = await loyalty_service.get_patient_ledger(db, patient.id, limit=5)
@@ -864,9 +870,20 @@ async def _format_bonus(db, patient) -> str:
         "review": "отзыв",
         "manual": "корректировка",
     }
+    balance_word = loyalty_service._points_word(balance)
     lines = [
         "🎁 <b>Бонусная программа</b>\n",
-        f"💎 Ваш баланс: <b>{balance}</b> баллов\n",
+        f"💎 Ваш баланс: <b>{balance}</b> {balance_word}\n",
+    ]
+
+    # Правила начисления баллов из настроек «Начисление баллов».
+    rules = loyalty_service.describe_earning_rules(config)
+    if rules:
+        lines.append("<b>Как копятся баллы:</b>")
+        lines.extend(rules)
+        lines.append("")
+
+    lines += [
         f"🔑 Ваш реферальный код: <b>{code or '—'}</b>",
         "Поделитесь им с друзьями — назовите код администратору, "
         "и вы получите баллы за рекомендацию.\n",
