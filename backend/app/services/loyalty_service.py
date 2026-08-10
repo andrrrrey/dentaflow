@@ -85,6 +85,74 @@ async def save_config(db: AsyncSession, config: LoyaltyConfig) -> LoyaltyConfig:
     return config
 
 
+def _points_word(n: int) -> str:
+    """Русское склонение слова «балл» для числа n (1 балл, 2 балла, 5 баллов)."""
+    n = abs(int(n))
+    if 11 <= n % 100 <= 14:
+        return "баллов"
+    d = n % 10
+    if d == 1:
+        return "балл"
+    if 2 <= d <= 4:
+        return "балла"
+    return "баллов"
+
+
+def describe_earning_rules(config: LoyaltyConfig) -> list[str]:
+    """Человекочитаемые правила начисления баллов из настроек «Начисление баллов».
+
+    Возвращает только реально настроенные (ненулевые) способы заработать баллы —
+    используется и в разделе бота «Бонусная программа», и в контексте ИИ-ассистента.
+    """
+    rules: list[str] = []
+    if config.points_per_purchase_unit and config.purchase_rate_rubles:
+        rules.append(
+            f"🛒 {config.points_per_purchase_unit} "
+            f"{_points_word(config.points_per_purchase_unit)} за каждые "
+            f"{config.purchase_rate_rubles} ₽ оплаченного лечения"
+        )
+    if config.referral_points:
+        rules.append(
+            f"👥 {config.referral_points} "
+            f"{_points_word(config.referral_points)} за друга, который придёт по вашему коду"
+        )
+    if config.review_points:
+        rules.append(
+            f"⭐ {config.review_points} "
+            f"{_points_word(config.review_points)} за отзыв о клинике"
+        )
+    return rules
+
+
+async def get_ai_context(db: AsyncSession) -> str:
+    """Краткое описание бонусной программы для контекста ИИ-ассистента.
+
+    Позволяет ассистенту отвечать на вопросы о бонусах, а не отправлять
+    пациента звонить в клинику. Пустая строка — если программа выключена.
+    """
+    config = await get_config(db)
+    if not config.enabled:
+        return ""
+    rules = describe_earning_rules(config)
+    lines = [
+        "Бонусная программа клиники (программа лояльности):",
+        "У каждого пациента есть бонусный счёт — баллы копятся автоматически "
+        "и их видно в боте в разделе «🎁 Бонусная программа».",
+    ]
+    if rules:
+        lines.append("Как начисляются баллы:")
+        lines.extend(f"- {r.split(' ', 1)[1]}" for r in rules)
+    lines.append(
+        "У каждого пациента есть персональный реферальный код — его можно назвать "
+        "администратору, чтобы получить баллы за приведённого друга."
+    )
+    lines.append(
+        "Чтобы узнать свой баланс, реферальный код и историю начислений, "
+        "пациенту нужно открыть раздел «🎁 Бонусная программа» в меню бота."
+    )
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------
 # Points ledger
 # ------------------------------------------------------------------
