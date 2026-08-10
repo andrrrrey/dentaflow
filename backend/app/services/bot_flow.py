@@ -181,6 +181,20 @@ def kb_back_main() -> dict:
     }
 
 
+def kb_lead_saved(change_payload: str) -> dict:
+    """Клавиатура после заявки по сохранённым контактам — с опцией их изменить."""
+    return {
+        "tg": _tg([
+            [_tg_btn("✏️ Указать другие контакты", change_payload)],
+            [_tg_btn("🔙 Главное меню", "menu")],
+        ]),
+        "max": [
+            [_max_btn("✏️ Другие контакты", change_payload)],
+            [_max_btn("🔙 Главное меню", "menu")],
+        ],
+    }
+
+
 def kb_cancel() -> dict:
     return {
         "tg": _tg([[_tg_btn("❌ Отмена", "menu")]]),
@@ -302,8 +316,23 @@ async def process(
 
     # ── Button callbacks ──────────────────────────────────────────────
 
-    if payload == "book":
-        await set_state(channel, uid, {**state, "step": "bk_name", "chat_id": str(chat_id) if chat_id else ""})
+    if payload in ("book", "book_new"):
+        cid = str(chat_id) if chat_id else ""
+        if payload == "book":
+            # Уже знаем контакты — не переспрашиваем имя и телефон, сразу к сути.
+            name, phone = await _get_known_contact(db, channel, uid)
+            if name and phone:
+                await set_state(channel, uid, {
+                    **state, "step": "bk_desc",
+                    "contact_name": name, "contact_phone": phone, "chat_id": cid,
+                })
+                return reply(
+                    f"{name}, запишем вас по номеру <b>{phone}</b>.\n\n"
+                    "Опишите по желанию, что вас беспокоит (или нажмите «Пропустить»). "
+                    "Если номер изменился — нажмите «❌ Отмена» и начните заново.",
+                    kb_cancel_skip(),
+                )
+        await set_state(channel, uid, {**state, "step": "bk_name", "chat_id": cid})
         return reply("Оставьте ваши контакты.\n\nВведите ваше имя:", kb_cancel())
 
     if payload == "ask":
@@ -314,8 +343,24 @@ async def process(
         await clear_state(channel, uid)
         return reply(_help_text(clinic_name), kb_main())
 
-    if payload == "manager":
-        await set_state(channel, uid, {**state, "step": "mgr_name", "chat_id": str(chat_id) if chat_id else ""})
+    if payload in ("manager", "manager_new"):
+        cid = str(chat_id) if chat_id else ""
+        if payload == "manager":
+            # Контакты уже известны — сразу создаём заявку, не переспрашивая.
+            name, phone = await _get_known_contact(db, channel, uid)
+            if name and phone:
+                await clear_state(channel, uid)
+                await _create_lead_comm(
+                    db, channel, name, phone,
+                    comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
+                    create_patient=False, chat_id=cid, channel_uid=str(uid),
+                )
+                return reply(
+                    f"Спасибо, {name}! Менеджер свяжется с вами по номеру "
+                    f"<b>{phone}</b> в ближайшее время.",
+                    kb_lead_saved("manager_new"),
+                )
+        await set_state(channel, uid, {**state, "step": "mgr_name", "chat_id": cid})
         return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
 
     if payload == "history":
@@ -356,11 +401,38 @@ async def process(
         )
 
     if payload == "ai_book":
-        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book", "chat_id": str(chat_id) if chat_id else ""})
+        cid = str(chat_id) if chat_id else ""
+        name, phone = await _get_known_contact(db, channel, uid)
+        if name and phone:
+            await clear_state(channel, uid)
+            await _create_lead_comm(
+                db, channel, name, phone,
+                comment=f"Имя: {name}, тел: {phone}. Перезвонить и записать на приём",
+                create_patient=False, chat_id=cid, channel_uid=str(uid),
+            )
+            return reply(
+                f"Готово, {name}! Администратор свяжется с вами для записи по номеру "
+                f"<b>{phone}</b>.",
+                kb_lead_saved("book_new"),
+            )
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "book", "chat_id": cid})
         return reply("Для записи мне нужны ваши контакты.\n\nВведите ваше имя:", kb_cancel())
 
     if payload == "ai_manager":
-        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager", "chat_id": str(chat_id) if chat_id else ""})
+        cid = str(chat_id) if chat_id else ""
+        name, phone = await _get_known_contact(db, channel, uid)
+        if name and phone:
+            await clear_state(channel, uid)
+            await _create_lead_comm(
+                db, channel, name, phone,
+                comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
+                create_patient=False, chat_id=cid, channel_uid=str(uid),
+            )
+            return reply(
+                f"Готово, {name}! Менеджер свяжется с вами по номеру <b>{phone}</b>.",
+                kb_lead_saved("manager_new"),
+            )
+        await set_state(channel, uid, {**state, "step": "ai_lead_name", "lead_type": "manager", "chat_id": cid})
         return reply("Хорошо, передам менеджеру! Введите ваше имя:", kb_cancel())
 
     if payload.startswith("cancel_appt:"):
@@ -410,7 +482,7 @@ async def process(
         content = f"Запись через бот. Имя: {name}, тел: {phone}. Проблема: {desc or 'не указана'}"
         saved_chat_id = state.get("chat_id")
         await clear_state(channel, uid)
-        await _update_bot_user_phone(db, channel, str(uid), phone)
+        await _update_bot_user_phone(db, channel, str(uid), phone, name)
         await _create_lead_comm(db, channel, name, phone,
                                 comment=content, create_patient=False,
                                 chat_id=saved_chat_id, channel_uid=str(uid))
@@ -455,7 +527,7 @@ async def process(
             return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
         name = state.get("contact_name", "")
         await clear_state(channel, uid)
-        await _update_bot_user_phone(db, channel, str(uid), phone)
+        await _update_bot_user_phone(db, channel, str(uid), phone, name)
         await _create_lead_comm(db, channel, name, phone,
                                 comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
                                 create_patient=False,
@@ -479,6 +551,7 @@ async def process(
         name = state.get("contact_name", "")
         lead_type = state.get("lead_type", "book")
         await clear_state(channel, uid)
+        await _update_bot_user_phone(db, channel, str(uid), phone, name)
         if lead_type == "manager":
             await _create_lead_comm(db, channel, name, phone,
                                     comment=f"Имя: {name}, тел: {phone}. Просит перезвонить менеджера",
@@ -517,9 +590,11 @@ async def process(
         history = await get_history(channel, uid)
         # Дополняем базу знаний описанием бонусной программы, чтобы ассистент
         # мог отвечать на вопросы о баллах, а не отправлял звонить в клинику.
+        # Ставим ПЕРЕД базой знаний: длинный kb_ctx обрезается по лимиту в
+        # ai_service, и добавленный в конец блок иначе терялся.
         from app.services import loyalty_service
         loyalty_ctx = await loyalty_service.get_ai_context(db)
-        full_kb = f"{kb_ctx}\n\n{loyalty_ctx}".strip() if loyalty_ctx else kb_ctx
+        full_kb = f"{loyalty_ctx}\n\n{kb_ctx}".strip() if loyalty_ctx else kb_ctx
         r = await ai_svc.chat_with_patient(
             text,
             kb_context=full_kb,
@@ -690,19 +765,56 @@ async def _create_lead_comm(
     return None
 
 
-async def _update_bot_user_phone(db, channel: str, user_id: str, phone: str) -> None:
-    """Store phone number on BotUser record so reminders can match by phone."""
+async def _update_bot_user_phone(
+    db, channel: str, user_id: str, phone: str, name: str | None = None
+) -> None:
+    """Сохранить телефон (и имя) пользователя на BotUser.
+
+    Телефон нужен для сопоставления напоминаний по номеру. Имя запоминаем,
+    чтобы не переспрашивать контакты при повторных запросах (менеджер/запись).
+    """
     try:
         from sqlalchemy import update as sa_update
         from app.models.bot_user import BotUser
+        values: dict = {"phone": phone}
+        if name and name.strip():
+            values["name"] = name.strip()
         await db.execute(
             sa_update(BotUser)
             .where(BotUser.channel == _db_channel(channel), BotUser.user_id == user_id)
-            .values(phone=phone)
+            .values(**values)
         )
         await db.commit()
     except Exception:
         logger.warning("bot_flow: could not update bot_user phone")
+
+
+async def _get_known_contact(db, channel: str, uid) -> tuple[str | None, str | None]:
+    """Вернуть (имя, телефон) пользователя, если они уже известны боту.
+
+    Источник — запись BotUser (сохраняется после первого сценария записи/
+    менеджера). Имя дополняем из карты пациента, если она привязана по телефону.
+    Позволяет не переспрашивать контакты при повторном обращении.
+    """
+    try:
+        from sqlalchemy import select
+        from app.models.bot_user import BotUser
+        row = (await db.execute(
+            select(BotUser.name, BotUser.phone).where(
+                BotUser.channel == _db_channel(channel), BotUser.user_id == str(uid)
+            )
+        )).first()
+        if not row:
+            return None, None
+        name, phone = row[0], row[1]
+        if phone and not name:
+            patient = await _find_patient_by_phone(db, phone)
+            if patient is not None and patient.name:
+                name = patient.name
+        return (name or None), (phone or None)
+    except Exception:
+        logger.warning("bot_flow: get_known_contact failed")
+        return None, None
 
 
 async def _do_back(state: dict, channel: str, uid) -> dict:

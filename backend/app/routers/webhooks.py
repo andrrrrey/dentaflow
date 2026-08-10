@@ -698,11 +698,20 @@ async def telegram_webhook(
 
     is_start = text.strip() == "/start"
 
-    # Каждое текстовое сообщение попадает в тред раздела «Коммуникации»
-    # (раньше тред создавался только после завершения лид-сценария)
+    # В раздел «Коммуникации» пишем только сообщения живого диалога с менеджером
+    # (лид-тред уже создан). Вопросы к ИИ-ассистенту («Задать вопрос») и ввод
+    # данных в сценариях бота туда не попадают — иначе раздел засорялся бы
+    # автоматическими Q&A, на которые отвечает сам бот.
     if text.strip() and not is_callback and not is_start and not text.strip().startswith("/"):
-        sender = result.get("sender_name") or result.get("username") or None
-        await _upsert_chat_comm(db, "telegram", str(chat_id), str(user_id), text.strip(), sender)
+        from app.services.bot_flow import get_active_conv, get_state, _find_comm_for_user
+        _step = (await get_state("tg", user_id)).get("step", "")
+        active_conv = (
+            await get_active_conv("tg", user_id)
+            or await _find_comm_for_user(db, "tg", user_id)
+        )
+        if active_conv and _step != "ai_chat":
+            sender = result.get("sender_name") or result.get("username") or None
+            await _upsert_chat_comm(db, "telegram", str(chat_id), str(user_id), text.strip(), sender)
 
     # Register bot commands menu once per process
     if not _tg_commands_registered:
@@ -798,10 +807,18 @@ async def max_webhook(
     if user_id and chat_id:
         await _upsert_bot_user(db, "max", str(chat_id), str(user_id))
 
-    # Каждое текстовое сообщение попадает в тред раздела «Коммуникации»
+    # В «Коммуникации» пишем только живой диалог с менеджером (лид-тред создан).
+    # Вопросы к ИИ-ассистенту и ввод данных в сценариях бота туда не попадают.
     if text.strip() and not is_callback and update_type != "bot_started":
-        sender = result.get("sender_name") or None
-        await _upsert_chat_comm(db, "max", str(chat_id), str(user_id), text.strip(), sender)
+        from app.services.bot_flow import get_active_conv, get_state, _find_comm_for_user
+        _step = (await get_state("max", user_id)).get("step", "")
+        active_conv = (
+            await get_active_conv("max", user_id)
+            or await _find_comm_for_user(db, "max", user_id)
+        )
+        if active_conv and _step != "ai_chat":
+            sender = result.get("sender_name") or None
+            await _upsert_chat_comm(db, "max", str(chat_id), str(user_id), text.strip(), sender)
 
     max_token = await get_raw_value(db, "max_bot_token") or settings.MAX_API_KEY
     if not max_token:
