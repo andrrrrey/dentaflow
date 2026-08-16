@@ -593,8 +593,12 @@ async def process(
         # Ставим ПЕРЕД базой знаний: длинный kb_ctx обрезается по лимиту в
         # ai_service, и добавленный в конец блок иначе терялся.
         from app.services import loyalty_service
+        from app.services.pricing_context import build_price_context
         loyalty_ctx = await loyalty_service.get_ai_context(db)
-        full_kb = f"{loyalty_ctx}\n\n{kb_ctx}".strip() if loyalty_ctx else kb_ctx
+        # Прайс услуг из справочников 1Denta: ассистент должен знать цены, но
+        # называть пациенту только вилку/примеры (см. системный промпт).
+        price_ctx = await build_price_context(db)
+        full_kb = "\n\n".join(p for p in (loyalty_ctx, price_ctx, kb_ctx) if p).strip()
         r = await ai_svc.chat_with_patient(
             text,
             kb_context=full_kb,
