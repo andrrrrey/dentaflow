@@ -989,7 +989,13 @@ class OneDentaService:
             "doctor_name": doctor_name_val,
             "service": service_name,
             "services": services,
-            "scheduled_at": v.get("datetime"),
+            # Основной ключ времени визита — "datetime". Резервные ключи на случай,
+            # если событие переноса из SQNS присылает новое время под другим именем,
+            # иначе перенос молча не обновит дату (scheduled_at останется старым).
+            "scheduled_at": (
+                v.get("datetime") or v.get("dateTime") or v.get("date")
+                or v.get("startAt") or v.get("startDatetime") or v.get("timeStart")
+            ),
             "duration_min": duration_min,
             "status": attendance_map.get(v.get("attendance", 0), "unconfirmed"),
             "revenue": float(v.get("totalPrice") or 0),
