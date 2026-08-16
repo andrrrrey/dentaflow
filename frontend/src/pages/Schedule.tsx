@@ -282,7 +282,11 @@ export default function Schedule() {
   const [filterStatus, setFilterStatus] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
-  const [calendarPanelOpen, setCalendarPanelOpen] = useState(true);
+  // На мобильных фильтр-панель по умолчанию свёрнута, чтобы календарь не
+  // сжимался фиксированной боковой панелью 240px на узком экране.
+  const [calendarPanelOpen, setCalendarPanelOpen] = useState(
+    typeof window === "undefined" || window.innerWidth >= 768,
+  );
   const [containerW, setContainerW] = useState(0);
   const [addModalPrefill, setAddModalPrefill] = useState<{ doctorId: string; doctorName: string; dateTime: string } | null>(null);
   const [hoverSlot, setHoverSlot] = useState<{ doctorName: string; slotMin: number } | null>(null);
