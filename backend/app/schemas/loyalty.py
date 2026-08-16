@@ -6,9 +6,16 @@ from pydantic import BaseModel
 
 class LoyaltyConfig(BaseModel):
     enabled: bool = True
-    # Начисление за покупку: баллов за каждые `purchase_rate_rubles` рублей оплаты.
+    # Режим начисления за покупку:
+    #   "fixed"   — фиксированно points_per_purchase_unit баллов за каждые
+    #               purchase_rate_rubles рублей оплаты;
+    #   "percent" — percent_per_purchase процентов от суммы оплаты в баллах.
+    accrual_mode: str = "fixed"  # fixed | percent
+    # Начисление за покупку (режим fixed): баллов за каждые `purchase_rate_rubles` рублей оплаты.
     points_per_purchase_unit: int = 5
     purchase_rate_rubles: int = 100
+    # Начисление за покупку (режим percent): процент от суммы оплаты, начисляемый баллами.
+    percent_per_purchase: float = 5
     referral_points: int = 300
     review_points: int = 200
 

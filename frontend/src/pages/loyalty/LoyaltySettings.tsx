@@ -44,7 +44,8 @@ export default function LoyaltySettings() {
     return <div className="text-center py-10 text-text-muted text-[13px]">Загрузка...</div>;
   }
 
-  const set = (k: keyof LoyaltyConfig, v: number | boolean) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  const set = (k: keyof LoyaltyConfig, v: number | boolean | string) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  const mode = form.accrual_mode ?? "fixed";
 
   function handleSave() {
     if (!form) return;
@@ -71,19 +72,59 @@ export default function LoyaltySettings() {
           </span>
         </label>
 
+        {/* Accrual mode toggle */}
+        <div className="flex flex-col gap-1 pt-1">
+          <label className="text-[11px] font-bold text-text-muted uppercase tracking-wide">
+            Как начислять за оплату
+          </label>
+          <div className="inline-flex rounded-[10px] p-[3px] w-fit"
+            style={{ background: "rgba(91,76,245,0.08)", border: "1px solid rgba(91,76,245,0.15)" }}>
+            {([
+              { key: "fixed", label: "Фиксированно" },
+              { key: "percent", label: "Процент от суммы" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => set("accrual_mode", opt.key)}
+                className="px-4 py-[6px] rounded-[8px] text-[12px] font-bold border-none cursor-pointer transition-colors"
+                style={mode === opt.key
+                  ? { background: "linear-gradient(135deg,#5B4CF5,#3B7FED)", color: "#fff" }
+                  : { background: "transparent", color: "var(--text-muted, #7a7a8c)" }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {mode === "percent" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <NumberField
+              label="Процент от суммы, %"
+              hint="Начисляется баллами от суммы оплаченного визита"
+              value={form.percent_per_purchase}
+              onChange={(v) => set("percent_per_purchase", v)}
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <NumberField
+              label="Баллов за покупку"
+              hint="Сколько баллов начислять за каждую сумму ниже"
+              value={form.points_per_purchase_unit}
+              onChange={(v) => set("points_per_purchase_unit", v)}
+            />
+            <NumberField
+              label="За каждые, ₽"
+              hint="Единица оплаты для начисления"
+              value={form.purchase_rate_rubles}
+              onChange={(v) => set("purchase_rate_rubles", v)}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-          <NumberField
-            label="Баллов за покупку"
-            hint="Сколько баллов начислять за каждую сумму ниже"
-            value={form.points_per_purchase_unit}
-            onChange={(v) => set("points_per_purchase_unit", v)}
-          />
-          <NumberField
-            label="За каждые, ₽"
-            hint="Единица оплаты для начисления"
-            value={form.purchase_rate_rubles}
-            onChange={(v) => set("purchase_rate_rubles", v)}
-          />
           <NumberField
             label="Баллов за рекомендацию"
             hint="Начисляет администратор вручную по коду"
@@ -100,9 +141,15 @@ export default function LoyaltySettings() {
 
         <div className="text-[12px] text-text-muted rounded-[10px] px-3 py-2"
           style={{ background: "rgba(91,76,245,0.06)" }}>
-          Пример: {form.points_per_purchase_unit} балл(ов) за каждые {form.purchase_rate_rubles} ₽ —
-          визит на 5&nbsp;000&nbsp;₽ принесёт{" "}
-          <b>{Math.floor(5000 / (form.purchase_rate_rubles || 1)) * form.points_per_purchase_unit}</b> баллов.
+          {mode === "percent" ? (
+            <>Пример: {String(form.percent_per_purchase)}% от суммы —
+              визит на 5&nbsp;000&nbsp;₽ принесёт{" "}
+              <b>{Math.round((5000 * (form.percent_per_purchase || 0)) / 100)}</b> баллов.</>
+          ) : (
+            <>Пример: {form.points_per_purchase_unit} балл(ов) за каждые {form.purchase_rate_rubles} ₽ —
+              визит на 5&nbsp;000&nbsp;₽ принесёт{" "}
+              <b>{Math.floor(5000 / (form.purchase_rate_rubles || 1)) * form.points_per_purchase_unit}</b> баллов.</>
+          )}
         </div>
 
         <div>
