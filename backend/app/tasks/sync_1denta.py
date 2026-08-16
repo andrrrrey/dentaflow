@@ -254,15 +254,19 @@ async def _sync_appointments_async(
             patient_id = patient_map.get(a_data.get("patient_external_id"))
 
             scheduled_at = None
-            if a_data.get("scheduled_at"):
+            raw_scheduled = a_data.get("scheduled_at")
+            if raw_scheduled:
                 try:
-                    dt = datetime.fromisoformat(a_data["scheduled_at"])
+                    dt = datetime.fromisoformat(raw_scheduled)
                     # 1denta returns Moscow local time (naive or +03:00).
                     # Strip tzinfo so asyncpg stores the value as-is in UTC column;
                     # the frontend treats it as Moscow local time for display.
                     scheduled_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
                 except ValueError:
-                    pass
+                    logger.warning(
+                        "sync_appointments: не удалось распарсить время визита %s: %r",
+                        ext_id, raw_scheduled,
+                    )
 
             appointment = existing_map.get(ext_id)
             if appointment is None:
@@ -301,7 +305,11 @@ async def _sync_appointments_async(
                     appointment.doctor_id = a_data["doctor_id"]
                 appointment.service = a_data.get("service") or appointment.service
                 appointment.branch = a_data.get("branch", appointment.branch)
-                appointment.scheduled_at = scheduled_at or appointment.scheduled_at
+                # Валидное новое время всегда перекрывает старое (перенос записи в
+                # 1Denta). Прежнюю дату сохраняем только если время не пришло/не
+                # распарсилось — иначе перенос молча остаётся на старой дате.
+                if scheduled_at is not None:
+                    appointment.scheduled_at = scheduled_at
                 # Exact durations (timeEnd / service catalog) always win.
                 # Inferred ones (gap/slot heuristics) may only shrink the stored
                 # value or replace the 30-min insert default — never inflate.
@@ -339,22 +347,29 @@ async def _sync_appointments_async(
                     logger.warning("loyalty: accrual failed for appointment %s", appt.external_id)
 
         # ── Propagate deletions from 1Denta ────────────────────────────────
-        # 1) Visits explicitly flagged deleted in the feed.
+        # 1) Visits explicitly flagged deleted in the feed (removed regardless of date).
         # 2) Window reconciliation: local 1Denta-born appointments inside the
         #    fetched window whose external_id no longer appears in the feed
         #    (deleted long ago, so 1Denta stops returning them at all).
         #    "local-…" records never existed in 1Denta and are kept.
+        #    ВАЖНО: reconciliation ограничен ПРОШЛЫМИ визитами (scheduled_at <= now).
+        #    Будущий визит, пропавший из окна, — это, как правило, перенос на дату
+        #    за пределами окна опроса, а не удаление. Удалять его по «исчезновению»
+        #    нельзя (иначе перенос превращается в потерю записи) — такие удаления
+        #    приходят только явным флагом deleted / вебхуком.
         from sqlalchemy import delete as sa_delete, update as sa_update
         from app.models.task import Task
 
         # Bounds mirror the dateFrom/dateTill params sent to 1Denta; stored
         # values are naive wall-clock, so compare with naive bounds.
         win_from = datetime.combine((now - timedelta(days=days_back)).date(), datetime.min.time())
-        win_to = datetime.combine((now + timedelta(days=days_forward)).date(), datetime.max.time())
+        # Верхняя граница reconciliation — «сейчас» (наивное), а не конец окна:
+        # будущие визиты не reconcile-удаляем (см. комментарий выше).
+        reconcile_upper = now.replace(tzinfo=None)
 
         stale_stmt = select(Appointment.id).where(
             Appointment.scheduled_at >= win_from,
-            Appointment.scheduled_at <= win_to,
+            Appointment.scheduled_at <= reconcile_upper,
             Appointment.external_id.isnot(None),
             Appointment.external_id.notlike("local-%"),
             Appointment.external_id.notin_(feed_ext_ids),

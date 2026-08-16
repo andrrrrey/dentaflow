@@ -72,13 +72,17 @@ async def apply_visit_event(db: AsyncSession, visit: dict) -> dict:
     a_data = OneDentaService._map_visit(visit, resource_map, service_duration_map)
 
     scheduled_at = None
-    if a_data.get("scheduled_at"):
+    raw_scheduled = a_data.get("scheduled_at")
+    if raw_scheduled:
         try:
-            dt = datetime.fromisoformat(a_data["scheduled_at"])
+            dt = datetime.fromisoformat(raw_scheduled)
             # Wall-clock 1Denta хранится как есть (см. _sync_appointments_async)
             scheduled_at = dt.replace(tzinfo=None) if dt.tzinfo else dt
         except ValueError:
-            pass
+            logger.warning(
+                "1denta webhook: не удалось распарсить время визита %s: %r",
+                ext_id, raw_scheduled,
+            )
 
     now_utc = datetime.now(timezone.utc)
 
@@ -143,7 +147,15 @@ async def apply_visit_event(db: AsyncSession, visit: dict) -> dict:
             appointment.doctor_id = a_data["doctor_id"]
         appointment.service = a_data.get("service") or appointment.service
         appointment.branch = a_data.get("branch", appointment.branch)
-        appointment.scheduled_at = scheduled_at or appointment.scheduled_at
+        # Валидное новое время всегда перекрывает старое (перенос записи).
+        # Старое сохраняем только если payload реально без парсибельного времени.
+        if scheduled_at is not None:
+            appointment.scheduled_at = scheduled_at
+        elif appointment.scheduled_at is not None:
+            logger.warning(
+                "1denta webhook: визит %s без времени — сохраняю прежнюю дату %s",
+                ext_id, appointment.scheduled_at,
+            )
         new_dur = a_data.get("duration_min")
         if new_dur and not getattr(appointment, "duration_manual", False):
             appointment.duration_min = new_dur

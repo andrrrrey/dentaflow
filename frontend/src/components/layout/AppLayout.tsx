@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import MobileNav from "./MobileNav";
+import MobileDrawer from "./MobileDrawer";
 
 interface AppLayoutProps {
   title: string;
@@ -18,12 +18,12 @@ export default function AppLayout({ title, children }: AppLayoutProps) {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title={title} />
 
-        <main className="flex-1 overflow-y-auto p-[22px_26px] pb-20 md:pb-[22px] page-enter">
+        <main className="flex-1 overflow-y-auto p-[22px_26px] page-enter">
           {children}
         </main>
       </div>
 
-      <MobileNav />
+      <MobileDrawer />
     </div>
   );
 }

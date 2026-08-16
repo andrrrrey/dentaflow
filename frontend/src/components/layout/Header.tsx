@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Search, LogOut } from "lucide-react";
+import { Search, LogOut, Menu } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import GlobalSearch from "../ui/GlobalSearch";
 import { useAuthStore } from "../../store/authStore";
+import { useUiStore } from "../../store/uiStore";
 
 interface HeaderProps {
   title: string;
@@ -10,6 +11,7 @@ interface HeaderProps {
 
 export default function Header({ title }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
+  const toggleMobileNav = useUiStore((s) => s.toggleMobileNav);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -33,8 +35,17 @@ export default function Header({ title }: HeaderProps) {
           borderBottom: "1px solid var(--glass-border)",
         }}
       >
+        {/* Hamburger (mobile only) */}
+        <button
+          onClick={toggleMobileNav}
+          className="md:hidden w-9 h-9 -ml-1 rounded-[10px] flex items-center justify-center bg-[rgba(91,76,245,0.08)] border-none cursor-pointer text-text-muted transition-all duration-150 hover:bg-[rgba(91,76,245,0.15)] hover:text-text-main"
+          aria-label="Меню"
+        >
+          <Menu size={18} />
+        </button>
+
         {/* Title */}
-        <h1 className="text-base font-extrabold flex-1">{title}</h1>
+        <h1 className="text-base font-extrabold flex-1 truncate">{title}</h1>
 
         {/* Actions */}
         <div className="flex gap-[7px] items-center">

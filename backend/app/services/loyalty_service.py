@@ -105,7 +105,14 @@ def describe_earning_rules(config: LoyaltyConfig) -> list[str]:
     используется и в разделе бота «Бонусная программа», и в контексте ИИ-ассистента.
     """
     rules: list[str] = []
-    if config.points_per_purchase_unit and config.purchase_rate_rubles:
+    if (config.accrual_mode or "fixed").lower() == "percent":
+        if config.percent_per_purchase:
+            pct = config.percent_per_purchase
+            pct_str = f"{pct:g}"
+            rules.append(
+                f"🛒 {pct_str}% от суммы оплаченного лечения баллами"
+            )
+    elif config.points_per_purchase_unit and config.purchase_rate_rubles:
         rules.append(
             f"🛒 {config.points_per_purchase_unit} "
             f"{_points_word(config.points_per_purchase_unit)} за каждые "
@@ -222,8 +229,11 @@ async def accrue_for_appointment(db: AsyncSession, appointment) -> LoyaltyTransa
     if exists.scalar_one_or_none() is not None:
         return None
 
-    unit = config.purchase_rate_rubles or 100
-    points = int(float(pay) // unit) * config.points_per_purchase_unit
+    if (config.accrual_mode or "fixed").lower() == "percent":
+        points = round(float(pay) * float(config.percent_per_purchase or 0) / 100)
+    else:
+        unit = config.purchase_rate_rubles or 100
+        points = int(float(pay) // unit) * config.points_per_purchase_unit
     if points <= 0:
         return None
 

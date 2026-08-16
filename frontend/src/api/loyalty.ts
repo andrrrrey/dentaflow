@@ -5,8 +5,10 @@ import { api } from "./client";
 
 export interface LoyaltyConfig {
   enabled: boolean;
+  accrual_mode: "fixed" | "percent";
   points_per_purchase_unit: number;
   purchase_rate_rubles: number;
+  percent_per_purchase: number;
   referral_points: number;
   review_points: number;
 }
