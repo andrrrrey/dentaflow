@@ -63,6 +63,34 @@ async def _auto_register_telegram_webhook(
         logger.warning("Telegram set_my_commands after webhook registration failed", exc_info=True)
 
 
+async def _register_one_denta_webhook(request: Request, db: AsyncSession) -> str:
+    """Зарегистрировать вебхук DentaFlow в 1Denta и сохранить секрет/URL.
+
+    ВАЖНО: POST /api/v2/hook_settings в SQNS ЗАМЕНЯЕТ весь список URL — DentaFlow
+    единственный потребитель вебхуков клиники, поэтому регистрируем только свой
+    URL. Возвращает публичный URL вебхука; бросает исключение при ошибке.
+    """
+    import secrets as _secrets
+
+    from app.services.one_denta import OneDentaService
+
+    secret = await get_raw_value(db, "one_denta_webhook_secret")
+    if not secret:
+        secret = _secrets.token_urlsafe(24)
+
+    base = _base_url(request)
+    webhook_url = f"{base}/api/v1/webhooks/1denta?secret={secret}"
+
+    svc = await OneDentaService.from_db(db)
+    await svc.setup_webhook([webhook_url])
+
+    await save_settings(db, {
+        "one_denta_webhook_secret": secret,
+        "one_denta_webhook_url": f"{base}/api/v1/webhooks/1denta",
+    })
+    return f"{base}/api/v1/webhooks/1denta"
+
+
 @router.get("/")
 async def list_integrations(
     db: AsyncSession = Depends(get_db),
@@ -109,9 +137,27 @@ async def update_integrations(
             telegram_registered = False
             logger.warning("Telegram webhook auto-registration failed", exc_info=True)
 
+    # Auto-register 1Denta webhook whenever real credentials are saved — иначе
+    # переносы/изменения визитов в 1Denta приходят только часовым синком, а не
+    # в реальном времени. Best-effort: ошибка не должна ломать сохранение.
+    od_password = settings_data.get("one_denta_password", "")
+    if od_password and "*" not in od_password:
+        try:
+            url = await _register_one_denta_webhook(request, db)
+            await db.commit()
+            result_one_denta_registered = True
+            logger.info("1Denta webhook auto-registered: %s", url)
+        except Exception:
+            result_one_denta_registered = False
+            logger.warning("1Denta webhook auto-registration failed", exc_info=True)
+    else:
+        result_one_denta_registered = None
+
     result: dict = {"ok": True}
     if telegram_registered is not None:
         result["telegram_webhook_registered"] = telegram_registered
+    if result_one_denta_registered is not None:
+        result["one_denta_webhook_registered"] = result_one_denta_registered
     return result
 
 
@@ -156,32 +202,14 @@ async def register_one_denta_webhook(
     if _current_user.role != "owner":
         raise HTTPException(status_code=403, detail="Только владелец может настраивать вебхуки")
 
-    import secrets as _secrets
-
-    secret = await get_raw_value(db, "one_denta_webhook_secret")
-    if not secret:
-        secret = _secrets.token_urlsafe(24)
-
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
-    webhook_url = f"{proto}://{host}/api/v1/webhooks/1denta?secret={secret}"
-
-    from app.services.one_denta import OneDentaService
-
     try:
-        svc = await OneDentaService.from_db(db)
-        await svc.setup_webhook([webhook_url])
+        webhook_url = await _register_one_denta_webhook(request, db)
+        await db.commit()
     except Exception as e:
         logger.exception("Failed to register 1Denta webhook")
         raise HTTPException(status_code=502, detail=f"Не удалось зарегистрировать вебхук в 1Denta: {e}")
 
-    await save_settings(db, {
-        "one_denta_webhook_secret": secret,
-        "one_denta_webhook_url": f"{proto}://{host}/api/v1/webhooks/1denta",
-    })
-    await db.commit()
-
-    return {"ok": True, "webhook_url": f"{proto}://{host}/api/v1/webhooks/1denta"}
+    return {"ok": True, "webhook_url": webhook_url}
 
 
 @router.get("/sync-1denta/status")
