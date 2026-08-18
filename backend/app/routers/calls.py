@@ -428,11 +428,35 @@ async def sync_calls(
         if rows:  # получили непустой журнал — импортируем
             result = await import_rostelecom_history(db, rows)
             result["order_id"] = order_id
+            synced = result.get("synced", 0)
+            updated = result.get("updated", 0)
             result["message"] = (
-                f"Синхронизировано из Ростелекома: {result.get('synced', 0)} новых, "
-                f"{result.get('updated', 0)} обновлено (в журнале за период: "
+                f"Синхронизировано из Ростелекома: {synced} новых, "
+                f"{updated} обновлено (в журнале за период: "
                 f"{result.get('total_from_file', 0)})."
             )
+            # Строки есть, но ничего не импортировано → показать реальные колонки
+            # CSV и результат сопоставления, чтобы понять, почему строки пропущены.
+            if synced == 0 and updated == 0:
+                sample = rows[0]
+                mapped = _map_rostelecom_stat(sample)
+                debug["sample_columns"] = list(sample.keys())
+                debug["sample_row"] = {str(k): str(v)[:80] for k, v in sample.items()}
+                debug["mapped"] = (
+                    None if mapped is None
+                    else {k: (v.isoformat() if hasattr(v, "isoformat") else v)
+                          for k, v in mapped.items()}
+                )
+                result["debug"] = debug
+                result["message"] += (
+                    "\n\nСтроки есть, но не импортированы. Колонки CSV:\n"
+                    + ", ".join(str(k) for k in sample.keys())
+                    + "\n\nПервая строка:\n"
+                    + _json_compact(debug["sample_row"])
+                    + "\n\nРезультат сопоставления: "
+                    + ("ПРОПУЩЕНА (session_id пуст или внутренний вызов direction=3)"
+                       if mapped is None else "ok")
+                )
             return result
 
         if rows is None:  # файл так и не сформировался за отведённое время
