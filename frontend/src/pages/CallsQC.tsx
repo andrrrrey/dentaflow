@@ -69,7 +69,7 @@ export default function CallsQC() {
         alert(`Синхронизировано: ${result.synced} звонков (пропущено дублей: ${result.skipped})`);
       }
     } catch {
-      alert("Ошибка синхронизации с Новофоном");
+      alert("Ошибка синхронизации истории звонков");
     } finally {
       setSyncing(false);
     }
@@ -142,7 +142,7 @@ export default function CallsQC() {
             disabled={syncing}
             className="flex items-center gap-1.5 rounded-xl px-3 py-[7px] text-[12.5px] font-medium text-accent2 cursor-pointer transition-opacity disabled:opacity-50"
             style={{ background: "rgba(91,76,245,0.08)", border: "1px solid rgba(91,76,245,0.15)" }}
-            title="Синхронизировать звонки из Новофона"
+            title="Синхронизировать историю звонков с телефонией"
           >
             <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
             Синхронизировать
