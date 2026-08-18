@@ -39,7 +39,8 @@ def _rostelecom_debug_summary(debug: dict) -> str:
     for att in debug.get("attempts", []):
         fmt = "epoch" if att.get("date_epoch") else "строка-даты"
         polls = att.get("polls") or []
-        line = f"• Формат {fmt}: order_id={att.get('order_id', '') or '—'}, попыток={len(polls)}"
+        n_polls = att.get("polls_total", len(polls))
+        line = f"• Формат {fmt}: order_id={att.get('order_id', '') or '—'}, попыток={n_polls}"
         if att.get("error"):
             line += f", ОШИБКА: {att['error']}"
         lines.append(line)
@@ -393,52 +394,40 @@ async def sync_calls(
         svc = await get_telephony_service(db)
         date_to = datetime.now(timezone.utc)
 
-        # Пытаемся скачать и импортировать журнал сразу, не дожидаясь обратного
-        # вебхука history_file_completed (он может быть не настроен/задержаться).
-        # Формат дат в domain_call_history в руководстве описан противоречиво
-        # («Timestamp», но пример — строка), поэтому пробуем оба: строку по
-        # Москве и unix-timestamp. Берём тот запрос, что вернул непустой журнал.
-        rows: list[dict] | None = None
-        last_order_id = ""
-        last_error: Exception | None = None
+        # Ростелеком формирует файл журнала АСИНХРОННО: domain_call_history
+        # возвращает order_id, а сам .csv.z появляется на сервере ВАТС через
+        # некоторое время. До готовности download_call_history отвечает 404
+        # «File … not found». Поэтому опрашиваем скачивание с запасом по времени
+        # (файл небольшого домена формируется обычно за десятки секунд), не
+        # завися от обратного вебхука history_file_completed. Формат дат — строка
+        # по Москве (unix-timestamp ВАТС отклоняет: «Невозможно получить
+        # call_history_id»).
         debug: dict = {
             "date_from": date_from.isoformat(),
             "date_to": date_to.isoformat(),
             "attempts": [],
         }
-        # Строковый формат дат — из примера руководства, даём ему больше попыток
-        # (файл может дозаполняться пару секунд); epoch — запасной вариант.
-        for date_as_epoch, attempts in ((False, 8), (True, 5)):
-            trace: list = []
-            attempt_info: dict = {"date_epoch": date_as_epoch}
-            try:
-                order_id = await svc.request_call_history(
-                    date_from, date_to, date_as_epoch=date_as_epoch
-                )
-                last_order_id = order_id or last_order_id
-                attempt_info["order_id"] = order_id
-                fetched = await svc.fetch_call_history(order_id, attempts=attempts, trace=trace)
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                attempt_info["error"] = str(exc)[:300]
-                debug["attempts"].append(attempt_info)
-                logger.warning("Rostelecom sync attempt (epoch=%s) failed: %s", date_as_epoch, exc)
-                continue
-            attempt_info["polls"] = trace
+        trace: list = []
+        attempt_info: dict = {"date_epoch": False}
+        try:
+            order_id = await svc.request_call_history(date_from, date_to)
+            attempt_info["order_id"] = order_id
+            # ~75 c ожидания готовности файла (nginx /api таймаут — 120 c):
+            # 25 попыток × 3 c. Обычно файл готов раньше, тогда вернёмся сразу.
+            rows = await svc.fetch_call_history(order_id, attempts=25, delay=3.0, trace=trace)
+        except Exception as exc:  # noqa: BLE001
+            attempt_info["error"] = str(exc)[:300]
             debug["attempts"].append(attempt_info)
-            if fetched:  # непустой журнал — этот формат дат подошёл
-                rows = fetched
-                break
-            if rows is None:
-                rows = fetched  # запомним «готов, но пусто» ([]), не затирая None
+            logger.warning("Rostelecom sync failed: %s", exc)
+            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+        attempt_info["polls"] = trace[-3:]  # последние попытки для краткости
+        attempt_info["polls_total"] = len(trace)
+        debug["attempts"].append(attempt_info)
+        order_id = order_id or ""
 
-        # Оба формата упали с ошибкой и файл так и не получен — это ошибка API.
-        if rows is None and last_error is not None:
-            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {last_error}")
-
-        if rows:
+        if rows:  # получили непустой журнал — импортируем
             result = await import_rostelecom_history(db, rows)
-            result["order_id"] = last_order_id
+            result["order_id"] = order_id
             result["message"] = (
                 f"Синхронизировано из Ростелекома: {result.get('synced', 0)} новых, "
                 f"{result.get('updated', 0)} обновлено (в журнале за период: "
@@ -446,10 +435,22 @@ async def sync_calls(
             )
             return result
 
-        # Ничего не импортировано (пустой журнал или файл не готов) — вернём
-        # диагностику, чтобы было видно реальный ответ ВАТС без доступа к логам.
-        result = await import_rostelecom_history(db, rows or [])
-        result["order_id"] = last_order_id
+        if rows is None:  # файл так и не сформировался за отведённое время
+            return {
+                "status": "requested",
+                "order_id": order_id,
+                "debug": debug,
+                "message": (
+                    "История домена Ростелеком запрошена, но файл ещё формируется "
+                    "на стороне ВАТС. Он импортируется автоматически по вебхуку "
+                    "history_file_completed, либо нажмите «Синхронизировать» ещё раз "
+                    "через минуту.\n\n" + _rostelecom_debug_summary(debug)
+                ),
+            }
+
+        # rows == [] — файл готов, но журнал за период действительно пуст.
+        result = await import_rostelecom_history(db, [])
+        result["order_id"] = order_id
         result["debug"] = debug
         result["message"] = _rostelecom_debug_summary(debug)
         return result
