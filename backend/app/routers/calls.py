@@ -29,6 +29,24 @@ def _json_compact(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2)
 
 
+def _rostelecom_calls_summary(rows: list[dict], limit: int = 12) -> str:
+    """Список звонков из выгрузки ВАТС (дата, откуда → куда) для показа в alert."""
+    from zoneinfo import ZoneInfo
+
+    moscow = ZoneInfo("Europe/Moscow")
+    lines: list[str] = []
+    for r in rows[:limit]:
+        m = _map_rostelecom_stat(r)
+        if not m:
+            continue
+        dt = m.get("created_at")
+        when = dt.astimezone(moscow).strftime("%d.%m %H:%M") if dt else "—"
+        lines.append(f"• {when}  {m.get('caller_id') or '—'} → {m.get('called_did') or '—'}")
+    if len(rows) > limit:
+        lines.append(f"… и ещё {len(rows) - limit}")
+    return "\n".join(lines) if lines else "— (пусто)"
+
+
 def _rostelecom_debug_summary(debug: dict) -> str:
     """Компактная сводка диагностики Ростелекома для показа в alert (скриншот)."""
     lines = [
@@ -508,10 +526,17 @@ async def sync_calls(
             result["order_id"] = order_id
             synced = result.get("synced", 0)
             updated = result.get("updated", 0)
+            total = result.get("total_from_file", 0)
             result["message"] = (
                 f"Синхронизировано из Ростелекома: {synced} новых, "
-                f"{updated} обновлено (в журнале за период: "
-                f"{result.get('total_from_file', 0)})."
+                f"{updated} обновлено (в журнале за период: {total}).\n\n"
+                f"Что вернула ВАТС за период "
+                f"({date_from.date()}…{date_to.date()}):\n"
+                + _rostelecom_calls_summary(rows)
+                + "\n\nЕсли звонка не хватает — он мог случиться уже после "
+                "синхронизации или ещё не попал в журнал домена ВАТС (свежие "
+                "звонки добавляются туда с задержкой). Свежие звонки также "
+                "приходят в реальном времени по вебхуку call_events."
             )
             # Строки есть, но ничего не импортировано → показать реальные колонки
             # CSV и результат сопоставления, чтобы понять, почему строки пропущены.
