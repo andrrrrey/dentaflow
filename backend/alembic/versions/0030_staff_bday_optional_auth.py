@@ -3,14 +3,14 @@
 Позволяет заводить сотрудников без возможности авторизации (без пароля и,
 при необходимости, без email) и хранить дату рождения для напоминаний.
 
-Revision ID: 0030_staff_birthday_optional_auth
+Revision ID: 0030_staff_bday_optional_auth
 Revises: 0029_bot_user_name
 Create Date: 2026-08-18
 """
 
 from alembic import op
 
-revision = "0030_staff_birthday_optional_auth"
+revision = "0030_staff_bday_optional_auth"
 down_revision = "0029_bot_user_name"
 branch_labels = None
 depends_on = None
