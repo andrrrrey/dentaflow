@@ -5,7 +5,7 @@
 учитывается при создании записей в расписании.
 
 Revision ID: 0031_doctor_profiles
-Revises: 0030_staff_birthday_optional_auth
+Revises: 0030_staff_bday_optional_auth
 Create Date: 2026-08-18
 """
 
@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSON, UUID
 
 revision = "0031_doctor_profiles"
-down_revision = "0030_staff_birthday_optional_auth"
+down_revision = "0030_staff_bday_optional_auth"
 branch_labels = None
 depends_on = None
 
