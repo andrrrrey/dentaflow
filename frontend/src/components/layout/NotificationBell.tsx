@@ -35,6 +35,8 @@ function typeIcon(type: string | null) {
       return <Bot size={14} className="text-accent2" />;
     case "birthday":
       return <Cake size={14} className="text-accent2" />;
+    case "bad_phone":
+      return <PhoneMissed size={14} className="text-warning" />;
     default:
       return <Bell size={14} className="text-text-muted" />;
   }
