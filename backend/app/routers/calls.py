@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -17,6 +18,8 @@ from app.services.integrations_service import (
     get_telephony_provider,
     get_telephony_service,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
@@ -356,22 +359,42 @@ async def sync_calls(
         if not await get_raw_value(db, "rostelecom_client_id"):
             return {"synced": 0, "skipped": 0, "message": "Rostelecom client id not configured"}
         svc = await get_telephony_service(db)
-        try:
-            order_id = await svc.request_call_history(date_from, datetime.now(timezone.utc))
-        except Exception as exc:
-            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+        date_to = datetime.now(timezone.utc)
 
         # Пытаемся скачать и импортировать журнал сразу, не дожидаясь обратного
         # вебхука history_file_completed (он может быть не настроен/задержаться).
-        # Если файл ещё не готов — импорт довершит вебхук.
-        try:
-            rows = await svc.fetch_call_history(order_id)
-        except Exception as exc:
-            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+        # Формат дат в domain_call_history в руководстве описан противоречиво
+        # («Timestamp», но пример — строка), поэтому пробуем оба: строку по
+        # Москве и unix-timestamp. Берём тот запрос, что вернул непустой журнал.
+        rows: list[dict] | None = None
+        last_order_id = ""
+        last_error: Exception | None = None
+        # Строковый формат дат — из примера руководства, даём ему больше попыток
+        # (файл может дозаполняться пару секунд); epoch — запасной вариант.
+        for date_as_epoch, attempts in ((False, 8), (True, 5)):
+            try:
+                order_id = await svc.request_call_history(
+                    date_from, date_to, date_as_epoch=date_as_epoch
+                )
+                last_order_id = order_id or last_order_id
+                fetched = await svc.fetch_call_history(order_id, attempts=attempts)
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                logger.warning("Rostelecom sync attempt (epoch=%s) failed: %s", date_as_epoch, exc)
+                continue
+            if fetched:  # непустой журнал — этот формат дат подошёл
+                rows = fetched
+                break
+            if rows is None:
+                rows = fetched  # запомним «готов, но пусто» ([]), не затирая None
+
+        # Оба формата упали с ошибкой и файл так и не получен — это ошибка API.
+        if rows is None and last_error is not None:
+            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {last_error}")
 
         if rows is not None:
             result = await import_rostelecom_history(db, rows)
-            result["order_id"] = order_id
+            result["order_id"] = last_order_id
             result["message"] = (
                 f"Синхронизировано из Ростелекома: {result.get('synced', 0)} новых, "
                 f"{result.get('updated', 0)} обновлено (в журнале за период: "
@@ -381,7 +404,7 @@ async def sync_calls(
 
         return {
             "status": "requested",
-            "order_id": order_id,
+            "order_id": last_order_id,
             "message": (
                 "История домена Ростелеком запрошена. Файл ещё формируется — он "
                 "импортируется автоматически, как только будет готов. Обновите "
