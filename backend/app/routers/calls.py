@@ -238,6 +238,13 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
     """
     from app.services.rostelecom import _first, _first_int, _digits_phone, _parse_call_datetime
 
+    # Файл без заголовка: разбираем по ПОРЯДКУ значений (устойчиво к сдвигу
+    # колонок), а не по угаданным именам.
+    raw = row.get("_raw")
+    if isinstance(raw, list):
+        return _map_rostelecom_values(raw)
+
+    # Файл с заголовком (имена колонок известны) — читаем по именам.
     session_id = _first(row, "session_id", "call_id")
     if not session_id:
         return None
@@ -248,7 +255,6 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
     if dir_code in ("1", "2"):
         direction = "inbound" if dir_code == "1" else "outbound"
     else:
-        # Колонки direction нет — определяем по PIN-ам сторон.
         orig_pin = _first(row, "orig_pin")
         answering_pin = _first(row, "answering_pin")
         direction = "outbound" if (orig_pin and not answering_pin) else "inbound"
@@ -262,6 +268,62 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
     comm_type = "call" if answered else "missed_call"
 
     created_at = _parse_call_datetime(_first(row, "start_call_date"))
+
+    return {
+        "external_id": str(session_id),
+        "caller_id": caller_id,
+        "called_did": called_did,
+        "duration_sec": seconds,
+        "comm_type": comm_type,
+        "direction": direction,
+        "created_at": created_at,
+    }
+
+
+def _map_rostelecom_values(vals: list) -> dict | None:
+    """Разбор строки журнала ВАТС по ПОРЯДКУ значений (без заголовка).
+
+    Не полагаемся на точные позиции колонок (у входящих/исходящих они разные).
+    Определяем поля по смыслу:
+      * session_id — первое значение;
+      * дата/длительность — поле-дата и следующее за ним число;
+      * номера — поля, похожие на телефоны (SIP/10–11 цифр); первый = звонящий,
+        второй = вызываемый; служебные «1», «201», «24» номерами не считаются;
+      * направление — если сразу после звонящего есть короткий числовой PIN
+        (внутренний абонент), то исходящий, иначе входящий.
+    """
+    from app.services.rostelecom import (
+        _phone_from_field, _looks_like_datetime, _parse_call_datetime,
+    )
+
+    vals = [(v or "").strip() for v in vals]
+    if not vals or not vals[0]:
+        return None
+    session_id = vals[0]
+
+    dt_idx = next((i for i, v in enumerate(vals) if _looks_like_datetime(v)), None)
+    created_at = _parse_call_datetime(vals[dt_idx]) if dt_idx is not None else None
+    seconds = 0
+    if dt_idx is not None and dt_idx + 1 < len(vals):
+        try:
+            seconds = int(float(vals[dt_idx + 1]))
+        except (TypeError, ValueError):
+            seconds = 0
+
+    seg_end = dt_idx if dt_idx is not None else len(vals)
+    phones = [(i, _phone_from_field(vals[i])) for i in range(1, seg_end)]
+    phones = [(i, p) for (i, p) in phones if p]
+    caller_id = phones[0][1] if phones else ""
+    called_did = phones[1][1] if len(phones) > 1 else ""
+
+    direction = "inbound"
+    if phones:
+        first_idx = phones[0][0]
+        orig_pin = vals[first_idx + 1] if first_idx + 1 < seg_end else ""
+        if orig_pin and orig_pin.isdigit() and len(orig_pin) <= 6:
+            direction = "outbound"
+
+    comm_type = "call" if seconds > 0 else "missed_call"
 
     return {
         "external_id": str(session_id),

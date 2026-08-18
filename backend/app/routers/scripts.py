@@ -24,6 +24,28 @@ from app.services.integrations_service import get_raw_value
 router = APIRouter(prefix="/api/v1/scripts", tags=["scripts"])
 
 
+def _transcription_error_message(exc: Exception) -> str:
+    """Понятное пользователю сообщение об ошибке расшифровки (без сырого JSON)."""
+    from app.services.ai_service import _is_quota_error
+
+    if _is_quota_error(exc):
+        return (
+            "Закончились средства на счёте OpenAI — расшифровка недоступна. "
+            "Пополните баланс OpenAI (platform.openai.com → Billing) или вставьте "
+            "расшифровку вручную ниже."
+        )
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403):
+        return "Неверный ключ OpenAI API. Проверьте ключ в Настройках → Интеграции → OpenAI."
+    if status == 429:
+        return "OpenAI временно ограничил запросы (лимит). Попробуйте ещё раз через минуту."
+    # Прочее — короткое сообщение без длинного технического «хвоста».
+    text = str(exc).strip()
+    if len(text) > 160:
+        text = text[:160] + "…"
+    return f"Не удалось расшифровать запись: {text}"
+
+
 class ScriptCreate(BaseModel):
     name: str
     content: str
@@ -315,7 +337,7 @@ async def transcribe_audio_file(
             language="ru",
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Ошибка транскрибации: {exc}")
+        raise HTTPException(status_code=502, detail=_transcription_error_message(exc))
 
     return {"transcript": result.text}
 
@@ -395,7 +417,7 @@ async def transcribe_call(
             language="ru",
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Ошибка транскрибации: {exc}")
+        raise HTTPException(status_code=502, detail=_transcription_error_message(exc))
 
     return {"call_id": body.call_id, "transcript": result.text}
 

@@ -503,10 +503,10 @@ export default function ScriptsQC() {
                     : <PhoneIncoming size={15} className="text-accent3" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-text-main">
-                    {call.direction === "inbound" ? call.caller_id : call.called_did}
+                  <div className="text-[13px] font-semibold text-text-main font-mono truncate">
+                    {(call.direction === "inbound" ? call.caller_id : call.called_did) || "—"}
                   </div>
-                  <div className="text-[11px] text-text-muted">
+                  <div className="text-[11px] text-text-muted truncate">
                     {formatCallDate(call.started_at)} · {formatDuration(call.duration)}
                   </div>
                 </div>
@@ -514,7 +514,7 @@ export default function ScriptsQC() {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleTranscribe(call); }}
                   disabled={transcribingCallId !== null}
-                  className="flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-[6px] rounded-lg text-[12px] font-semibold transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: transcribingCallId === call.call_id ? "rgba(91,76,245,0.15)" : "rgba(91,76,245,0.08)", color: "#5B4CF5" }}
                 >
                   {transcribingCallId === call.call_id
