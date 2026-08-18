@@ -74,6 +74,41 @@ def _first_int(d: dict, *keys: str) -> int:
     return 0
 
 
+def _parse_call_datetime(value: str) -> datetime | None:
+    """Дата/время вызова из журнала → aware datetime.
+
+    ВАТС передаёт ``start_call_date`` то как unix-timestamp (столбец журнала
+    описан как TIMESTAMP), то как строку по Москве (``yyyy-MM-dd HH:mm:ss[.S]``,
+    как в ответах user_calls_charges). Поддерживаем оба формата.
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # Числовое значение → unix epoch (сек; поддержим и мс).
+    if re.fullmatch(r"\d+(\.\d+)?", s):
+        try:
+            num = float(s)
+        except ValueError:
+            num = 0.0
+        if num > 1e12:  # похоже на миллисекунды
+            num /= 1000.0
+        try:
+            return datetime.fromtimestamp(num, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    # Иначе — строка даты по часовому поясу Москвы.
+    from zoneinfo import ZoneInfo
+    moscow = ZoneInfo("Europe/Moscow")
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s[:26], fmt).replace(tzinfo=moscow)
+        except ValueError:
+            continue
+    return None
+
+
 def _digits_phone(raw: str) -> str:
     """SIP-URI/E.164 → нормализованный номер '+7...'. Внутренние URI → ''.
 
@@ -399,20 +434,80 @@ class RostelecomService:
             return str(data.get("order_id") or "")
         raise RuntimeError(f"domain_call_history: {data.get('resultMessage') or data}")
 
-    async def download_call_history(self, order_id: str) -> list[dict]:
-        """Скачать и распарсить gzip-CSV журнала вызовов (``download_call_history``)."""
-        resp = await self._post("download_call_history", {"order_id": order_id}, timeout=90.0)
-        raw = resp.content
-        try:
-            text = gzip.decompress(raw).decode("utf-8", errors="replace")
-        except (OSError, EOFError):
-            text = raw.decode("utf-8", errors="replace")
+    @staticmethod
+    def _parse_history_csv(text: str) -> list[dict]:
+        """Распарсить текст CSV-журнала в список строк-словарей."""
         if not text.strip():
             return []
         sample = text[:2048]
         delimiter = ";" if sample.count(";") >= sample.count(",") else ","
         reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
         return [dict(row) for row in reader]
+
+    def _decode_history_response(self, resp: httpx.Response) -> list[dict] | None:
+        """Разобрать ответ ``download_call_history``.
+
+        Возвращает список строк журнала, когда файл готов (в т.ч. пустой список —
+        готов, но вызовов нет), либо ``None``, когда файл ещё НЕ сформирован
+        (сервер прислал JSON-ошибку/пустой ответ) — сигнал для повторной попытки.
+        """
+        raw = resp.content or b""
+        # gzip-архив с CSV (штатный ответ на готовый файл)
+        if raw[:2] == b"\x1f\x8b":
+            try:
+                text = gzip.decompress(raw).decode("utf-8", errors="replace")
+            except (OSError, EOFError):
+                return None
+            return self._parse_history_csv(text)
+
+        text = raw.decode("utf-8", errors="replace")
+        stripped = text.lstrip()
+        # JSON (ошибка/файл ещё не готов) — не CSV, просим повторить попытку.
+        if not stripped or stripped[0] in "{[":
+            return None
+        # Некоторые серверы отдают plain-CSV без gzip — тоже валидный журнал.
+        return self._parse_history_csv(text)
+
+    async def download_call_history(self, order_id: str) -> list[dict]:
+        """Скачать и распарсить gzip-CSV журнала вызовов (``download_call_history``).
+
+        Однократная попытка. Используется из вебхука ``history_file_completed``,
+        когда файл гарантированно готов. ``[]`` — файл пуст или ещё не готов.
+        """
+        resp = await self._post("download_call_history", {"order_id": order_id}, timeout=90.0)
+        rows = self._decode_history_response(resp)
+        return rows or []
+
+    async def fetch_call_history(
+        self, order_id: str, *, attempts: int = 6, delay: float = 2.0
+    ) -> list[dict] | None:
+        """Дождаться готовности файла и скачать журнал (синхронная выгрузка).
+
+        Опрашиваем ``download_call_history`` по уже полученному ``order_id`` с
+        короткими паузами, не дожидаясь вебхука ``history_file_completed``. Так
+        кнопка «Синхронизировать» импортирует историю сразу, не завися от
+        обратного вебхука ВАТС. Возвращает список строк журнала, когда файл
+        готов, либо ``None``, если за отведённые попытки он так и не сформировался
+        (тогда импорт завершит вебхук).
+        """
+        import asyncio
+
+        if not order_id:
+            return None
+        for i in range(max(1, attempts)):
+            try:
+                resp = await self._post(
+                    "download_call_history", {"order_id": order_id}, timeout=60.0
+                )
+                rows = self._decode_history_response(resp)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("download_call_history poll error (order=%s): %s", order_id, exc)
+                rows = None
+            if rows is not None:
+                return rows
+            if i < attempts - 1:
+                await asyncio.sleep(delay)
+        return None
 
     # Единый контракт с NovofonService: синхронная история недоступна
     # (журнал домена выгружается асинхронно), возвращаем пустой список.

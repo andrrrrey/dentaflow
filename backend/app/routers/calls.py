@@ -191,7 +191,7 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
     принят), orig_number, dest_number, start_call_date (unix), duration,
     is_record. Внутренние вызовы (direction=3) пропускаем.
     """
-    from app.services.rostelecom import _first, _first_int, _digits_phone
+    from app.services.rostelecom import _first, _first_int, _digits_phone, _parse_call_datetime
 
     session_id = _first(row, "session_id", "call_id")
     if not session_id:
@@ -209,13 +209,7 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
     answered = _first(row, "state") == "1" or seconds > 0
     comm_type = "call" if answered else "missed_call"
 
-    created_at = None
-    ts = _first(row, "start_call_date")
-    if ts:
-        try:
-            created_at = datetime.fromtimestamp(int(float(ts)), tz=timezone.utc)
-        except (TypeError, ValueError, OSError):
-            created_at = None
+    created_at = _parse_call_datetime(_first(row, "start_call_date"))
 
     return {
         "external_id": str(session_id),
@@ -366,12 +360,32 @@ async def sync_calls(
             order_id = await svc.request_call_history(date_from, datetime.now(timezone.utc))
         except Exception as exc:
             raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+
+        # Пытаемся скачать и импортировать журнал сразу, не дожидаясь обратного
+        # вебхука history_file_completed (он может быть не настроен/задержаться).
+        # Если файл ещё не готов — импорт довершит вебхук.
+        try:
+            rows = await svc.fetch_call_history(order_id)
+        except Exception as exc:
+            raise _HTTPException(status_code=502, detail=f"rostelecom API error: {exc}")
+
+        if rows is not None:
+            result = await import_rostelecom_history(db, rows)
+            result["order_id"] = order_id
+            result["message"] = (
+                f"Синхронизировано из Ростелекома: {result.get('synced', 0)} новых, "
+                f"{result.get('updated', 0)} обновлено (в журнале за период: "
+                f"{result.get('total_from_file', 0)})."
+            )
+            return result
+
         return {
             "status": "requested",
             "order_id": order_id,
             "message": (
-                "История домена Ростелеком запрошена. Файл сформируется асинхронно "
-                "(обычно до нескольких минут) и импортируется автоматически."
+                "История домена Ростелеком запрошена. Файл ещё формируется — он "
+                "импортируется автоматически, как только будет готов. Обновите "
+                "страницу через минуту."
             ),
         }
 
