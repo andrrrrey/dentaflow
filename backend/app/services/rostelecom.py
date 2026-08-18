@@ -493,6 +493,11 @@ class RostelecomService:
             return "empty", None
         if stripped[0] in "{[":
             return "json/err", None
+        # HTML-заглушка «File … not found» — файл ещё НЕ сформирован на стороне
+        # ВАТС (генерируется асинхронно). Это не пустой журнал, а «ещё не готово».
+        low = stripped[:512].lower()
+        if stripped[0] == "<" or "not found" in low or "<html" in low:
+            return "not-ready", None
         # Некоторые серверы отдают plain-CSV без архивации — тоже валидный журнал.
         return "csv", text
 
@@ -566,6 +571,9 @@ class RostelecomService:
                     "download_call_history", {"order_id": order_id}, timeout=60.0
                 )
                 rows = self._decode_history_response(resp)
+                # Любой не-200 (напр. 404 «File … not found») = файл ещё не готов.
+                if resp.status_code != 200:
+                    rows = None
                 diag = self._diag_response(resp, rows)
                 logger.info(
                     "Rostelecom download_call_history poll #%d (order=%s): %s",
