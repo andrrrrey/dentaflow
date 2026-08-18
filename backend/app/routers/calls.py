@@ -222,10 +222,19 @@ def _map_stat_to_comm(stat: dict) -> dict | None:
 def _map_rostelecom_stat(row: dict) -> dict | None:
     """Map a Rostelecom download_call_history CSV row to Communication values.
 
-    Столбцы CSV (руководство v7.5, табл. А.3.14): session_id, call_type,
-    direction (1 входящий/2 исходящий/3 внутренний), state (1 принят/2 не
-    принят), orig_number, dest_number, start_call_date (unix), duration,
-    is_record. Внутренние вызовы (direction=3) пропускаем.
+    Реальный формат выгрузки (домен p2.cloudpbx, Улан-Удэ) отличается от
+    руководства: файл БЕЗ заголовка и БЕЗ колонок direction/state. Имена колонок
+    задаёт ``RostelecomService.HISTORY_FIELDS``:
+        session_id, call_type, orig_number, orig_pin, dest_number,
+        answering_sipuri, answering_pin, start_call_date (строка «ГГГГ-ММ-ДД
+        чч:мм:сс»), duration, is_voicemail, is_record, is_fax, …
+
+    Направление вычисляем по PIN-ам (в руководстве: orig_pin заполнен у
+    исходящих/внутренних, answering_pin — у входящих/внутренних):
+        * orig_pin пуст, answering_pin задан → входящий;
+        * orig_pin задан, answering_pin пуст → исходящий.
+    Если явная колонка direction всё же есть (файл с заголовком) — берём её.
+    Статус «принят» — по state (если есть) или по длительности > 0.
     """
     from app.services.rostelecom import _first, _first_int, _digits_phone, _parse_call_datetime
 
@@ -235,14 +244,21 @@ def _map_rostelecom_stat(row: dict) -> dict | None:
 
     dir_code = _first(row, "direction")
     if dir_code == "3":
-        return None
-    direction = "outbound" if dir_code == "2" else "inbound"
+        return None  # внутренний вызов — не относится к CRM
+    if dir_code in ("1", "2"):
+        direction = "inbound" if dir_code == "1" else "outbound"
+    else:
+        # Колонки direction нет — определяем по PIN-ам сторон.
+        orig_pin = _first(row, "orig_pin")
+        answering_pin = _first(row, "answering_pin")
+        direction = "outbound" if (orig_pin and not answering_pin) else "inbound"
 
     caller_id = _digits_phone(_first(row, "orig_number"))
     called_did = _digits_phone(_first(row, "dest_number"))
 
     seconds = _first_int(row, "duration")
-    answered = _first(row, "state") == "1" or seconds > 0
+    state = _first(row, "state")
+    answered = state == "1" or (state == "" and seconds > 0)
     comm_type = "call" if answered else "missed_call"
 
     created_at = _parse_call_datetime(_first(row, "start_call_date"))

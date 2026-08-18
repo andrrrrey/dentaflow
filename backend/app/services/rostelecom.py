@@ -448,15 +448,42 @@ class RostelecomService:
             return order_id
         raise RuntimeError(f"domain_call_history: {data.get('resultMessage') or data}")
 
-    @staticmethod
-    def _parse_history_csv(text: str) -> list[dict]:
-        """Распарсить текст CSV-журнала в список строк-словарей."""
+    # Реальный порядок колонок выгрузки download_call_history (домен Улан-Удэ,
+    # p2.cloudpbx): БЕЗ строки-заголовка и БЕЗ колонок direction/state, которые
+    # есть в руководстве. Направление вычисляем по PIN-ам (см. _map_rostelecom_stat).
+    HISTORY_FIELDS = [
+        "session_id", "call_type", "orig_number", "orig_pin", "dest_number",
+        "answering_sipuri", "answering_pin", "start_call_date", "duration",
+        "is_voicemail", "is_record", "is_fax", "status_code", "status_string",
+    ]
+
+    @classmethod
+    def _parse_history_csv(cls, text: str) -> list[dict]:
+        """Распарсить текст CSV-журнала в список строк-словарей.
+
+        Файл ВАТС приходит БЕЗ строки-заголовка, поэтому имена колонок задаём
+        сами (``HISTORY_FIELDS``). Если заголовок всё же присутствует (первая
+        строка содержит ``session_id``) — используем его.
+        """
         if not text.strip():
             return []
+        # Разделитель: у ВАТС это запятая; точку с запятой встречают SIP-URI
+        # (";tgrp=…") внутри поля, поэтому предпочитаем запятую, если её больше.
         sample = text[:2048]
-        delimiter = ";" if sample.count(";") >= sample.count(",") else ","
-        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
-        return [dict(row) for row in reader]
+        delimiter = ";" if sample.count(";") > sample.count(",") else ","
+        first_line = text.lstrip().splitlines()[0].lower() if text.strip() else ""
+        has_header = "session_id" in first_line
+        if has_header:
+            reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        else:
+            reader = csv.DictReader(
+                io.StringIO(text), delimiter=delimiter, fieldnames=cls.HISTORY_FIELDS
+            )
+        rows: list[dict] = []
+        for row in reader:
+            row.pop(None, None)  # лишние поля сверх fieldnames (restkey) отбрасываем
+            rows.append(dict(row))
+        return rows
 
     @staticmethod
     def _extract_history_text(raw: bytes) -> tuple[str, str | None]:
