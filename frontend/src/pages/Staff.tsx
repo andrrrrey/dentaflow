@@ -7,6 +7,7 @@ import StatCard from "../components/ui/StatCard";
 import { useStaff, useCreateStaff, useUpdateStaff, useDeleteStaff } from "../api/staff";
 import type { StaffMember, StaffCreate, StaffUpdate } from "../api/staff";
 import AdminLeaderboard from "../components/staff/AdminLeaderboard";
+import DoctorsSection from "../components/staff/DoctorsSection";
 
 /* ---------- helpers ---------- */
 
@@ -22,6 +23,12 @@ const ROLES = ["owner", "manager", "admin", "marketer"];
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+function formatBirthDate(v?: string | null): string {
+  if (!v) return "—";
+  const [y, m, d] = v.split("-");
+  return d && m && y ? `${d}.${m}.${y}` : v;
 }
 
 function InputField({
@@ -71,25 +78,47 @@ function StaffModal({ member, onClose }: ModalProps) {
   const [email, setEmail] = useState(member?.email ?? "");
   const [role, setRole] = useState(member?.role ?? "admin");
   const [password, setPassword] = useState("");
+  const [birthDate, setBirthDate] = useState(member?.birth_date ?? "");
+  // При создании — переключатель доступа в систему; при редактировании доступ
+  // задаётся косвенно через смену пароля.
+  const [canLogin, setCanLogin] = useState(true);
   const [error, setError] = useState("");
   const isEdit = Boolean(member);
 
   async function handleSubmit() {
     setError("");
-    if (!name.trim() || !email.trim()) {
-      setError("Заполните обязательные поля");
+    if (!name.trim()) {
+      setError("Укажите имя");
       return;
     }
-    if (!isEdit && !password.trim()) {
-      setError("Укажите пароль для нового сотрудника");
+    if (!isEdit && canLogin && !email.trim()) {
+      setError("Для доступа в систему укажите email");
+      return;
+    }
+    if (!isEdit && canLogin && !password.trim()) {
+      setError("Укажите пароль для входа");
       return;
     }
     try {
       if (isEdit && member) {
-        const upd: StaffUpdate & { id: string } = { id: member.id, name, email, role };
+        const upd: StaffUpdate & { id: string } = {
+          id: member.id,
+          name,
+          role,
+          email: email.trim() ? email : null,
+          birth_date: birthDate || null,
+        };
+        // Непустой пароль — сменить/выдать доступ; пустой — не трогать.
+        if (password.trim()) upd.password = password;
         await updateMutation.mutateAsync(upd);
       } else {
-        const body: StaffCreate = { name, email, role, password };
+        const body: StaffCreate = {
+          name,
+          role,
+          email: email.trim() ? email : null,
+          birth_date: birthDate || null,
+        };
+        if (canLogin) body.password = password;
         await createMutation.mutateAsync(body);
       }
       onClose();
@@ -126,7 +155,17 @@ function StaffModal({ member, onClose }: ModalProps) {
         </div>
 
         <InputField label="Имя" value={name} onChange={setName} placeholder="Фамилия Имя Отчество" required />
-        <InputField label="Email" value={email} onChange={setEmail} type="email" placeholder="user@clinic.ru" required />
+
+        <InputField
+          label="Email"
+          value={email}
+          onChange={setEmail}
+          type="email"
+          placeholder="user@clinic.ru"
+          required={!isEdit && canLogin}
+        />
+
+        <InputField label="Дата рождения" value={birthDate} onChange={setBirthDate} type="date" />
 
         <div className="flex flex-col gap-1">
           <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Роль<span className="text-[#F44B6E] ml-0.5">*</span></label>
@@ -143,7 +182,24 @@ function StaffModal({ member, onClose }: ModalProps) {
         </div>
 
         {!isEdit && (
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={canLogin} onChange={(e) => setCanLogin(e.target.checked)} className="cursor-pointer" />
+            <span className="text-[12.5px] text-text-main">Доступ в систему (может авторизоваться)</span>
+          </label>
+        )}
+
+        {!isEdit && canLogin && (
           <InputField label="Пароль" value={password} onChange={setPassword} type="password" placeholder="Минимум 6 символов" required />
+        )}
+
+        {isEdit && (
+          <InputField
+            label={member?.can_login ? "Новый пароль" : "Пароль (выдать доступ в систему)"}
+            value={password}
+            onChange={setPassword}
+            type="password"
+            placeholder={member?.can_login ? "Оставьте пустым, чтобы не менять" : "Задайте пароль, чтобы включить вход"}
+          />
         )}
 
         {error && (
@@ -218,7 +274,7 @@ export default function Staff() {
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Сотрудник", "Роль", "Email", "Статус", "Действия"].map((h) => (
+                  {["Сотрудник", "Роль", "Email", "Дата рождения", "Статус", "Действия"].map((h) => (
                     <th
                       key={h}
                       className="text-left text-[10.5px] font-bold text-text-muted uppercase tracking-[0.8px] pb-[10px] px-[12px]"
@@ -252,11 +308,15 @@ export default function Staff() {
                       <td className="py-[10px] px-[12px]">
                         <Pill variant={cfg.variant}>{cfg.label}</Pill>
                       </td>
-                      <td className="py-[10px] px-[12px] text-[12.5px] text-text-muted">{m.email}</td>
+                      <td className="py-[10px] px-[12px] text-[12.5px] text-text-muted">{m.email || "—"}</td>
+                      <td className="py-[10px] px-[12px] text-[12.5px] text-text-muted">{formatBirthDate(m.birth_date)}</td>
                       <td className="py-[10px] px-[12px]">
-                        <Pill variant={m.is_active ? "green" : "gray"}>
-                          {m.is_active ? "Активен" : "Отключён"}
-                        </Pill>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Pill variant={m.is_active ? "green" : "gray"}>
+                            {m.is_active ? "Активен" : "Отключён"}
+                          </Pill>
+                          {m.can_login === false && <Pill variant="gray">Без входа</Pill>}
+                        </div>
                       </td>
                       <td className="py-[10px] px-[12px]">
                         <div className="flex items-center gap-1">
@@ -302,6 +362,9 @@ export default function Staff() {
           </div>
         )}
       </Card>
+
+      {/* Doctors */}
+      <DoctorsSection />
 
       {/* Leaderboard */}
       <AdminLeaderboard />

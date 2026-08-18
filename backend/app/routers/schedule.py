@@ -28,6 +28,35 @@ from app.services.one_denta import OneDentaService
 router = APIRouter(prefix="/api/v1/schedule", tags=["schedule"])
 
 
+async def _assert_within_doctor_schedule(
+    db: AsyncSession, doctor_id: str | None, start: datetime, duration_min: int
+) -> None:
+    """Запрет записи вне графика работы врача (если график задан).
+
+    Врач без локального графика ограничений не имеет — проверка пропускается.
+    """
+    if not doctor_id:
+        return
+    from app.models.doctor_profile import DoctorProfile
+    from app.services.doctor_schedule import is_within_schedule
+
+    profile = (await db.execute(
+        select(DoctorProfile).where(DoctorProfile.doctor_id == doctor_id)
+    )).scalar_one_or_none()
+
+    # Сравниваем по «настенному» времени клиники (без перевода TZ).
+    start_wall = start.replace(tzinfo=None) if start.tzinfo else start
+    end_wall = start_wall + timedelta(minutes=duration_min or 30)
+    if not is_within_schedule(profile, start_wall, end_wall):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Время вне графика работы врача. Выберите время в пределах "
+                "рабочих часов (график задаётся в разделе Сотрудники → Врачи)."
+            ),
+        )
+
+
 @router.get("/")
 async def list_schedule(
     date_from: date | None = Query(None),
@@ -359,6 +388,12 @@ async def update_appointment(
         appt.duration_min = max(5, min(600, int(body.duration_min)))
         appt.duration_manual = True
 
+    # При переносе времени или смене врача проверяем график работы врача.
+    if (body.scheduled_at is not None or body.doctor_id is not None) and appt.scheduled_at:
+        await _assert_within_doctor_schedule(
+            db, appt.doctor_id, appt.scheduled_at, appt.duration_min or 30
+        )
+
     await db.commit()
 
     is_remote = bool(appt.external_id) and not appt.external_id.startswith("local-")
@@ -557,6 +592,9 @@ async def create_appointment(
                     status_code=409,
                     detail=f"Время пересекается с другой записью у этого врача ({appt_start.strftime('%H:%M')}–{appt_end.strftime('%H:%M')})",
                 )
+
+    # Запись должна попадать в график работы врача (если он задан локально).
+    await _assert_within_doctor_schedule(db, body.doctor_id, parsed_dt, body.duration_min)
 
     # Duplicate phones exist in real 1Denta data — take the oldest match
     # instead of scalar_one_or_none(), which raises on duplicates.

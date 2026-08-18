@@ -21,7 +21,7 @@ class RefreshRequest(BaseModel):
 
 class UserResponse(BaseModel):
     id: uuid.UUID
-    email: str
+    email: str | None = None
     name: str
     role: str
     avatar_url: str | None = None

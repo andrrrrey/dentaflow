@@ -303,6 +303,94 @@ async def create_auto_tasks_for_today(db: AsyncSession) -> dict:
     return {"created": created, "skipped": skipped}
 
 
+async def create_birthday_reminders_for_tomorrow(db: AsyncSession) -> dict:
+    """Напоминания о днях рождения сотрудников и врачей — за 1 день.
+
+    Для каждого, у кого день рождения завтра, создаёт уведомление в колокольчик
+    и задачу «Поздравить …» для администраторов. Идемпотентно в пределах дня:
+    повторный запуск не плодит дубликаты (дедуп по заголовку задачи за сегодня).
+    """
+    from datetime import date, timedelta
+    from sqlalchemy import and_
+    from app.models.doctor_profile import DoctorProfile
+    from app.models.directory_cache import DirectoryCache
+    from app.services.notifications_service import upsert_event_notification
+
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    end_of_tomorrow = today_start + timedelta(days=2) - timedelta(seconds=1)
+
+    # (label, birth_date, link_id) для всех именинников завтра.
+    targets: list[tuple[str, date, str]] = []
+
+    # 1) Сотрудники (аккаунты).
+    users = (await db.execute(select(User).where(User.birth_date.isnot(None)))).scalars().all()
+    for u in users:
+        if u.birth_date and (u.birth_date.month, u.birth_date.day) == (tomorrow.month, tomorrow.day):
+            targets.append((u.name, u.birth_date, f"user:{u.id}"))
+
+    # 2) Врачи (профили). Имя берём из справочника (directory_cache).
+    profiles = (await db.execute(
+        select(DoctorProfile).where(DoctorProfile.birth_date.isnot(None))
+    )).scalars().all()
+    if profiles:
+        doc_ids = [p.doctor_id for p in profiles]
+        name_rows = (await db.execute(
+            select(DirectoryCache.external_id, DirectoryCache.name).where(
+                DirectoryCache.category == "resource",
+                DirectoryCache.external_id.in_(doc_ids),
+            )
+        )).all()
+        names = {r.external_id: r.name for r in name_rows}
+        for p in profiles:
+            if p.birth_date and (p.birth_date.month, p.birth_date.day) == (tomorrow.month, tomorrow.day):
+                name = names.get(p.doctor_id) or f"Врач #{p.doctor_id}"
+                targets.append((name, p.birth_date, f"doctor:{p.doctor_id}"))
+
+    if not targets:
+        return {"created": 0, "skipped": 0}
+
+    # Дедуп: заголовки задач-ДР, уже созданных сегодня.
+    existing_titles = {
+        row[0]
+        for row in (await db.execute(
+            select(Task.title).where(
+                and_(Task.type == "birthday", Task.created_at >= today_start)
+            )
+        )).all()
+    }
+
+    created = 0
+    skipped = 0
+    for name, bdate, link_id in targets:
+        title = f"Поздравить с днём рождения: {name} (завтра {bdate.strftime('%d.%m')})"
+        if title in existing_titles:
+            skipped += 1
+            continue
+
+        await upsert_event_notification(
+            db,
+            type="birthday",
+            title="Завтра день рождения 🎂",
+            body=f"{name} — {bdate.strftime('%d.%m')}",
+            link=f"/staff?birthday={link_id}",
+        )
+        db.add(Task(
+            type="birthday",
+            title=title,
+            due_at=end_of_tomorrow,
+            is_done=False,
+            is_auto=True,
+            is_active=True,
+        ))
+        existing_titles.add(title)
+        created += 1
+
+    await db.commit()
+    return {"created": created, "skipped": skipped}
+
+
 async def delete_tasks_bulk(db: AsyncSession, task_ids: list[uuid.UUID]) -> int:
     """Delete multiple tasks at once. Returns the number of rows removed."""
     if not task_ids:

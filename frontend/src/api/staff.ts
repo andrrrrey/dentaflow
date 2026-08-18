@@ -4,24 +4,29 @@ import { api } from "./client";
 export interface StaffMember {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   is_active: boolean;
+  birth_date?: string | null;
+  can_login?: boolean;
   created_at: string;
 }
 
 export interface StaffCreate {
   name: string;
-  email: string;
+  email?: string | null;
   role: string;
-  password: string;
+  password?: string | null;
+  birth_date?: string | null;
 }
 
 export interface StaffUpdate {
   name?: string;
-  email?: string;
+  email?: string | null;
   role?: string;
   is_active?: boolean;
+  birth_date?: string | null;
+  password?: string | null;
 }
 
 export function useStaff() {
