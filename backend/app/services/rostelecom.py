@@ -129,6 +129,40 @@ def _digits_phone(raw: str) -> str:
     return "+" + digits
 
 
+_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}")
+
+
+def _looks_like_datetime(value: str) -> bool:
+    """True, если поле — дата/время вызова (строка ГГГГ-ММ-ДД чч:мм:сс или epoch)."""
+    if not value:
+        return False
+    s = str(value).strip()
+    if _DATETIME_RE.match(s):
+        return True
+    # unix-epoch (сек): 10 цифр, начинается с 1 (диапазон ~2001–2033).
+    return s.isdigit() and len(s) == 10 and s[0] == "1"
+
+
+def _phone_from_field(value: str) -> str:
+    """Нормализованный телефон из поля журнала, если это действительно номер.
+
+    Реальные номера: SIP/TEL-URI (``sip:79...@...``) или «голые» 10–11 цифр,
+    начинающиеся с 7/8/9. Служебные значения (``1`` — тип вызова, ``201`` — PIN,
+    ``24`` — длительность, epoch-время) телефонами НЕ считаются — так они не
+    попадают в номер звонящего/вызываемого.
+    """
+    if not value:
+        return ""
+    s = str(value).strip()
+    low = s.lower()
+    if low.startswith("sip:") or low.startswith("tel:"):
+        return _digits_phone(s)
+    digits = re.sub(r"\D", "", s)
+    if len(digits) in (10, 11) and digits[0] in "789":
+        return _digits_phone(s)
+    return ""
+
+
 class RostelecomService:
     """Async-обёртка над интеграционным API Ростелеком ВАТС."""
 
@@ -475,14 +509,22 @@ class RostelecomService:
         has_header = "session_id" in first_line
         if has_header:
             reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
-        else:
-            reader = csv.DictReader(
-                io.StringIO(text), delimiter=delimiter, fieldnames=cls.HISTORY_FIELDS
-            )
-        rows: list[dict] = []
-        for row in reader:
-            row.pop(None, None)  # лишние поля сверх fieldnames (restkey) отбрасываем
-            rows.append(dict(row))
+            rows: list[dict] = []
+            for row in reader:
+                row.pop(None, None)
+                rows.append(dict(row))
+            return rows
+        # Без заголовка: сохраняем и именованные поля (по HISTORY_FIELDS для
+        # диагностики), и исходный ПОРЯДОК значений в "_raw" — по нему работает
+        # устойчивый к сдвигу колонок разбор (_map_rostelecom_stat).
+        rows = []
+        for vals in csv.reader(io.StringIO(text), delimiter=delimiter):
+            if not vals or not any(v.strip() for v in vals):
+                continue
+            d = {name: (vals[i] if i < len(vals) else "")
+                 for i, name in enumerate(cls.HISTORY_FIELDS)}
+            d["_raw"] = vals
+            rows.append(d)
         return rows
 
     @staticmethod

@@ -168,33 +168,54 @@ export default function CallsQC() {
             {calls.map((call) => (
               <div
                 key={call.call_id}
-                className="md:grid md:grid-cols-[90px_40px_1fr_1fr_80px_100px_60px] gap-3 px-[14px] py-[11px] border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors flex flex-col"
+                className="border-b border-[rgba(91,76,245,0.04)] hover:bg-[rgba(91,76,245,0.04)] transition-colors"
               >
-                <div className="flex flex-col">
-                  <span className="text-[12.5px] text-text-main font-medium">{formatDate(call.started_at)}</span>
-                  <span className="text-[11px] text-text-muted">{formatTime(call.started_at)}</span>
+                {/* Desktop row */}
+                <div className="hidden md:grid grid-cols-[90px_40px_1fr_1fr_80px_100px_60px] gap-3 px-[14px] py-[11px] items-center">
+                  <div className="flex flex-col">
+                    <span className="text-[12.5px] text-text-main font-medium">{formatDate(call.started_at)}</span>
+                    <span className="text-[11px] text-text-muted">{formatTime(call.started_at)}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <DirectionIcon direction={call.direction} />
+                  </div>
+                  <span className="text-[13px] text-text-main font-medium font-mono truncate">{call.caller_id || "—"}</span>
+                  <span className="text-[13px] text-text-muted font-mono truncate">{call.called_did || "—"}</span>
+                  <span className="text-[12.5px] text-text-muted">{formatDuration(call.duration)}</span>
+                  <span>
+                    <Pill variant={statusVariant(call)}>{statusLabel(call)}</Pill>
+                  </span>
+                  <div className="flex items-center">
+                    {call.recording_url && (
+                      <a href={call.recording_url} target="_blank" rel="noopener noreferrer" className="text-accent2 hover:text-accent" title="Прослушать запись">
+                        <Play size={16} />
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <DirectionIcon direction={call.direction} />
-                </div>
-                <span className="text-[13px] text-text-main font-medium font-mono">{call.caller_id || "—"}</span>
-                <span className="text-[13px] text-text-muted font-mono">{call.called_did || "—"}</span>
-                <span className="text-[12.5px] text-text-muted">{formatDuration(call.duration)}</span>
-                <span>
-                  <Pill variant={statusVariant(call)}>
-                    {statusLabel(call)}
-                  </Pill>
-                </span>
-                <div className="flex items-center">
+
+                {/* Mobile card */}
+                <div className="md:hidden flex items-center gap-3 px-3 py-[11px]">
+                  <div className="flex-shrink-0">
+                    <DirectionIcon direction={call.direction} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[13px] text-text-main font-semibold font-mono truncate">
+                        {call.caller_id || "—"}
+                      </span>
+                      <Pill variant={statusVariant(call)}>{statusLabel(call)}</Pill>
+                    </div>
+                    <div className="text-[12px] text-text-muted font-mono truncate">
+                      → {call.called_did || "—"}
+                    </div>
+                    <div className="text-[11px] text-text-muted mt-[2px]">
+                      {formatDate(call.started_at)} {formatTime(call.started_at)} · {formatDuration(call.duration)}
+                    </div>
+                  </div>
                   {call.recording_url && (
-                    <a
-                      href={call.recording_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent2 hover:text-accent"
-                      title="Прослушать запись"
-                    >
-                      <Play size={16} />
+                    <a href={call.recording_url} target="_blank" rel="noopener noreferrer" className="text-accent2 hover:text-accent flex-shrink-0" title="Прослушать запись">
+                      <Play size={18} />
                     </a>
                   )}
                 </div>
