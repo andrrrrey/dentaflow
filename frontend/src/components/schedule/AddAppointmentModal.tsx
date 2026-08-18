@@ -6,6 +6,7 @@ import PatientSearchInput from "../ui/PatientSearchInput";
 import { useCreateAppointment, type CreateAppointmentData } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
 import { useServices } from "../../api/directories";
+import { useDoctorProfiles, isWithinDoctorSchedule } from "../../api/doctorProfiles";
 
 const inputStyle = {
   border: "1px solid rgba(91,76,245,0.15)",
@@ -33,6 +34,7 @@ export default function AddAppointmentModal({
   const createMutation = useCreateAppointment();
   const { data: doctorsData } = useDoctorsList();
   const { data: servicesData } = useServices();
+  const { data: doctorProfilesData } = useDoctorProfiles();
 
   const doctors = doctorsData?.doctors ?? [];
   // Запись создаётся сначала в 1Denta, поэтому доступны только услуги,
@@ -81,6 +83,14 @@ export default function AddAppointmentModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onlineServices]);
+
+  // Предупреждение, если выбранное время вне графика работы врача. Жёсткий
+  // запрет — на бэкенде (409), здесь только подсказка администратору.
+  const outOfSchedule = useMemo(() => {
+    if (!form.doctor_id || !form.scheduled_at) return false;
+    const profile = (doctorProfilesData?.doctors ?? []).find((p) => p.doctor_id === String(form.doctor_id));
+    return !isWithinDoctorSchedule(profile, form.scheduled_at, Number(form.duration_min) || 30);
+  }, [doctorProfilesData, form.doctor_id, form.scheduled_at, form.duration_min]);
 
   function set(key: keyof CreateAppointmentData, val: string | number) {
     setForm((p) => {
@@ -187,6 +197,11 @@ export default function AddAppointmentModal({
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Дата и время *</label>
               <input type="datetime-local" value={form.scheduled_at} onChange={(e) => set("scheduled_at", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
+              {outOfSchedule && (
+                <div className="text-[11px] text-[#b87200] font-medium mt-0.5">
+                  Время вне графика работы врача — запись не будет создана.
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Длительность (мин)</label>

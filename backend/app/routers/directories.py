@@ -162,18 +162,17 @@ async def list_services(
     return {"services": items, "synced_at": synced_at}
 
 
-@router.get("/resources")
-async def list_resources(
-    db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
-) -> dict:
+async def get_resource_items(db: AsyncSession) -> tuple[list[dict], str | None]:
+    """Cached doctor/resource rows plus doctors referenced only in appointments.
+
+    Shared by GET /resources and the doctor-profiles router so both surface the
+    same set of doctors (incl. those 1Denta no longer returns via API).
+    """
     from app.models.appointment import Appointment
 
     items, synced_at = await _get_cached(db, "resource")
     known_ids = {str(item.get("id", "")) for item in items}
 
-    # Also surface doctors referenced in appointments but absent from directory_cache
-    # (e.g. archived staff whose names 1Denta no longer provides via API).
     appt_rows = (await db.execute(
         select(Appointment.doctor_id, func.max(Appointment.doctor_name).label("doctor_name"))
         .where(Appointment.doctor_id.isnot(None), Appointment.doctor_id != "")
@@ -189,6 +188,15 @@ async def list_resources(
             })
             known_ids.add(row.doctor_id)
 
+    return items, synced_at
+
+
+@router.get("/resources")
+async def list_resources(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    items, synced_at = await get_resource_items(db)
     return {"resources": items, "synced_at": synced_at}
 
 

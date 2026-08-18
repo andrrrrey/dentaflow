@@ -16,6 +16,11 @@ class BotUser(Base):
     user_id: Mapped[str] = mapped_column(String(100), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Явно выбранный пациент (когда по номеру несколько карт — родитель/ребёнок).
+    # Позволяет не переспрашивать выбор и знать, чей номер менять.
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

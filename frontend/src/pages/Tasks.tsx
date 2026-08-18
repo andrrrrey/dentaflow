@@ -5,7 +5,7 @@ import { ru } from "date-fns/locale";
 import {
   CheckCircle2, Circle, Clock, Phone, CalendarCheck, RefreshCw,
   AlertTriangle, Plus, X, Trash2, ChevronLeft, ChevronRight, Zap,
-  CheckSquare, Square,
+  CheckSquare, Square, Cake,
 } from "lucide-react";
 import Pill from "../components/ui/Pill";
 import Button from "../components/ui/Button";
@@ -17,12 +17,14 @@ const typeIcon: Record<string, React.ReactNode> = {
   callback: <Phone size={14} className="text-[#3B7FED]" />,
   followup: <RefreshCw size={14} className="text-[#F5A623]" />,
   confirm_appointment: <CalendarCheck size={14} className="text-[#00C9A7]" />,
+  birthday: <Cake size={14} className="text-[#5B4CF5]" />,
 };
 
 const typeLabel: Record<string, string> = {
   callback: "Перезвонить",
   followup: "Напоминание",
   confirm_appointment: "Подтвердить визит",
+  birthday: "День рождения",
   other: "Другое",
 };
 

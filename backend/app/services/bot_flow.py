@@ -146,6 +146,7 @@ _MAIN_MENU = [
     ("💬 Задать вопрос", "ask"),
     ("📋 Мои визиты и оплаты", "history"),
     ("🎁 Бонусная программа", "bonus"),
+    ("☎️ Изменить номер телефона", "change_phone"),
     ("📞 Связаться с менеджером", "manager"),
     ("ℹ️ Помощь", "help"),
 ]
@@ -179,6 +180,35 @@ def kb_back_main() -> dict:
         "tg": _tg([[_tg_btn("🔙 Главное меню", "menu")]]),
         "max": [[_max_btn("🔙 Главное меню", "menu")]],
     }
+
+
+def kb_history() -> dict:
+    """Клавиатура под историей визитов — с возможностью изменить номер."""
+    return {
+        "tg": _tg([
+            [_tg_btn("☎️ Изменить номер телефона", "change_phone")],
+            [_tg_btn("🔙 Главное меню", "menu")],
+        ]),
+        "max": [
+            [_max_btn("☎️ Изменить номер", "change_phone")],
+            [_max_btn("🔙 Главное меню", "menu")],
+        ],
+    }
+
+
+def kb_patient_choice(candidates: list[tuple[str, str]]) -> dict:
+    """Выбор пациента, когда по номеру найдено несколько карт.
+
+    ``candidates`` — список (patient_id, label). Добавляем пункт «Нет такого
+    пациента» (номер попал по ошибке) и возврат в меню.
+    """
+    tg_rows = [[_tg_btn(label, f"pick_patient:{pid}")] for pid, label in candidates]
+    tg_rows.append([_tg_btn("🚫 Нет такого пациента", "no_patient")])
+    tg_rows.append([_tg_btn("🔙 Главное меню", "menu")])
+    max_rows = [[_max_btn(label, f"pick_patient:{pid}")] for pid, label in candidates]
+    max_rows.append([_max_btn("🚫 Нет такого пациента", "no_patient")])
+    max_rows.append([_max_btn("🔙 Главное меню", "menu")])
+    return {"tg": _tg(tg_rows), "max": max_rows}
 
 
 def kb_lead_saved(change_payload: str) -> dict:
@@ -364,26 +394,48 @@ async def process(
         return reply("Введите ваше имя, и менеджер свяжется с вами в ближайшее время:", kb_cancel())
 
     if payload == "history":
-        patient = await _resolve_patient(db, channel, uid)
-        if patient is None:
-            await set_state(channel, uid, {**state, "step": "link_phone", "after": "history"})
-            return reply(
-                "Чтобы показать историю визитов, укажите номер телефона, "
-                "по которому вы записаны в клинике:",
-                kb_request_phone(),
-            )
-        return reply(await _format_history(db, patient), kb_back_main())
+        return await _resolve_and_dispatch(
+            db, channel, uid, "history",
+            "Чтобы показать историю визитов, укажите номер телефона, "
+            "по которому вы записаны в клинике:",
+        )
 
     if payload == "bonus":
-        patient = await _resolve_patient(db, channel, uid)
+        return await _resolve_and_dispatch(
+            db, channel, uid, "bonus",
+            "Чтобы открыть бонусную программу, укажите номер телефона, "
+            "по которому вы записаны в клинике:",
+        )
+
+    if payload == "change_phone":
+        return await _resolve_and_dispatch(
+            db, channel, uid, "change_phone",
+            "Чтобы изменить номер, сначала укажите ваш текущий номер телефона, "
+            "по которому вы записаны в клинике:",
+        )
+
+    if payload.startswith("pick_patient:"):
+        pid = payload.split(":", 1)[1]
+        after = state.get("after", "history")
+        candidates = state.get("candidates") or []
+        if candidates and pid not in candidates:
+            return reply("Этот выбор уже неактуален. Откройте раздел заново из меню.", kb_main())
+        patient = await _get_patient_by_id(db, pid)
         if patient is None:
-            await set_state(channel, uid, {**state, "step": "link_phone", "after": "bonus"})
-            return reply(
-                "Чтобы открыть бонусную программу, укажите номер телефона, "
-                "по которому вы записаны в клинике:",
-                kb_request_phone(),
-            )
-        return reply(await _format_bonus(db, patient), kb_bonus())
+            return reply("Не удалось найти выбранного пациента. Попробуйте снова из меню.", kb_main())
+        await _set_linked_patient(db, channel, uid, patient.id)
+        return await _dispatch_after(db, channel, uid, patient, after)
+
+    if payload == "no_patient":
+        bad_phone = state.get("phone") or await _stored_phone(db, channel, uid) or ""
+        candidate_ids = state.get("candidates") or []
+        await clear_state(channel, uid)
+        await _notify_bad_phone(db, channel, bad_phone, candidate_ids)
+        return reply(
+            "Спасибо! Мы передали администратору, что этот номер требует проверки. "
+            "Если у вас другой номер — укажите его через «☎️ Изменить номер телефона».",
+            kb_main(),
+        )
 
     if payload == "bonus_review":
         patient = await _resolve_patient(db, channel, uid)
@@ -488,23 +540,52 @@ async def process(
                                 chat_id=saved_chat_id, channel_uid=str(uid))
         return reply("Спасибо! Наш администратор свяжется с вами для записи.", kb_main())
 
+    if step == "pick_patient":
+        # Ожидаем нажатие кнопки выбора; текст — повторно показываем выбор.
+        cand_ids = state.get("candidates") or []
+        patients = [p for p in [await _get_patient_by_id(db, pid) for pid in cand_ids] if p is not None]
+        if patients:
+            candidates = [(str(p.id), _patient_label(p)) for p in patients]
+            return reply("Пожалуйста, выберите пациента кнопкой ниже:", kb_patient_choice(candidates))
+        await clear_state(channel, uid)
+        return reply("Откройте нужный раздел заново из меню.", kb_main())
+
     if step == "link_phone":
         phone = text.strip()
         if not phone:
             return reply("Пожалуйста, введите номер телефона:", kb_request_phone())
         after = state.get("after", "history")
-        await clear_state(channel, uid)
         await _update_bot_user_phone(db, channel, str(uid), phone)
-        patient = await _find_patient_by_phone(db, phone)
-        if patient is None:
+        patients = await _find_patients_by_phone(db, phone)
+        if len(patients) == 0:
+            await clear_state(channel, uid)
             return reply(
                 "К сожалению, мы не нашли карту пациента с таким номером. "
                 "Проверьте номер или обратитесь к администратору клиники.",
                 kb_main(),
             )
-        if after == "bonus":
-            return reply(await _format_bonus(db, patient), kb_bonus())
-        return reply(await _format_history(db, patient), kb_back_main())
+        if len(patients) > 1:
+            return await _present_choice(channel, uid, patients, phone, after)
+        await _set_linked_patient(db, channel, uid, patients[0].id)
+        return await _dispatch_after(db, channel, uid, patients[0], after)
+
+    if step == "change_phone_new":
+        new_phone = text.strip()
+        if not new_phone:
+            return reply("Пожалуйста, введите новый номер телефона:", kb_cancel())
+        patient_id = state.get("patient_id")
+        await clear_state(channel, uid)
+        ok = await _apply_phone_change(db, channel, str(uid), patient_id, new_phone)
+        if ok:
+            return reply(
+                f"Готово! Ваш номер обновлён на <b>{new_phone}</b> — "
+                "изменения сохранены в клинике.",
+                kb_main(),
+            )
+        return reply(
+            "Не удалось обновить номер. Попробуйте позже или обратитесь к администратору клиники.",
+            kb_main(),
+        )
 
     if step == "review_wait":
         # Ожидаем изображение; текст вместо фото — подсказка (фото ловится в вебхуке)
@@ -898,8 +979,15 @@ async def _find_patient_by_phone(db, phone: str):
 
 
 async def _resolve_patient(db, channel: str, uid):
-    """Найти пациента, связанного с этим пользователем бота (по телефону BotUser)."""
+    """Найти пациента, связанного с этим пользователем бота.
+
+    Приоритет — явно выбранная карта (BotUser.patient_id, когда по номеру было
+    несколько пациентов). Иначе ищем по сохранённому телефону.
+    """
     try:
+        linked = await _linked_patient(db, channel, uid)
+        if linked is not None:
+            return linked
         from sqlalchemy import select
         from app.models.bot_user import BotUser
         phone = (await db.execute(
@@ -913,6 +1001,224 @@ async def _resolve_patient(db, channel: str, uid):
     except Exception:
         logger.warning("bot_flow: resolve_patient failed")
         return None
+
+
+async def _find_patients_by_phone(db, phone: str) -> list:
+    """Все пациенты с этим номером (телефон или телефон представителя).
+
+    По одному номеру может быть несколько карт: родитель и ребёнок, номер
+    друга. Нормализуем по последним 10 цифрам. Возвращаем список без дублей.
+    """
+    try:
+        from sqlalchemy import func, or_, select
+        from app.models.patient import Patient
+
+        digits = "".join(c for c in phone if c.isdigit())[-10:]
+        if len(digits) < 10:
+            # Слишком короткий номер — только точное совпадение.
+            rows = (await db.execute(
+                select(Patient).where(Patient.phone == phone)
+            )).scalars().all()
+            return list(rows)
+
+        norm_phone = func.right(func.regexp_replace(Patient.phone, r"[^0-9]", "", "g"), 10)
+        norm_rep = func.right(
+            func.regexp_replace(func.coalesce(Patient.representative_phone, ""), r"[^0-9]", "", "g"), 10
+        )
+        rows = (await db.execute(
+            select(Patient)
+            .where(or_(norm_phone == digits, norm_rep == digits))
+            .order_by(Patient.created_at)
+        )).scalars().all()
+        # Дедуп по id (на случай совпадения обоих условий).
+        seen: set = set()
+        result = []
+        for p in rows:
+            if p.id not in seen:
+                seen.add(p.id)
+                result.append(p)
+        return result
+    except Exception:
+        logger.warning("bot_flow: find_patients_by_phone failed", exc_info=True)
+        # Фоллбэк на одиночный поиск.
+        one = await _find_patient_by_phone(db, phone)
+        return [one] if one is not None else []
+
+
+async def _get_patient_by_id(db, patient_id: str):
+    try:
+        import uuid as _uuid
+        from app.models.patient import Patient
+        return await db.get(Patient, _uuid.UUID(str(patient_id)))
+    except Exception:
+        return None
+
+
+async def _linked_patient(db, channel: str, uid):
+    """Пациент, явно привязанный к пользователю бота (BotUser.patient_id)."""
+    try:
+        from sqlalchemy import select
+        from app.models.bot_user import BotUser
+        pid = (await db.execute(
+            select(BotUser.patient_id).where(
+                BotUser.channel == _db_channel(channel), BotUser.user_id == str(uid)
+            )
+        )).scalar_one_or_none()
+        if not pid:
+            return None
+        from app.models.patient import Patient
+        return await db.get(Patient, pid)
+    except Exception:
+        return None
+
+
+async def _stored_phone(db, channel: str, uid) -> str | None:
+    try:
+        from sqlalchemy import select
+        from app.models.bot_user import BotUser
+        return (await db.execute(
+            select(BotUser.phone).where(
+                BotUser.channel == _db_channel(channel), BotUser.user_id == str(uid)
+            )
+        )).scalar_one_or_none()
+    except Exception:
+        return None
+
+
+async def _set_linked_patient(db, channel: str, uid, patient_id) -> None:
+    try:
+        from sqlalchemy import update as sa_update
+        from app.models.bot_user import BotUser
+        await db.execute(
+            sa_update(BotUser)
+            .where(BotUser.channel == _db_channel(channel), BotUser.user_id == str(uid))
+            .values(patient_id=patient_id)
+        )
+        await db.commit()
+    except Exception:
+        logger.warning("bot_flow: could not set linked patient")
+
+
+def _patient_label(patient) -> str:
+    """Подпись пациента на кнопке выбора: имя + год рождения (если есть)."""
+    name = (patient.name or "Пациент").strip()
+    bd = getattr(patient, "birth_date", None)
+    if bd:
+        return f"{name} ({bd.strftime('%d.%m.%Y')})"[:40]
+    return name[:40]
+
+
+async def _resolve_and_dispatch(db, channel: str, uid, after: str, ask_text: str) -> dict:
+    """Найти пациента для действия (history/bonus/change_phone) и продолжить.
+
+    Если карта одна — сразу продолжаем; если несколько — показываем выбор;
+    если неизвестна — просим номер телефона.
+    """
+    patient = await _linked_patient(db, channel, uid)
+    if patient is not None:
+        return await _dispatch_after(db, channel, uid, patient, after)
+
+    phone = await _stored_phone(db, channel, uid)
+    if phone:
+        patients = await _find_patients_by_phone(db, phone)
+        if len(patients) == 1:
+            await _set_linked_patient(db, channel, uid, patients[0].id)
+            return await _dispatch_after(db, channel, uid, patients[0], after)
+        if len(patients) > 1:
+            return await _present_choice(channel, uid, patients, phone, after)
+
+    await set_state(channel, uid, {"step": "link_phone", "after": after})
+    return reply(ask_text, kb_request_phone())
+
+
+async def _present_choice(channel: str, uid, patients: list, phone: str, after: str) -> dict:
+    """Показать выбор пациента (несколько карт по одному номеру)."""
+    candidates = [(str(p.id), _patient_label(p)) for p in patients[:8]]
+    await set_state(channel, uid, {
+        "step": "pick_patient",
+        "after": after,
+        "phone": phone,
+        "candidates": [c[0] for c in candidates],
+    })
+    return reply(
+        "По этому номеру найдено несколько пациентов. Уточните, кто именно "
+        "имеется в виду:",
+        kb_patient_choice(candidates),
+    )
+
+
+async def _dispatch_after(db, channel: str, uid, patient, after: str) -> dict:
+    """Продолжить действие после того, как пациент определён."""
+    await clear_state(channel, uid)
+    if after == "bonus":
+        return reply(await _format_bonus(db, patient), kb_bonus())
+    if after == "change_phone":
+        await set_state(channel, uid, {"step": "change_phone_new", "patient_id": str(patient.id)})
+        return reply(
+            f"{patient.name}, введите новый номер телефона — обновим его "
+            "в клинике:",
+            kb_cancel(),
+        )
+    return reply(await _format_history(db, patient), kb_history())
+
+
+async def _apply_phone_change(db, channel: str, uid, patient_id, new_phone: str) -> bool:
+    """Изменить номер пациента: в DentaFlow, у пользователя бота и в 1Denta."""
+    try:
+        from app.models.patient import Patient
+        patient = await _get_patient_by_id(db, patient_id) if patient_id else None
+        if patient is None:
+            patient = await _linked_patient(db, channel, uid)
+        if patient is None:
+            return False
+
+        patient.phone = new_phone
+        await db.commit()
+
+        # Обновляем сохранённый телефон пользователя бота (связь сохраняем).
+        await _update_bot_user_phone(db, channel, str(uid), new_phone)
+
+        # Синхронизируем с 1Denta, если карта заведена там.
+        if patient.external_id:
+            try:
+                from app.services.one_denta import OneDentaService
+                svc = await OneDentaService.from_db(db)
+                normalized = OneDentaService.normalize_phone(new_phone)
+                await svc.update_client(patient.external_id, phone=normalized)
+            except Exception:
+                logger.warning("bot_flow: 1Denta phone sync failed", exc_info=True)
+                # Локально номер уже изменён — считаем операцию успешной.
+        return True
+    except Exception:
+        logger.exception("bot_flow: apply_phone_change failed")
+        return False
+
+
+async def _notify_bad_phone(db, channel: str, phone: str, candidate_ids: list) -> None:
+    """Уведомить администратора, что номер, возможно, попал в базу по ошибке."""
+    try:
+        from app.services.notifications_service import upsert_event_notification
+
+        names = []
+        for pid in (candidate_ids or [])[:8]:
+            p = await _get_patient_by_id(db, pid)
+            if p is not None:
+                names.append(p.name or "без имени")
+        who = ", ".join(names) if names else "—"
+        _label = "Telegram" if _db_channel(channel) == "telegram" else "Max / VK"
+        await upsert_event_notification(
+            db,
+            type="bad_phone",
+            title="Проверьте номер пациента",
+            body=(
+                f"Пользователь {_label} указал, что по номеру {phone or '—'} "
+                f"нет его карты. Совпавшие карты: {who}. Возможно, номер "
+                "некорректен или попал в базу по ошибке."
+            )[:300],
+            link=f"/patients?phone={phone}",
+        )
+    except Exception:
+        logger.warning("bot_flow: failed to create bad-phone notification", exc_info=True)
 
 
 def _fmt_money(value) -> str:

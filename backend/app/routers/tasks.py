@@ -17,6 +17,7 @@ from app.schemas.task import (
 )
 from app.services.tasks_service import (
     create_auto_tasks_for_today,
+    create_birthday_reminders_for_tomorrow,
     create_task,
     delete_task,
     delete_tasks_bulk,
@@ -39,6 +40,19 @@ async def generate_auto_tasks(
     idempotent — appointments that already have an auto task today are skipped.
     """
     return await create_auto_tasks_for_today(db)
+
+
+@router.post("/generate-birthday-reminders")
+async def generate_birthday_reminders(
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> dict:
+    """Создать напоминания о завтрашних днях рождения на месте.
+
+    Дублирует ежедневную Celery-задачу (create_birthday_reminders); идемпотентно
+    в пределах дня.
+    """
+    return await create_birthday_reminders_for_tomorrow(db)
 
 
 @router.get("/count")

@@ -45,6 +45,14 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Сотрудники без пароля (без доступа в систему) не могут авторизоваться.
+    if not user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         password_ok = verify_password(body.password, user.password_hash)
     except Exception:

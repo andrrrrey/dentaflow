@@ -19,6 +19,7 @@ from app.routers import (
     dashboard,
     deals,
     directories,
+    doctor_profiles,
     doctors,
     integrations,
     knowledge_base,
@@ -169,6 +170,7 @@ app.include_router(staff.router)
 app.include_router(integrations.router)
 app.include_router(scripts.router)
 app.include_router(directories.router)
+app.include_router(doctor_profiles.router)
 app.include_router(reports.router)
 app.include_router(pipeline_stages.router)
 app.include_router(marketing.router)

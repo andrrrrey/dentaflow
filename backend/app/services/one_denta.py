@@ -326,6 +326,34 @@ class OneDentaService:
         data = await self._request("POST", "/api/v2/client", json_body={"client": client_body})
         return data.get("client", data)
 
+    async def update_client(
+        self,
+        client_id: int | str,
+        *,
+        phone: str | None = None,
+        additional_phone: str | None = None,
+        name: str | None = None,
+        email: str | None = None,
+    ) -> dict:
+        """Update an existing client in 1Denta (e.g. changed phone number).
+
+        Mirrors ``update_visit`` — only the passed fields are sent. Used when a
+        patient changes their phone via the bot so 1Denta stays in sync.
+        """
+        client_body: dict[str, Any] = {}
+        if phone is not None:
+            client_body["phone"] = phone
+        if additional_phone is not None:
+            client_body["additionalPhone"] = additional_phone
+        if name is not None:
+            client_body["name"] = name
+        if email is not None:
+            client_body["email"] = email
+        data = await self._request(
+            "PUT", f"/api/v2/client/{client_id}", json_body={"client": client_body}
+        )
+        return data.get("client", data)
+
     # ------------------------------------------------------------------
     # Appointments / Visits
     # ------------------------------------------------------------------

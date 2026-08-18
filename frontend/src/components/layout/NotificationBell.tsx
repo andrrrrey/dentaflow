@@ -11,6 +11,7 @@ import {
   X,
   MessageCircle,
   Inbox,
+  Cake,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -32,6 +33,10 @@ function typeIcon(type: string | null) {
       return <AlertTriangle size={14} className="text-warning" />;
     case "ai_alert":
       return <Bot size={14} className="text-accent2" />;
+    case "birthday":
+      return <Cake size={14} className="text-accent2" />;
+    case "bad_phone":
+      return <PhoneMissed size={14} className="text-warning" />;
     default:
       return <Bell size={14} className="text-text-muted" />;
   }

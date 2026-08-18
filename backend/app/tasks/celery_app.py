@@ -80,6 +80,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.auto_tasks.create_yesterday_followup_tasks",
         "schedule": crontab(hour=3, minute=5),  # 03:05 Moscow = 08:05 Улан-Удэ
     },
+    # Напоминания о днях рождения сотрудников и врачей — за 1 день.
+    "create-birthday-reminders": {
+        "task": "app.tasks.birthday_reminders.create_birthday_reminders",
+        "schedule": crontab(hour=3, minute=10),  # 03:10 Moscow = 08:10 Улан-Удэ
+    },
     # ИИ-обзвон: диспетчер кампаний (расписание/окна/слоты).
     "ai-calling-tick": {
         "task": "app.tasks.ai_calling.tick_campaigns",
@@ -99,6 +104,7 @@ celery_app.conf.include = [
     "app.tasks.daily_report",
     "app.tasks.bot_reminders",
     "app.tasks.auto_tasks",
+    "app.tasks.birthday_reminders",
     "app.tasks.segments",
     "app.tasks.ai_calling",
 ]
