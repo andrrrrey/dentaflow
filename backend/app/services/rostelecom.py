@@ -458,22 +458,23 @@ class RostelecomService:
         reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
         return [dict(row) for row in reader]
 
-    def _decode_history_response(self, resp: httpx.Response) -> list[dict] | None:
-        """Разобрать ответ ``download_call_history``.
+    @staticmethod
+    def _extract_history_text(raw: bytes) -> tuple[str, str | None]:
+        """Достать CSV-текст из ответа download_call_history.
 
-        Возвращает список строк журнала, когда файл готов (в т.ч. пустой список —
-        готов, но вызовов нет), либо ``None``, когда файл ещё НЕ сформирован
-        (сервер прислал JSON-ошибку/пустой ответ) — сигнал для повторной попытки.
+        Возвращает пару ``(kind, text)``: ``kind`` — распознанный формат тела
+        (gzip/zip/csv/json-err/empty), ``text`` — распакованный CSV-текст либо
+        ``None``, если тело не является журналом (JSON-ошибка/пустой/битый архив
+        — сигнал «файл ещё не готов, повторить»).
         """
-        raw = resp.content or b""
+        if not raw:
+            return "empty", None
         # gzip-архив с CSV (штатный ответ на готовый файл по руководству)
         if raw[:2] == b"\x1f\x8b":
             try:
-                text = gzip.decompress(raw).decode("utf-8", errors="replace")
+                return "gzip", gzip.decompress(raw).decode("utf-8", errors="replace")
             except (OSError, EOFError):
-                return None
-            return self._parse_history_csv(text)
-
+                return "gzip-bad", None
         # ZIP-архив (ЛК ВАТС отдаёт выгрузки в ZIP; на всякий случай поддержим).
         if raw[:2] == b"PK":
             import zipfile
@@ -481,20 +482,30 @@ class RostelecomService:
             try:
                 with zipfile.ZipFile(io.BytesIO(raw)) as zf:
                     names = [n for n in zf.namelist() if n.lower().endswith(".csv")] or zf.namelist()
-                    rows: list[dict] = []
-                    for name in names:
-                        text = zf.read(name).decode("utf-8", errors="replace")
-                        rows.extend(self._parse_history_csv(text))
-                    return rows
+                    parts = [zf.read(n).decode("utf-8", errors="replace") for n in names]
+                    return "zip", "\n".join(parts)
             except (zipfile.BadZipFile, OSError):
-                return None
-
+                return "zip-bad", None
         text = raw.decode("utf-8", errors="replace")
         stripped = text.lstrip()
         # JSON (ошибка/файл ещё не готов) — не CSV, просим повторить попытку.
-        if not stripped or stripped[0] in "{[":
-            return None
+        if not stripped:
+            return "empty", None
+        if stripped[0] in "{[":
+            return "json/err", None
         # Некоторые серверы отдают plain-CSV без архивации — тоже валидный журнал.
+        return "csv", text
+
+    def _decode_history_response(self, resp: httpx.Response) -> list[dict] | None:
+        """Разобрать ответ ``download_call_history``.
+
+        Возвращает список строк журнала, когда файл готов (в т.ч. пустой список —
+        готов, но вызовов нет), либо ``None``, когда файл ещё НЕ сформирован
+        (сервер прислал JSON-ошибку/пустой ответ) — сигнал для повторной попытки.
+        """
+        _kind, text = self._extract_history_text(resp.content or b"")
+        if text is None:
+            return None
         return self._parse_history_csv(text)
 
     async def download_call_history(self, order_id: str) -> list[dict]:
@@ -507,8 +518,27 @@ class RostelecomService:
         rows = self._decode_history_response(resp)
         return rows or []
 
+    def _diag_response(self, resp: httpx.Response, rows: list[dict] | None) -> dict:
+        """Краткая диагностика ответа download_call_history для показа/логов.
+
+        Для архивов показываем ГОЛОВУ распакованного CSV (заголовок + первая
+        строка), чтобы было видно: файл только с шапкой (пусто) или с данными.
+        """
+        raw = resp.content or b""
+        kind, text = self._extract_history_text(raw)
+        head = (text if text is not None else raw.decode("utf-8", errors="replace"))[:200]
+        return {
+            "status": resp.status_code,
+            "bytes": len(raw),
+            "ctype": resp.headers.get("content-type", ""),
+            "kind": kind,
+            "rows": "not-ready" if rows is None else len(rows),
+            "head": head.replace("\n", " ⏎ ").strip(),
+        }
+
     async def fetch_call_history(
-        self, order_id: str, *, attempts: int = 6, delay: float = 2.0
+        self, order_id: str, *, attempts: int = 6, delay: float = 2.0,
+        trace: list | None = None,
     ) -> list[dict] | None:
         """Дождаться готовности файла и скачать журнал (синхронная выгрузка).
 
@@ -536,13 +566,17 @@ class RostelecomService:
                     "download_call_history", {"order_id": order_id}, timeout=60.0
                 )
                 rows = self._decode_history_response(resp)
+                diag = self._diag_response(resp, rows)
                 logger.info(
-                    "Rostelecom download_call_history poll #%d (order=%s): status=%s bytes=%d rows=%s",
-                    i + 1, order_id, resp.status_code, len(resp.content or b""),
-                    "not-ready" if rows is None else len(rows),
+                    "Rostelecom download_call_history poll #%d (order=%s): %s",
+                    i + 1, order_id, diag,
                 )
+                if trace is not None:
+                    trace.append({"poll": i + 1, **diag})
             except Exception as exc:  # noqa: BLE001
                 logger.debug("download_call_history poll error (order=%s): %s", order_id, exc)
+                if trace is not None:
+                    trace.append({"poll": i + 1, "error": str(exc)[:200]})
                 rows = None
             if rows:  # непустой журнал — готово
                 return rows

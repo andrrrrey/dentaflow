@@ -24,6 +24,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
 
+def _json_compact(obj) -> str:
+    """Читаемый JSON для показа диагностики в alert (с отступами, кириллица как есть)."""
+    return json.dumps(obj, ensure_ascii=False, indent=2)
+
+
+def _rostelecom_debug_summary(debug: dict) -> str:
+    """Компактная сводка диагностики Ростелекома для показа в alert (скриншот)."""
+    lines = [
+        "Ростелеком вернул пустой журнал (0 звонков за период).",
+        f"Период: {debug.get('date_from', '')[:19]} … {debug.get('date_to', '')[:19]} (UTC)",
+        "",
+    ]
+    for att in debug.get("attempts", []):
+        fmt = "epoch" if att.get("date_epoch") else "строка-даты"
+        polls = att.get("polls") or []
+        line = f"• Формат {fmt}: order_id={att.get('order_id', '') or '—'}, попыток={len(polls)}"
+        if att.get("error"):
+            line += f", ОШИБКА: {att['error']}"
+        lines.append(line)
+        last = polls[-1] if polls else None
+        if last:
+            lines.append(
+                f"    ответ ВАТС: status={last.get('status')} "
+                f"формат={last.get('kind')} байт={last.get('bytes')} строк={last.get('rows')}"
+            )
+            if last.get("head"):
+                lines.append(f"    начало файла: {last['head'][:160]}")
+    lines.append("")
+    lines.append("Пришлите этот текст (скриншот) — по нему видно, что именно вернула ВАТС.")
+    return "\n".join(lines)
+
+
 def _parse_call_record(comm: Communication) -> dict:
     caller_id = ""
     called_did = ""
@@ -369,19 +401,31 @@ async def sync_calls(
         rows: list[dict] | None = None
         last_order_id = ""
         last_error: Exception | None = None
+        debug: dict = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "attempts": [],
+        }
         # Строковый формат дат — из примера руководства, даём ему больше попыток
         # (файл может дозаполняться пару секунд); epoch — запасной вариант.
         for date_as_epoch, attempts in ((False, 8), (True, 5)):
+            trace: list = []
+            attempt_info: dict = {"date_epoch": date_as_epoch}
             try:
                 order_id = await svc.request_call_history(
                     date_from, date_to, date_as_epoch=date_as_epoch
                 )
                 last_order_id = order_id or last_order_id
-                fetched = await svc.fetch_call_history(order_id, attempts=attempts)
+                attempt_info["order_id"] = order_id
+                fetched = await svc.fetch_call_history(order_id, attempts=attempts, trace=trace)
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                attempt_info["error"] = str(exc)[:300]
+                debug["attempts"].append(attempt_info)
                 logger.warning("Rostelecom sync attempt (epoch=%s) failed: %s", date_as_epoch, exc)
                 continue
+            attempt_info["polls"] = trace
+            debug["attempts"].append(attempt_info)
             if fetched:  # непустой журнал — этот формат дат подошёл
                 rows = fetched
                 break
@@ -392,7 +436,7 @@ async def sync_calls(
         if rows is None and last_error is not None:
             raise _HTTPException(status_code=502, detail=f"rostelecom API error: {last_error}")
 
-        if rows is not None:
+        if rows:
             result = await import_rostelecom_history(db, rows)
             result["order_id"] = last_order_id
             result["message"] = (
@@ -402,15 +446,13 @@ async def sync_calls(
             )
             return result
 
-        return {
-            "status": "requested",
-            "order_id": last_order_id,
-            "message": (
-                "История домена Ростелеком запрошена. Файл ещё формируется — он "
-                "импортируется автоматически, как только будет готов. Обновите "
-                "страницу через минуту."
-            ),
-        }
+        # Ничего не импортировано (пустой журнал или файл не готов) — вернём
+        # диагностику, чтобы было видно реальный ответ ВАТС без доступа к логам.
+        result = await import_rostelecom_history(db, rows or [])
+        result["order_id"] = last_order_id
+        result["debug"] = debug
+        result["message"] = _rostelecom_debug_summary(debug)
+        return result
 
     if not await get_raw_value(db, "novofon_api_key"):
         return {"synced": 0, "skipped": 0, "message": "Novofon API key not configured"}
