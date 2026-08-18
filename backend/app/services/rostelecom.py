@@ -410,15 +410,26 @@ class RostelecomService:
         date_to: datetime | None,
         direction: int = 0,
         state: int = 0,
+        *,
+        date_as_epoch: bool = False,
     ) -> str:
         """Запрос на формирование файла журнала (метод ``domain_call_history``).
 
-        Возвращает ``order_id`` — файл придёт асинхронно вебхуком
-        ``history_file_completed`` и скачивается через ``download_call_history``.
+        Возвращает ``order_id`` — файл скачивается через ``download_call_history``
+        (см. ``fetch_call_history``), либо приходит вебхуком
+        ``history_file_completed``.
+
+        Формат ``date_start``/``date_end`` в руководстве описан противоречиво:
+        поле названо «Timestamp», но пример показывает строку ``yyyy-MM-dd
+        HH:mm:ss``. Поэтому поддерживаем оба варианта: строку по Москве
+        (``date_as_epoch=False``) и unix-timestamp (``date_as_epoch=True``) —
+        синк перебирает оба, если первый вернул пустой журнал.
         """
         def _fmt(dt: datetime | None) -> str:
             if not dt:
                 return ""
+            if date_as_epoch:
+                return str(int(dt.timestamp()))
             from zoneinfo import ZoneInfo
             return dt.astimezone(ZoneInfo("Europe/Moscow")).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -428,10 +439,13 @@ class RostelecomService:
             "direction": direction,
             "state": state,
         }
+        logger.info("Rostelecom domain_call_history request (epoch=%s): %s", date_as_epoch, payload)
         resp = await self._post("domain_call_history", payload)
         data = resp.json()
         if str(data.get("result")) == "0":
-            return str(data.get("order_id") or "")
+            order_id = str(data.get("order_id") or "")
+            logger.info("Rostelecom domain_call_history order_id=%s", order_id)
+            return order_id
         raise RuntimeError(f"domain_call_history: {data.get('resultMessage') or data}")
 
     @staticmethod
@@ -452,7 +466,7 @@ class RostelecomService:
         (сервер прислал JSON-ошибку/пустой ответ) — сигнал для повторной попытки.
         """
         raw = resp.content or b""
-        # gzip-архив с CSV (штатный ответ на готовый файл)
+        # gzip-архив с CSV (штатный ответ на готовый файл по руководству)
         if raw[:2] == b"\x1f\x8b":
             try:
                 text = gzip.decompress(raw).decode("utf-8", errors="replace")
@@ -460,12 +474,27 @@ class RostelecomService:
                 return None
             return self._parse_history_csv(text)
 
+        # ZIP-архив (ЛК ВАТС отдаёт выгрузки в ZIP; на всякий случай поддержим).
+        if raw[:2] == b"PK":
+            import zipfile
+
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                    names = [n for n in zf.namelist() if n.lower().endswith(".csv")] or zf.namelist()
+                    rows: list[dict] = []
+                    for name in names:
+                        text = zf.read(name).decode("utf-8", errors="replace")
+                        rows.extend(self._parse_history_csv(text))
+                    return rows
+            except (zipfile.BadZipFile, OSError):
+                return None
+
         text = raw.decode("utf-8", errors="replace")
         stripped = text.lstrip()
         # JSON (ошибка/файл ещё не готов) — не CSV, просим повторить попытку.
         if not stripped or stripped[0] in "{[":
             return None
-        # Некоторые серверы отдают plain-CSV без gzip — тоже валидный журнал.
+        # Некоторые серверы отдают plain-CSV без архивации — тоже валидный журнал.
         return self._parse_history_csv(text)
 
     async def download_call_history(self, order_id: str) -> list[dict]:
@@ -486,28 +515,42 @@ class RostelecomService:
         Опрашиваем ``download_call_history`` по уже полученному ``order_id`` с
         короткими паузами, не дожидаясь вебхука ``history_file_completed``. Так
         кнопка «Синхронизировать» импортирует историю сразу, не завися от
-        обратного вебхука ВАТС. Возвращает список строк журнала, когда файл
-        готов, либо ``None``, если за отведённые попытки он так и не сформировался
-        (тогда импорт завершит вебхук).
+        обратного вебхука ВАТС.
+
+        Важно: сразу после ``domain_call_history`` файл ещё формируется, и ВАТС
+        может отдать по ``order_id`` ПУСТОЙ (или ещё не готовый) архив. Поэтому
+        пустой результат тоже считаем «ещё не готово» и продолжаем опрос — иначе
+        синк завершился бы нулём, хотя вызовы в журнале есть. Возвращаем:
+          * непустой список — как только в файле появились строки;
+          * ``[]`` — файл сформирован, но за отведённое время остался пустым;
+          * ``None`` — файл так и не отдался (тогда импорт завершит вебхук).
         """
         import asyncio
 
         if not order_id:
             return None
+        last_ready: list[dict] | None = None
         for i in range(max(1, attempts)):
             try:
                 resp = await self._post(
                     "download_call_history", {"order_id": order_id}, timeout=60.0
                 )
                 rows = self._decode_history_response(resp)
+                logger.info(
+                    "Rostelecom download_call_history poll #%d (order=%s): status=%s bytes=%d rows=%s",
+                    i + 1, order_id, resp.status_code, len(resp.content or b""),
+                    "not-ready" if rows is None else len(rows),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("download_call_history poll error (order=%s): %s", order_id, exc)
                 rows = None
-            if rows is not None:
+            if rows:  # непустой журнал — готово
                 return rows
+            if rows == []:  # файл готов, но пока пустой — подождём, вдруг дозаполнится
+                last_ready = []
             if i < attempts - 1:
                 await asyncio.sleep(delay)
-        return None
+        return last_ready
 
     # Единый контракт с NovofonService: синхронная история недоступна
     # (журнал домена выгружается асинхронно), возвращаем пустой список.
