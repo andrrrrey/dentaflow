@@ -185,7 +185,7 @@ function App() {
         <Route
           path="/staff"
           element={
-            <ProtectedRoute denyRoles={["admin"]}>
+            <ProtectedRoute>
               <AppLayout title="Сотрудники">
                 <Staff />
               </AppLayout>

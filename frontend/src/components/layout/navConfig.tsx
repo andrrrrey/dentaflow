@@ -63,7 +63,7 @@ export const sections: NavSection[] = [
       { label: "Бонусная программа", icon: <Gift size={15} />, path: "/loyalty/settings" },
       { label: "Справочники", icon: <BookOpen size={15} />, path: "/directories" },
       { label: "Отчёты", icon: <FileBarChart size={15} />, path: "/reports", hideForRoles: ["admin"] },
-      { label: "Сотрудники", icon: <Users size={15} />, path: "/staff", hideForRoles: ["admin"] },
+      { label: "Сотрудники", icon: <Users size={15} />, path: "/staff" },
       { label: "Настройки", icon: <Settings size={15} />, path: "/settings", hideForRoles: ["admin"] },
     ],
   },
