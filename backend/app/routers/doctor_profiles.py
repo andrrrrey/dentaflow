@@ -75,7 +75,7 @@ async def upsert_doctor_profile(
     doctor_id: str,
     body: DoctorProfileUpdate,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(role_required("owner", "manager")),
+    _current_user: User = Depends(role_required("owner", "manager", "admin")),
 ) -> dict:
     from datetime import date
 
