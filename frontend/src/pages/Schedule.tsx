@@ -6,6 +6,7 @@ import Button from "../components/ui/Button";
 import { useUiStore } from "../store/uiStore";
 import { useSchedule, useDoctorsList, useUpdateAppointment } from "../api/schedule";
 import type { Appointment } from "../api/schedule";
+import { useDoctorProfiles, getWorkingDay, type DoctorProfile } from "../api/doctorProfiles";
 import AppointmentDetailModal from "../components/schedule/AppointmentDetailModal";
 import AddAppointmentModal from "../components/schedule/AddAppointmentModal";
 
@@ -315,6 +316,7 @@ export default function Schedule() {
     status: filterStatus || undefined,
   });
   const { data: doctorsData } = useDoctorsList();
+  const { data: profilesData } = useDoctorProfiles();
   const updateAppt = useUpdateAppointment();
 
   const appointments = data?.appointments ?? [];
@@ -357,6 +359,41 @@ export default function Schedule() {
     }
     return map;
   }, [doctorsData]);
+
+  const profileByDoctorId = useMemo(() => {
+    const map = new Map<string, DoctorProfile>();
+    for (const p of profilesData?.doctors ?? []) map.set(p.doctor_id, p);
+    return map;
+  }, [profilesData]);
+
+  // Нерабочие (серые) интервалы врача на выбранную дату: выходные, время до
+  // начала / после конца смены и перерыв. Считаются как дополнение рабочих
+  // интервалов графика в пределах часов работы клиники.
+  const offIntervalsByDoctor = useMemo(() => {
+    const result = new Map<string, { start: number; end: number }[]>();
+    for (const [doctorName] of doctorsWithAppointments) {
+      const id = doctorIdByName.get(doctorName);
+      const profile = id ? profileByDoctorId.get(id) : null;
+      const wd = getWorkingDay(profile, dateStr);
+      if (!wd.restricted) {
+        result.set(doctorName, []);
+        continue;
+      }
+      const segs = wd.segments
+        .map((s) => ({ start: Math.max(s.start, CLINIC_START_MIN), end: Math.min(s.end, CLINIC_END_MIN) }))
+        .filter((s) => s.end > s.start)
+        .sort((a, b) => a.start - b.start);
+      const gaps: { start: number; end: number }[] = [];
+      let cursor = CLINIC_START_MIN;
+      for (const s of segs) {
+        if (s.start > cursor) gaps.push({ start: cursor, end: s.start });
+        cursor = Math.max(cursor, s.end);
+      }
+      if (cursor < CLINIC_END_MIN) gaps.push({ start: cursor, end: CLINIC_END_MIN });
+      result.set(doctorName, gaps);
+    }
+    return result;
+  }, [doctorsWithAppointments, doctorIdByName, profileByDoctorId, dateStr]);
 
   const gridHeight = HOURS.length * SLOT_HEIGHT;
   const doctorCount = doctorsWithAppointments.length;
@@ -460,6 +497,15 @@ export default function Schedule() {
         if (p) {
           const changedTime = p.newStartMin !== d.origStartMin;
           const changedDoctor = p.targetDoctor !== d.origDoctor && p.targetDoctor !== "Без врача";
+          // Нельзя переносить запись в нерабочее время врача (серые зоны).
+          const offRanges = offIntervalsByDoctor.get(p.targetDoctor) ?? [];
+          const droppedInOff = offRanges.some(
+            (iv) => iv.start < p.newStartMin + d.appt.duration_min && iv.end > p.newStartMin,
+          );
+          if (droppedInOff) {
+            setDrag(null);
+            return;
+          }
           if (changedTime || changedDoctor) {
             const scheduled_at = changedTime
               ? `${format(selectedDate, "yyyy-MM-dd")}T${fmtMin(p.newStartMin)}:00`
@@ -483,7 +529,7 @@ export default function Schedule() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [drag != null, computePreview, selectedDate, doctorIdByName, updateAppt]);
+  }, [drag != null, computePreview, selectedDate, doctorIdByName, updateAppt, offIntervalsByDoctor]);
 
   // Suppress the click that fires right after a drag move
   const suppressClickRef = useRef(false);
@@ -712,7 +758,12 @@ export default function Schedule() {
                           const sMin = s.getHours() * 60 + s.getMinutes();
                           return sMin < slotMin + NEW_APPT_DURATION && sMin + a.duration_min > slotMin;
                         });
-                        if (busy) {
+                        // Нерабочее время (серые зоны графика) — запись ставить нельзя.
+                        const offRanges = offIntervalsByDoctor.get(doctorName) ?? [];
+                        const inOff = offRanges.some(
+                          (iv) => iv.start < slotMin + NEW_APPT_DURATION && iv.end > slotMin,
+                        );
+                        if (busy || inOff) {
                           if (hoverSlot) setHoverSlot(null);
                         } else if (!hoverSlot || hoverSlot.doctorName !== doctorName || hoverSlot.slotMin !== slotMin) {
                           setHoverSlot({ doctorName, slotMin });
@@ -749,6 +800,22 @@ export default function Schedule() {
                           </span>
                         </div>
                       )}
+                      {/* Серые нерабочие зоны по графику врача (выходной / до / после / перерыв) */}
+                      {(offIntervalsByDoctor.get(doctorName) ?? []).map((iv, i) => (
+                        <div
+                          key={`off-${i}`}
+                          className="absolute left-0 right-0 pointer-events-none"
+                          title="Нерабочее время по графику"
+                          style={{
+                            top: ((iv.start - CLINIC_START_MIN) / 60) * SLOT_HEIGHT,
+                            height: ((iv.end - iv.start) / 60) * SLOT_HEIGHT,
+                            background: "rgba(100,116,139,0.13)",
+                            backgroundImage:
+                              "repeating-linear-gradient(45deg, rgba(100,116,139,0.09) 0, rgba(100,116,139,0.09) 6px, transparent 6px, transparent 12px)",
+                            zIndex: 2,
+                          }}
+                        />
+                      ))}
                       {/* Hour lines */}
                       {HOURS.map((h) => (
                         <div

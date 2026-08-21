@@ -100,6 +100,49 @@ export function isWithinDoctorSchedule(
   return intervalCovers(cfg, startMin, endMin);
 }
 
+/** Рабочий день врача на конкретную дату — для отрисовки серых (нерабочих) зон. */
+export interface WorkingDay {
+  /** false → график не задан, ограничивать/красить нечего. */
+  restricted: boolean;
+  /** Рабочие интервалы дня в минутах от 00:00 (перерыв уже вырезан). */
+  segments: { start: number; end: number }[];
+}
+
+/**
+ * Возвращает рабочие интервалы врача на дату `dateStr` ("YYYY-MM-DD").
+ * Учитывает исключения (отпуск/замена), затем недельный график и перерыв.
+ * Если график не задан — `restricted: false` (весь день считается рабочим).
+ */
+export function getWorkingDay(
+  profile: DoctorProfile | null | undefined,
+  dateStr: string,
+): WorkingDay {
+  if (!hasActiveSchedule(profile) || !dateStr) return { restricted: false, segments: [] };
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const jsDay = new Date(y, m - 1, d).getDay();
+  const weekday = (jsDay + 6) % 7; // Пн=0..Вс=6
+
+  let cfg: DayHours | null = null;
+  const ex = profile!.schedule_exceptions?.find((e) => e.date === dateStr);
+  if (ex) {
+    if (ex.off) return { restricted: true, segments: [] };
+    cfg = ex;
+  } else {
+    cfg = profile!.weekly_hours?.[String(weekday)] ?? null;
+  }
+
+  const ws = toMin(cfg?.start ?? null);
+  const we = toMin(cfg?.end ?? null);
+  if (!cfg || ws === null || we === null || we <= ws) return { restricted: true, segments: [] };
+
+  const bs = toMin(cfg.break_start);
+  const be = toMin(cfg.break_end);
+  if (bs !== null && be !== null && be > bs && bs >= ws && be <= we) {
+    return { restricted: true, segments: [{ start: ws, end: bs }, { start: be, end: we }] };
+  }
+  return { restricted: true, segments: [{ start: ws, end: we }] };
+}
+
 export function useUpdateDoctorProfile() {
   const qc = useQueryClient();
   return useMutation({
