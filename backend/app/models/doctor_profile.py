@@ -28,12 +28,15 @@ class DoctorProfile(Base):
     )
     doctor_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # {"0": {"start": "09:00", "end": "18:00", "break_start": "13:00"|null,
-    #        "break_end": "14:00"|null}, ...} — ключ = день недели 0..6 (Пн..Вс).
-    # Отсутствие ключа = выходной. Пустой объект = график не задан (без ограничений).
+    # {"0": {"start": "09:00", "end": "18:00",
+    #        "breaks": [{"start": "13:00", "end": "14:00"}, ...]}, ...}
+    # — ключ = день недели 0..6 (Пн..Вс). Может быть несколько перерывов.
+    # Устаревшая форма одиночного перерыва ("break_start"/"break_end") всё ещё
+    # читается для обратной совместимости. Отсутствие ключа = выходной.
+    # Пустой объект = график не задан (без ограничений).
     weekly_hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # [{"date": "YYYY-MM-DD", "off": true} | {"date", "start", "end",
-    #   "break_start"?, "break_end"?}] — исключения на конкретные даты.
+    #   "breaks"?: [{"start","end"}, ...]}] — исключения на конкретные даты.
     schedule_exceptions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

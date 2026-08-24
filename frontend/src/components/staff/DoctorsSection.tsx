@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Check, X, CalendarClock, Trash2, Stethoscope, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pencil, Check, X, CalendarClock, Trash2, Stethoscope, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { format, addDays, parseISO, startOfMonth, endOfMonth, startOfWeek, isSameMonth } from "date-fns";
 import { ru } from "date-fns/locale";
 import Card from "../ui/Card";
@@ -9,9 +9,11 @@ import { useUpdateResourceName } from "../../api/directories";
 import {
   useDoctorProfiles,
   useUpdateDoctorProfile,
+  dayBreaks,
   type DoctorProfile,
   type DayHours,
   type ScheduleException,
+  type Break,
 } from "../../api/doctorProfiles";
 
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -44,6 +46,7 @@ function scheduleSummary(d: DoctorProfile): string {
 
 interface DayState extends DayHours {
   enabled: boolean;
+  breaks: Break[];
 }
 
 /** Переопределение графика на конкретную дату (ячейка календаря). */
@@ -51,9 +54,44 @@ type DayOverride = {
   off?: boolean;
   start?: string;
   end?: string;
-  break_start?: string | null;
-  break_end?: string | null;
+  breaks?: Break[];
 };
+
+/** Нормализация значений полей перерыва (пустые/невалидные отбрасываются). */
+function cleanBreaks(list: Break[] | undefined): Break[] {
+  return (list ?? []).filter((b) => b.start && b.end && b.start < b.end);
+}
+
+/** Редактор списка перерывов дня (можно несколько). */
+function BreaksEditor({ breaks, onChange }: { breaks: Break[]; onChange: (b: Break[]) => void }) {
+  const list = breaks ?? [];
+  const patch = (i: number, p: Partial<Break>) => onChange(list.map((b, idx) => (idx === i ? { ...b, ...p } : b)));
+  return (
+    <div className="flex flex-col gap-1">
+      {list.map((b, i) => (
+        <div key={i} className="flex items-center gap-1.5 text-[12px] text-text-muted">
+          <span className="w-[52px]">перерыв</span>
+          <input type="time" value={b.start} onChange={(e) => patch(i, { start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+          <span>–</span>
+          <input type="time" value={b.end} onChange={(e) => patch(i, { end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+          <button
+            onClick={() => onChange(list.filter((_, idx) => idx !== i))}
+            title="Удалить перерыв"
+            className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-[#F44B6E] border-none bg-transparent cursor-pointer"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...list, { start: "13:00", end: "14:00" }])}
+        className="text-[12px] text-accent2 flex items-center gap-1 border-none bg-transparent cursor-pointer self-start"
+      >
+        <Plus size={13} /> Добавить перерыв
+      </button>
+    </div>
+  );
+}
 
 interface EffectiveDay extends DayOverride {
   off: boolean;
@@ -81,8 +119,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
         enabled: Boolean(cfg?.start && cfg?.end),
         start: cfg?.start ?? "09:00",
         end: cfg?.end ?? "18:00",
-        break_start: cfg?.break_start ?? "",
-        break_end: cfg?.break_end ?? "",
+        breaks: dayBreaks(cfg),
       };
     }),
   );
@@ -96,8 +133,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
         : {
             start: ex.start,
             end: ex.end,
-            break_start: ex.break_start ?? null,
-            break_end: ex.break_end ?? null,
+            breaks: dayBreaks(ex),
           };
     }
     return map;
@@ -121,7 +157,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
   function templateFor(weekday: number): DayOverride | null {
     const d = days[weekday];
     if (!d?.enabled || !d.start || !d.end) return null;
-    return { start: d.start, end: d.end, break_start: d.break_start || null, break_end: d.break_end || null };
+    return { start: d.start, end: d.end, breaks: cleanBreaks(d.breaks) };
   }
 
   /** Итоговый график даты: переопределение → недельный шаблон → не задан. */
@@ -130,7 +166,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
     if (o) {
       return o.off
         ? { off: true, source: "override" }
-        : { off: false, source: "override", start: o.start, end: o.end, break_start: o.break_start, break_end: o.break_end };
+        : { off: false, source: "override", start: o.start, end: o.end, breaks: o.breaks };
     }
     const t = templateFor(weekdayOf(dateStr));
     if (t) return { off: false, source: "template", ...t };
@@ -217,7 +253,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
           const eff = effective(sd);
           next[td] = eff.off
             ? { off: true }
-            : { start: eff.start, end: eff.end, break_start: eff.break_start ?? null, break_end: eff.break_end ?? null };
+            : { start: eff.start, end: eff.end, breaks: cleanBreaks(eff.breaks) };
         }
       }
       return next;
@@ -237,8 +273,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
       weekly[String(i)] = {
         start: d.start,
         end: d.end,
-        break_start: d.break_start || null,
-        break_end: d.break_end || null,
+        breaks: cleanBreaks(d.breaks),
       };
     }
     const exceptions: ScheduleException[] = [];
@@ -250,8 +285,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
           date,
           start: o.start,
           end: o.end,
-          break_start: o.break_start || null,
-          break_end: o.break_end || null,
+          breaks: cleanBreaks(o.breaks),
         });
       }
     }
@@ -335,23 +369,22 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
                 Применяется к датам без индивидуальной настройки и используется как источник для быстрого заполнения.
               </p>
               {days.map((d, i) => (
-                <div key={i} className="flex items-center gap-2 flex-wrap">
-                  <label className="flex items-center gap-1.5 w-[64px] cursor-pointer select-none">
+                <div key={i} className="flex items-start gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 w-[64px] cursor-pointer select-none mt-1">
                     <input type="checkbox" checked={d.enabled} onChange={(e) => patchDay(i, { enabled: e.target.checked })} className="cursor-pointer" />
                     <span className="text-[12.5px] font-semibold">{WEEKDAYS[i]}</span>
                   </label>
                   {d.enabled ? (
-                    <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-text-muted">
-                      <input type="time" value={d.start} onChange={(e) => patchDay(i, { start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                      <span>–</span>
-                      <input type="time" value={d.end} onChange={(e) => patchDay(i, { end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                      <span className="ml-1">перерыв</span>
-                      <input type="time" value={d.break_start ?? ""} onChange={(e) => patchDay(i, { break_start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                      <span>–</span>
-                      <input type="time" value={d.break_end ?? ""} onChange={(e) => patchDay(i, { break_end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
+                        <input type="time" value={d.start} onChange={(e) => patchDay(i, { start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                        <span>–</span>
+                        <input type="time" value={d.end} onChange={(e) => patchDay(i, { end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                      </div>
+                      <BreaksEditor breaks={d.breaks} onChange={(b) => patchDay(i, { breaks: b })} />
                     </div>
                   ) : (
-                    <span className="text-[12px] text-text-muted">Выходной</span>
+                    <span className="text-[12px] text-text-muted mt-1">Выходной</span>
                   )}
                 </div>
               ))}
@@ -433,8 +466,7 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
                     onChange={() => setOverride(selected, {
                       start: selEff.start ?? "09:00",
                       end: selEff.end ?? "18:00",
-                      break_start: selEff.break_start ?? "",
-                      break_end: selEff.break_end ?? "",
+                      breaks: cleanBreaks(selEff.breaks),
                     })}
                     className="cursor-pointer"
                   />
@@ -446,14 +478,16 @@ function DoctorScheduleModal({ doctor, onClose }: { doctor: DoctorProfile; onClo
                 </label>
               </div>
               {selMode === "work" && (
-                <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-text-muted">
-                  <input type="time" value={overrides[selected]?.start ?? "09:00"} onChange={(e) => setOverride(selected, { ...overrides[selected], start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                  <span>–</span>
-                  <input type="time" value={overrides[selected]?.end ?? "18:00"} onChange={(e) => setOverride(selected, { ...overrides[selected], end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                  <span className="ml-1">перерыв</span>
-                  <input type="time" value={overrides[selected]?.break_start ?? ""} onChange={(e) => setOverride(selected, { ...overrides[selected], break_start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
-                  <span>–</span>
-                  <input type="time" value={overrides[selected]?.break_end ?? ""} onChange={(e) => setOverride(selected, { ...overrides[selected], break_end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
+                    <input type="time" value={overrides[selected]?.start ?? "09:00"} onChange={(e) => setOverride(selected, { ...overrides[selected], start: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                    <span>–</span>
+                    <input type="time" value={overrides[selected]?.end ?? "18:00"} onChange={(e) => setOverride(selected, { ...overrides[selected], end: e.target.value })} className="px-2 py-1 rounded-lg outline-none" style={inputStyle} />
+                  </div>
+                  <BreaksEditor
+                    breaks={overrides[selected]?.breaks ?? []}
+                    onChange={(b) => setOverride(selected, { ...overrides[selected], breaks: b })}
+                  />
                 </div>
               )}
             </div>
