@@ -25,9 +25,30 @@ def _to_min(value: str | None) -> int | None:
         return None
 
 
+def _day_breaks(day_cfg: dict) -> list[tuple[int, int]]:
+    """Перерывы дня в минутах: новый список ``breaks`` либо устаревшая
+    одиночная пара ``break_start`` / ``break_end`` (для совместимости)."""
+    raw = day_cfg.get("breaks")
+    out: list[tuple[int, int]] = []
+    if isinstance(raw, list) and raw:
+        for b in raw:
+            if not isinstance(b, dict):
+                continue
+            bs = _to_min(b.get("start"))
+            be = _to_min(b.get("end"))
+            if bs is not None and be is not None and be > bs:
+                out.append((bs, be))
+        return out
+    bs = _to_min(day_cfg.get("break_start"))
+    be = _to_min(day_cfg.get("break_end"))
+    if bs is not None and be is not None and be > bs:
+        out.append((bs, be))
+    return out
+
+
 def _interval_covers(day_cfg: dict, start_min: int, end_min: int) -> bool:
     """True, если [start_min, end_min) укладывается в рабочий интервал дня и
-    не пересекается с перерывом."""
+    не пересекается ни с одним перерывом."""
     work_start = _to_min(day_cfg.get("start"))
     work_end = _to_min(day_cfg.get("end"))
     if work_start is None or work_end is None:
@@ -35,10 +56,8 @@ def _interval_covers(day_cfg: dict, start_min: int, end_min: int) -> bool:
         return True
     if start_min < work_start or end_min > work_end:
         return False
-    # Перерыв: запись не должна пересекаться с ним.
-    br_start = _to_min(day_cfg.get("break_start"))
-    br_end = _to_min(day_cfg.get("break_end"))
-    if br_start is not None and br_end is not None and br_end > br_start:
+    # Перерывы: запись не должна пересекаться ни с одним из них.
+    for br_start, br_end in _day_breaks(day_cfg):
         if start_min < br_end and end_min > br_start:
             return False
     return True

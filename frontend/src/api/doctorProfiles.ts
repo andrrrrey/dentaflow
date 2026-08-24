@@ -1,12 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
+/** Один перерыв внутри рабочего дня. */
+export interface Break {
+  start: string;         // "13:00"
+  end: string;           // "14:00"
+}
+
 /** Рабочий интервал одного дня недели / исключения. */
 export interface DayHours {
   start?: string;        // "09:00"
   end?: string;          // "18:00"
+  /** Перерывы дня. Может быть несколько. */
+  breaks?: Break[];
+  // Устаревший одиночный перерыв — читается для обратной совместимости.
   break_start?: string | null;
   break_end?: string | null;
+}
+
+/** Перерывы дня: новый список `breaks[]` либо устаревшая одиночная пара. */
+export function dayBreaks(cfg?: DayHours | null): Break[] {
+  if (!cfg) return [];
+  if (Array.isArray(cfg.breaks) && cfg.breaks.length) {
+    return cfg.breaks.filter((b) => b?.start && b?.end);
+  }
+  if (cfg.break_start && cfg.break_end) return [{ start: cfg.break_start, end: cfg.break_end }];
+  return [];
 }
 
 /** Исключение на конкретную дату (отпуск/замена). */
@@ -54,9 +73,11 @@ function intervalCovers(cfg: DayHours, startMin: number, endMin: number): boolea
   const we = toMin(cfg.end);
   if (ws === null || we === null) return true;
   if (startMin < ws || endMin > we) return false;
-  const bs = toMin(cfg.break_start);
-  const be = toMin(cfg.break_end);
-  if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) return false;
+  for (const b of dayBreaks(cfg)) {
+    const bs = toMin(b.start);
+    const be = toMin(b.end);
+    if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) return false;
+  }
   return true;
 }
 
@@ -135,12 +156,25 @@ export function getWorkingDay(
   const we = toMin(cfg?.end ?? null);
   if (!cfg || ws === null || we === null || we <= ws) return { restricted: true, segments: [] };
 
-  const bs = toMin(cfg.break_start);
-  const be = toMin(cfg.break_end);
-  if (bs !== null && be !== null && be > bs && bs >= ws && be <= we) {
-    return { restricted: true, segments: [{ start: ws, end: bs }, { start: be, end: we }] };
+  // Вырезаем все перерывы из рабочего интервала [ws, we].
+  let segments: { start: number; end: number }[] = [{ start: ws, end: we }];
+  const brs = dayBreaks(cfg)
+    .map((b) => ({ s: toMin(b.start), e: toMin(b.end) }))
+    .filter((b): b is { s: number; e: number } => b.s !== null && b.e !== null && b.e > b.s)
+    .sort((a, b) => a.s - b.s);
+  for (const b of brs) {
+    const out: { start: number; end: number }[] = [];
+    for (const seg of segments) {
+      if (b.e <= seg.start || b.s >= seg.end) {
+        out.push(seg);
+        continue;
+      }
+      if (b.s > seg.start) out.push({ start: seg.start, end: Math.min(b.s, seg.end) });
+      if (b.e < seg.end) out.push({ start: Math.max(b.e, seg.start), end: seg.end });
+    }
+    segments = out;
   }
-  return { restricted: true, segments: [{ start: ws, end: we }] };
+  return { restricted: true, segments };
 }
 
 export function useUpdateDoctorProfile() {
