@@ -42,6 +42,14 @@ from app.routers import (
 )
 
 
+# Логирование: uvicorn настраивает хендлеры только для своих логгеров,
+# поэтому logger.info() из app.* в прод-логи не попадал. Уровень задаётся
+# переменной окружения LOG_LEVEL (по умолчанию INFO).
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,
+)
 logger = logging.getLogger(__name__)
 
 
