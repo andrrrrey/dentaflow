@@ -8,6 +8,7 @@ secrets instead.
 from __future__ import annotations
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
@@ -1064,6 +1065,44 @@ async def one_denta_webhook(
 # Website / Tilda form
 # ------------------------------------------------------------------
 
+# Ключи полей, которые Тильда шлёт как служебные — не показываем их в заявке
+_TILDA_SYSTEM_KEYS = {
+    "tildaspecjsfields", "tildaspecstep", "tildaspecformname", "tildaspecid",
+    "formid", "formname", "formservices", "tranid", "sign", "cookies",
+}
+
+
+def _norm_key(key: str) -> str:
+    """'Phone-2', 'PHONE_2', ' Телефон ' → 'phone2' / 'телефон'."""
+    return re.sub(r"[\s\-_]+", "", str(key or "").strip().lower())
+
+
+def _looks_like_phone(value: str) -> bool:
+    """Значение похоже на номер телефона (10–15 цифр, без букв и @)."""
+    s = str(value or "").strip()
+    if not s or "@" in s:
+        return False
+    if not re.fullmatch(r"[\d\s()+\-.]{10,25}", s):
+        return False
+    return 10 <= len(re.sub(r"\D", "", s)) <= 15
+
+
+def _phone_variants(raw: str) -> list[str]:
+    """Все формы записи номера для поиска пациента: 8/7/+7, с цифрами и без."""
+    digits = re.sub(r"\D", "", raw or "")
+    if not digits:
+        return []
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    elif len(digits) == 10:
+        digits = "7" + digits
+    variants = {str(raw).strip(), digits, "+" + digits}
+    if len(digits) == 11 and digits.startswith("7"):
+        variants.add("8" + digits[1:])
+        variants.add("+7" + digits[1:])
+    return [v for v in variants if v]
+
+
 @router.get("/site")
 async def site_form_test():
     """GET-эндпоинт для проверки доступности URL из браузера."""
@@ -1130,64 +1169,97 @@ async def site_form_webhook(
                 logger.warning("Invalid Tilda signature — ignoring")
                 return {"status": "ok"}  # return 200 anyway so Tilda doesn't disable webhook
 
-        # Normalize field names — Tilda uses various capitalizations
-        def _get(*keys: str) -> str:
-            for k in keys:
-                for variant in (k, k.lower(), k.upper(), k.capitalize()):
-                    v = body.get(variant)
-                    if v:
-                        return str(v).strip()
+        # Разбор полей: имена приходят в произвольном регистре и написании
+        # (Name / name / NAME, Phone / phone-2 / tel / «Телефон»), поэтому
+        # сравниваем нормализованные ключи, а не строки как есть.
+        consumed: set[str] = set()  # исходные ключи, уже разобранные в поля
+
+        def _get(*names: str) -> str:
+            """Поле по точному совпадению нормализованного имени."""
+            wanted = {_norm_key(n) for n in names}
+            for k, v in body.items():
+                if _norm_key(k) in wanted and str(v).strip():
+                    consumed.add(k)
+                    return str(v).strip()
             return ""
 
-        # System Tilda fields we skip when building content
-        _TILDA_SYSTEM_KEYS = {
-            "tildaspec-js-fields", "tildaspec-step", "tildaspec-form-name",
-            "formid", "formname", "tranid", "sign",
-        }
-        # Known semantic field names
-        _NAME_KEYS    = {"name", "NAME", "Name"}
-        _PHONE_KEYS   = {"phone", "Phone", "PHONE", "tel", "Tel", "телефон"}
-        _EMAIL_KEYS   = {"email", "Email", "EMAIL"}
-        _COMMENT_KEYS = {"comment", "Comment", "message", "Message", "text", "Text", "комментарий"}
-        _SERVICE_KEYS = {"service", "Service", "Услуга", "услуга", "select"}
+        def _get_fuzzy(*fragments: str) -> str:
+            """Поле, в имени которого встречается один из фрагментов."""
+            for k, v in body.items():
+                nk = _norm_key(k)
+                if nk in _TILDA_SYSTEM_KEYS or not str(v).strip():
+                    continue
+                if any(f in nk for f in fragments):
+                    consumed.add(k)
+                    return str(v).strip()
+            return ""
 
-        name    = _get("Name", "name", "NAME")
-        phone   = _get("Phone", "phone", "PHONE", "tel", "Tel", "телефон")
-        email   = _get("Email", "email", "EMAIL")
-        message = _get("Comment", "comment", "Message", "message", "Text", "text", "комментарий")
-        service = _get("Service", "service", "Услуга", "услуга", "select")
-        form_name = _get("formname", "formid", "tildaspec-form-name", "FORMID")
+        name    = _get("name", "имя", "fio", "фио")
+        phone   = _get("phone", "tel", "телефон", "номертелефона", "phonemask")
+        email   = _get("email", "mail", "почта")
+        message = _get("comment", "message", "text", "комментарий", "сообщение", "вопрос")
+        service = _get("service", "услуга", "select", "направление")
+        form_name = _get("formname", "formid", "tildaspecformname")
+
+        # Телефон — самое важное поле, ищем его тремя способами:
+        # 1) точное имя (выше), 2) фрагмент в имени поля, 3) значение,
+        # похожее на номер, в любом неразобранном поле.
+        if not phone:
+            phone = _get_fuzzy("phone", "tel", "тел", "мобил", "номер")
+        if not phone:
+            for k, v in body.items():
+                if k in consumed or _norm_key(k) in _TILDA_SYSTEM_KEYS:
+                    continue
+                if _looks_like_phone(str(v)):
+                    phone = str(v).strip()
+                    consumed.add(k)
+                    break
+
+        if not name:
+            name = _get_fuzzy("name", "имя", "фио")
 
         logger.info(
-            "Site webhook parsed: name=%r phone=%r email=%r service=%r form=%r",
-            name, phone, email, service, form_name,
+            "Site webhook parsed: name=%r phone=%r email=%r service=%r form=%r "
+            "(fields: %s)",
+            name, phone, email, service, form_name, list(body.keys()),
         )
+        if not phone:
+            logger.warning(
+                "Site webhook: телефон не найден ни в одном поле формы. "
+                "Поля формы: %s",
+                {k: str(v)[:64] for k, v in body.items()},
+            )
 
-        # Build content: start with known fields, then append any remaining fields
-        # so that whatever name Tilda uses for dropdowns/custom fields is preserved
-        known_keys = _NAME_KEYS | _PHONE_KEYS | _EMAIL_KEYS | _COMMENT_KEYS | _SERVICE_KEYS | _TILDA_SYSTEM_KEYS
+        # Собираем текст заявки: сначала известные поля, затем всё остальное,
+        # чтобы кастомные поля формы Тильды не терялись.
         content_parts = []
         if message:   content_parts.append(message)
+        if phone:     content_parts.append(f"Телефон: {phone}")
         if service:   content_parts.append(f"Услуга: {service}")
         if name:      content_parts.append(f"Имя: {name}")
         if email:     content_parts.append(f"Email: {email}")
         if form_name: content_parts.append(f"Форма: {form_name}")
 
-        # Append extra fields (e.g. unknown select/dropdown names from Tilda form builder)
+        # Прочие поля (селекты, чекбоксы и т.п. с произвольными именами)
         for k, v in body.items():
-            if v and k not in known_keys:
+            if k in consumed or _norm_key(k) in _TILDA_SYSTEM_KEYS:
+                continue
+            if str(v).strip():
                 content_parts.append(f"{k}: {v}")
 
         content = "\n".join(content_parts) or "Заявка с сайта"
 
-        # Try to link to existing patient by phone
+        # Привязка к существующему пациенту по телефону — сравниваем все
+        # варианты записи номера (+7…, 8…, только цифры).
         patient_id = None
         if phone:
-            stmt = select(Patient).where(Patient.phone == phone).limit(1)
-            row = await db.execute(stmt)
-            patient = row.scalar_one_or_none()
-            if patient:
-                patient_id = patient.id
+            variants = _phone_variants(phone)
+            if variants:
+                stmt = select(Patient).where(Patient.phone.in_(variants)).limit(1)
+                row = await db.execute(stmt)
+                patient = row.scalar_one_or_none()
+                if patient:
+                    patient_id = patient.id
 
         # Build template AI summary immediately (no OpenAI call needed)
         summary_parts = []
