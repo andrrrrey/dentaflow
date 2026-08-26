@@ -1120,6 +1120,7 @@ async def site_form_webhook(
     Поддерживаем также JSON.  Всегда возвращаем 200, чтобы Тильда не
     считала вебхук недоступным.
     """
+    raw_body = b""
     try:
         # Read raw bytes first so body is available for both form and HMAC check
         raw_body = await request.body()
@@ -1309,5 +1310,24 @@ async def site_form_webhook(
     except Exception:
         # Never return 5xx to Tilda — it will disable the webhook
         logger.exception("Error in site_form_webhook — returning 200 anyway")
+        # Страховка: заявка не должна пропасть из-за ошибки разбора —
+        # сохраняем сырое тело запроса, менеджер увидит контакты руками.
+        try:
+            await db.rollback()
+            raw_text = raw_body.decode("utf-8", errors="replace")[:2000]
+            fallback = Communication(
+                channel="site",
+                direction="inbound",
+                type="form",
+                content="Заявка с сайта (не удалось разобрать поля):\n" + raw_text,
+                status="new",
+                priority="high",
+                ai_tags=["заявка_с_сайта"],
+            )
+            db.add(fallback)
+            await db.commit()
+            logger.warning("Site form saved as raw fallback: comm_id=%s", fallback.id)
+        except Exception:
+            logger.exception("Site webhook fallback save failed — заявка потеряна")
 
     return {"status": "ok"}
