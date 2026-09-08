@@ -14,6 +14,16 @@ COMPOSE="docker compose -f docker-compose.prod.yml"
 PROJECT="dentaflow"
 MODE="${1:-all}"
 
+# Каждая пересборка образов оставляет старый слой висячим (<none>) и копит
+# BuildKit-кэш. Без очистки диск сервера со временем забивается под 100%, и
+# тогда Postgres перестаёт писать → «Database error» при входе. Чистим только
+# висячие образы и неиспользуемый build cache — активные образы не трогаются.
+prune_docker() {
+  echo "→ Очистка старых образов и кэша сборки..."
+  docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -f >/dev/null 2>&1 || true
+}
+
 echo "→ git pull..."
 git pull origin main
 
@@ -22,6 +32,7 @@ if [ "$MODE" = "asterisk" ]; then
   echo "→ Пересборка и перезапуск Asterisk (ИИ обзвон)..."
   $COMPOSE build asterisk
   $COMPOSE up -d --no-deps --force-recreate asterisk
+  prune_docker
   echo "✓ Asterisk обновлён."
   exit 0
 fi
@@ -67,6 +78,8 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "front" ]; then
   echo "→ Перезапуск nginx..."
   $COMPOSE restart nginx
 fi
+
+prune_docker
 
 echo ""
 echo "✓ Готово! Система доступна."

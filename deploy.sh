@@ -14,6 +14,16 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT=$(basename "$DIR")   # dentaflow
 cd "$DIR"
 
+# Каждая пересборка образов оставляет старый слой висячим (<none>) и копит
+# BuildKit-кэш. Без очистки диск сервера со временем забивается под 100%, и
+# тогда Postgres перестаёт писать → «Database error» при входе. Чистим только
+# висячие образы и неиспользуемый build cache — активные образы не трогаются.
+prune_docker() {
+  echo "→ Очистка старых образов и кэша сборки..."
+  docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -f >/dev/null 2>&1 || true
+}
+
 FAST=0; BACK_ONLY=0; FRONT_ONLY=0
 [ "$1" = "--fast"  ] && FAST=1
 [ "$1" = "--back"  ] && BACK_ONLY=1
@@ -54,6 +64,8 @@ fi
 # ── Migrations ─────────────────────────────────────────
 echo "→ Migrations..."
 $COMPOSE exec backend alembic upgrade head
+
+prune_docker
 
 echo ""
 echo "✓ Готово"
