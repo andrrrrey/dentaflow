@@ -3,6 +3,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     APP_ENV: str = "production"
+    # Отладочный вывод всех SQL-запросов SQLAlchemy. По умолчанию выключен —
+    # включать только осознанно для дебага. Раньше был завязан на
+    # APP_ENV=development, из-за чего случайный `development` в проде заливал
+    # логи (и способствовал переполнению диска → «Database error» при входе).
+    SQL_ECHO: bool = False
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     ALLOWED_ORIGINS: str = "http://localhost:5173"
 

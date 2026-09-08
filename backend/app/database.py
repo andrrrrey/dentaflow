@@ -7,7 +7,7 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=(settings.APP_ENV == "development"),
+    echo=settings.SQL_ECHO,
     pool_pre_ping=True,
     # Pool is per-process. With backend (x2 workers) + celery workers + beat +
     # telegram bot all sharing this image, large per-process pools quickly
