@@ -111,6 +111,7 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
   const [address, setAddress] = useState("");
   const [sourceChannel, setSourceChannel] = useState("");
   const [referralSource, setReferralSource] = useState(prefillSource);
+  const [referralCode, setReferralCode] = useState("");
   const [pushTo1denta, setPushTo1denta] = useState(true);
 
   const [open, setOpen] = useState({
@@ -159,13 +160,14 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
       address: address || undefined,
       source_channel: sourceChannel || undefined,
       referral_source: referralSource || undefined,
+      referral_code: referralCode.trim() ? referralCode.trim().toUpperCase() : undefined,
       push_to_1denta: pushTo1denta,
     };
 
     try {
       const result = await createMutation.mutateAsync(payload);
       if (result.warning) {
-        alert(`Пациент создан, но не передан в 1Denta:\n${result.warning}`);
+        alert(`Пациент создан, но с замечаниями:\n${result.warning}`);
       }
       onClose();
       navigate(`/patients/${result.id}`);
@@ -509,6 +511,19 @@ export default function CreatePatientModal({ onClose, prefillName = "", prefillP
               />
               <span className="text-[13px] text-text-main font-semibold">Передать в 1Denta</span>
             </label>
+            <div className="w-full">
+              <label className={lbl}>Реферальный код пригласившего</label>
+              <input
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value)}
+                className={`${inp} font-mono uppercase`}
+                style={inpStyle}
+                placeholder="Например, A1B2C3D4"
+              />
+              <span className="text-[11px] text-text-muted mt-1 block">
+                Если пациент пришёл по коду друга — баллы за рекомендацию начислятся владельцу кода.
+              </span>
+            </div>
           </div>
 
           {/* Error */}

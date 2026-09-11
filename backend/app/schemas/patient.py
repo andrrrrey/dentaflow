@@ -150,6 +150,9 @@ class PatientCreate(BaseModel):
     address: str | None = None
     source_channel: str | None = None
     referral_source: str | None = None
+    # Персональный реферальный код пригласившего пациента — если указан,
+    # владельцу кода будут начислены баллы за приведённого друга.
+    referral_code: str | None = None
     tags: list[str] | None = None
     push_to_1denta: bool = True
 

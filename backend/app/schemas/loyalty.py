@@ -18,6 +18,12 @@ class LoyaltyConfig(BaseModel):
     percent_per_purchase: float = 5
     referral_points: int = 300
     review_points: int = 200
+    # Списание баллов (оплата баллами как скидка на визите).
+    redeem_enabled: bool = True
+    # Курс: сколько рублей скидки даёт один балл.
+    redeem_ruble_per_point: float = 1.0
+    # Лимит: не более этого процента от суммы визита можно погасить баллами.
+    redeem_max_percent: float = 50
 
 
 class LoyaltyTransactionEntry(BaseModel):

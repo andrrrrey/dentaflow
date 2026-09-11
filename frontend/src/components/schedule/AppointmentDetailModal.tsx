@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, ChevronDown, ExternalLink, UserCheck, Hash, MessageSquare, CreditCard, CheckCircle, Trash2, AlertTriangle } from "lucide-react";
+import { X, Calendar, User, Phone, Mail, Tag, MapPin, Clock, ChevronDown, ExternalLink, UserCheck, Hash, MessageSquare, CreditCard, CheckCircle, Trash2, AlertTriangle, Gift } from "lucide-react";
 import { format, parseISO, differenceInYears } from "date-fns";
 import { ru } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
@@ -8,6 +8,8 @@ import Pill from "../ui/Pill";
 import { useAppointmentDetail, useUpdateAppointmentStatus, useUpdateAppointment, useUpdateAppointmentPayment, useDeleteAppointment } from "../../api/schedule";
 import { useDoctorsList } from "../../api/doctors";
 import { useServices } from "../../api/directories";
+import { useLoyaltyConfig } from "../../api/loyalty";
+import toast from "react-hot-toast";
 
 const STATUS_OPTIONS = [
   { value: "unconfirmed", label: "Не подтверждён" },
@@ -71,6 +73,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const updatePayment = useUpdateAppointmentPayment();
   const { data: doctorsData } = useDoctorsList();
   const { data: servicesData } = useServices();
+  const { data: loyaltyConfig } = useLoyaltyConfig();
 
   const deleteAppt = useDeleteAppointment();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -87,6 +90,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   const [durationValue, setDurationValue] = useState<string>("");
   const [discountInput, setDiscountInput] = useState<string>("");
   const [paymentInput, setPaymentInput] = useState<string>("");
+  const [redeemInput, setRedeemInput] = useState<string>("");
   const [paid, setPaid] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -109,6 +113,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
           ? String(appt.revenue)
           : ""
       );
+      setRedeemInput(appt.redeemed_points ? String(appt.redeemed_points) : "");
       setPaid(false);
       setCommentSaved(false);
       setEditingDateTime(false);
@@ -183,10 +188,15 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
   function handlePay() {
     const discount = discountInput !== "" ? parseFloat(discountInput) : null;
     const payment_amount = paymentInput !== "" ? parseFloat(paymentInput) : null;
+    const redeem_points = redeemInput !== "" ? Math.max(0, Math.round(Number(redeemInput))) : 0;
     updatePayment.mutate(
-      { appointmentId, discount, payment_amount },
+      { appointmentId, discount, payment_amount, redeem_points },
       {
         onSuccess: () => setPaid(true),
+        onError: (err: unknown) => {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          toast.error(detail || "Не удалось сохранить оплату");
+        },
       }
     );
   }
@@ -198,6 +208,47 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
 
   const servicesList = servicesData?.services ?? [];
   const doctorsList = doctorsData?.doctors ?? [];
+
+  // ── Оплата баллами (списание) ──
+  const balance = patient?.bonus_balance ?? 0;
+  const ratePerPoint = loyaltyConfig?.redeem_ruble_per_point ?? 1;
+  const maxPct = loyaltyConfig?.redeem_max_percent ?? 100;
+  const redeemEnabled =
+    (loyaltyConfig?.enabled ?? true) &&
+    (loyaltyConfig?.redeem_enabled ?? true) &&
+    ratePerPoint > 0 &&
+    !!patient;
+  const priceBase = (appt?.revenue ?? 0) > 0 ? (appt?.revenue ?? 0) : 0;
+  // Верхняя граница списания: и по балансу, и по лимиту % от суммы визита.
+  const capByPct =
+    priceBase > 0 && maxPct < 100
+      ? Math.floor((priceBase * maxPct) / 100 / ratePerPoint)
+      : balance;
+  const maxRedeemable = Math.max(0, Math.min(balance, capByPct));
+  const redeemPoints = Math.max(0, Math.round(Number(redeemInput) || 0));
+  const redeemRubles = redeemPoints * ratePerPoint;
+  const redeemOver = redeemPoints > maxRedeemable;
+
+  // Пересчитать «Сумму оплаты» для визитов с ценой по прайсу.
+  function recomputePayment(discountStr: string, pts: number) {
+    if (priceBase <= 0) return; // без цены по прайсу — сумму задаёт администратор
+    const disc = discountStr !== "" ? parseFloat(discountStr) || 0 : 0;
+    const net = Math.max(0, priceBase - disc - Math.max(0, pts) * ratePerPoint);
+    setPaymentInput(String(Math.round(net)));
+  }
+
+  function handleDiscountChange(v: string) {
+    setDiscountInput(v);
+    setPaid(false);
+    recomputePayment(v, redeemPoints);
+  }
+
+  function handleRedeemChange(v: string) {
+    setRedeemInput(v);
+    setPaid(false);
+    const pts = Math.max(0, Math.round(Number(v) || 0));
+    recomputePayment(discountInput, pts);
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30" onClick={onClose}>
@@ -642,7 +693,7 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                     type="number"
                     min="0"
                     value={discountInput}
-                    onChange={(e) => { setDiscountInput(e.target.value); setPaid(false); }}
+                    onChange={(e) => handleDiscountChange(e.target.value)}
                     placeholder="0"
                     className="w-full text-[13px] font-medium px-3 py-[7px] rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
                     style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
@@ -663,9 +714,62 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
                 </div>
               </div>
 
+              {/* Оплата баллами (списание) */}
+              {redeemEnabled && (
+                <div className="rounded-xl p-3 flex flex-col gap-2" style={{ background: "rgba(91,76,245,0.05)", border: "1px solid rgba(91,76,245,0.12)" }}>
+                  <div className="flex items-center gap-2">
+                    <Gift size={13} style={{ color: "#5B4CF5" }} />
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#5B4CF5" }}>Оплата баллами</span>
+                    <span className="text-[11px] text-text-muted ml-auto">
+                      Баланс: <b className="text-text-main">{balance.toLocaleString("ru-RU")}</b> б.
+                    </span>
+                  </div>
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[10px] text-text-muted mb-1">Списать баллов</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={maxRedeemable}
+                        value={redeemInput}
+                        onChange={(e) => handleRedeemChange(e.target.value)}
+                        placeholder="0"
+                        className="w-full text-[13px] font-medium px-3 py-[7px] rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                        style={{ borderColor: redeemOver ? "rgba(244,75,110,0.5)" : "rgba(91,76,245,0.2)", background: "rgba(255,255,255,0.6)" }}
+                      />
+                    </div>
+                    <div className="flex-1 pb-[2px]">
+                      <div className="text-[10px] text-text-muted">Скидка баллами</div>
+                      <div className="text-[15px] font-extrabold" style={{ color: "#5B4CF5" }}>
+                        −{redeemRubles.toLocaleString("ru-RU")} ₽
+                      </div>
+                    </div>
+                    {maxRedeemable > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRedeemChange(String(maxRedeemable))}
+                        className="pb-[9px] text-[11px] font-semibold text-accent2 border-none bg-transparent cursor-pointer whitespace-nowrap"
+                      >
+                        Максимум
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-[10.5px] text-text-muted">
+                    {redeemOver ? (
+                      <span style={{ color: "#c52048" }}>
+                        Можно списать не более {maxRedeemable.toLocaleString("ru-RU")} б.
+                        {priceBase > 0 && maxPct < 100 ? ` (лимит ${maxPct}% от суммы визита)` : " (не больше баланса)"}
+                      </span>
+                    ) : (
+                      <>Курс {ratePerPoint} ₽/балл · доступно к списанию: {maxRedeemable.toLocaleString("ru-RU")} б.</>
+                    )}
+                  </span>
+                </div>
+              )}
+
               <button
                 onClick={handlePay}
-                disabled={updatePayment.isPending || paid}
+                disabled={updatePayment.isPending || paid || redeemOver}
                 className="flex items-center justify-center gap-2 w-full py-[10px] rounded-xl text-[13px] font-bold border-none cursor-pointer transition-all disabled:opacity-60"
                 style={
                   paid
