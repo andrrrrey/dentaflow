@@ -171,6 +171,7 @@ async def create_new_patient(
         passport_issued_by=body.passport_issued_by,
         passport_department_code=body.passport_department_code,
         address=body.address,
+        referral_code=body.referral_code,
         push_to_1denta=body.push_to_1denta,
     )
     await db.commit()

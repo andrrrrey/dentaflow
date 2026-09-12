@@ -295,6 +295,147 @@ async def find_patient_by_referral_code(db: AsyncSession, code: str) -> Patient 
     return result.scalars().first()
 
 
+async def award_referral_for_new_patient(
+    db: AsyncSession,
+    referral_code: str,
+    new_patient: Patient,
+    *,
+    commit: bool = False,
+) -> tuple[LoyaltyTransaction | None, str | None]:
+    """Начислить баллы владельцу реферального кода за приведённого пациента.
+
+    Вызывается при создании пациента, если администратор указал реф. код
+    пригласившего. Возвращает (запись леджера | None, текст предупреждения | None).
+    Не бросает исключений — ошибки возвращаются текстом, чтобы не ронять
+    создание пациента.
+    """
+    code = (referral_code or "").strip()
+    if not code:
+        return None, None
+
+    config = await get_config(db)
+    if not config.enabled or config.referral_points <= 0:
+        return None, "Бонусная программа выключена — баллы за реферала не начислены."
+
+    referrer = await find_patient_by_referral_code(db, code)
+    if referrer is None:
+        return None, f"Реферальный код «{code}» не найден — баллы не начислены."
+    if referrer.id == new_patient.id:
+        return None, "Нельзя указать собственный реферальный код."
+
+    entry = await award_points(
+        db,
+        patient_id=referrer.id,
+        action_type="referral",
+        points=config.referral_points,
+        description=f"Приглашён пациент {new_patient.name}",
+        commit=commit,
+    )
+    return entry, None
+
+
+# ------------------------------------------------------------------
+# Redeem points (оплата баллами / скидка на визите)
+# ------------------------------------------------------------------
+
+async def get_appointment_redeemed_points(
+    db: AsyncSession, appointment_id: uuid.UUID
+) -> int:
+    """Сколько баллов уже списано в счёт данного визита (положительное число)."""
+    total = (
+        await db.execute(
+            select(func.coalesce(func.sum(LoyaltyTransaction.points), 0)).where(
+                LoyaltyTransaction.source_appointment_id == appointment_id,
+                LoyaltyTransaction.action_type == "redeem",
+            )
+        )
+    ).scalar_one()
+    return abs(int(total or 0))
+
+
+async def set_appointment_redemption(
+    db: AsyncSession,
+    appointment,
+    points: int,
+    *,
+    created_by: uuid.UUID | None = None,
+    commit: bool = False,
+) -> dict:
+    """Задать итоговое количество баллов, списанных в счёт визита (идемпотентно).
+
+    Повторный вызов заменяет предыдущее списание по этому визиту: старые
+    транзакции ``redeem`` отменяются (баланс возвращается), затем при
+    ``points > 0`` создаётся новое списание. Так кнопку «Оплатить» можно
+    жать сколько угодно раз, а сумму списания — редактировать.
+
+    Возвращает словарь ``{"points", "rubles", "balance"}``.
+    Бросает ValueError при нарушении лимитов (обрабатывается в роутере как 400).
+    """
+    points = max(0, int(points or 0))
+    patient = await db.get(Patient, appointment.patient_id) if appointment.patient_id else None
+    if patient is None:
+        raise ValueError("У визита нет привязанного пациента")
+
+    config = await get_config(db)
+    rate = float(config.redeem_ruble_per_point or 0)
+
+    # Отменяем прошлые списания по этому визиту и возвращаем баллы на баланс.
+    prior = list(
+        (
+            await db.execute(
+                select(LoyaltyTransaction).where(
+                    LoyaltyTransaction.source_appointment_id == appointment.id,
+                    LoyaltyTransaction.action_type == "redeem",
+                )
+            )
+        ).scalars().all()
+    )
+    for txn in prior:
+        patient.bonus_balance = int(patient.bonus_balance or 0) - int(txn.points)
+        await db.delete(txn)
+    if prior:
+        await db.flush()
+
+    if points == 0:
+        if commit:
+            await db.commit()
+        return {"points": 0, "rubles": 0.0, "balance": int(patient.bonus_balance or 0)}
+
+    if not (config.enabled and config.redeem_enabled):
+        raise ValueError("Оплата баллами отключена в настройках лояльности")
+    if rate <= 0:
+        raise ValueError("Не задан курс балла в настройках лояльности")
+
+    balance = int(patient.bonus_balance or 0)
+    if points > balance:
+        raise ValueError(f"Недостаточно баллов: доступно {balance}")
+
+    # Лимит на долю суммы визита, оплачиваемую баллами.
+    gross = float(appointment.revenue or 0) or float(appointment.payment_amount or 0)
+    max_pct = float(config.redeem_max_percent or 0)
+    if gross > 0 and 0 < max_pct < 100:
+        max_rubles = gross * max_pct / 100.0
+        max_points = int(max_rubles // rate)
+        if points > max_points:
+            raise ValueError(
+                f"Баллами можно оплатить не более {max_pct:g}% от суммы визита "
+                f"(максимум {max_points} баллов)"
+            )
+
+    rubles = points * rate
+    await award_points(
+        db,
+        patient_id=patient.id,
+        action_type="redeem",
+        points=-points,
+        description=f"Оплата баллами ({rubles:.0f} ₽)",
+        source_appointment_id=appointment.id,
+        created_by=created_by,
+        commit=commit,
+    )
+    return {"points": points, "rubles": rubles, "balance": int(patient.bonus_balance or 0)}
+
+
 # ------------------------------------------------------------------
 # Reviews
 # ------------------------------------------------------------------

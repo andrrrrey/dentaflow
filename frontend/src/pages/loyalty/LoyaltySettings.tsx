@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Save, Gift } from "lucide-react";
+import { Save, Gift, Wallet } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   useLoyaltyConfig,
@@ -150,6 +150,49 @@ export default function LoyaltySettings() {
               визит на 5&nbsp;000&nbsp;₽ принесёт{" "}
               <b>{Math.floor(5000 / (form.purchase_rate_rubles || 1)) * form.points_per_purchase_unit}</b> баллов.</>
           )}
+        </div>
+
+      </div>
+
+      {/* ── Списание баллов (оплата баллами) ── */}
+      <div className="rounded-[18px] p-5 flex flex-col gap-4" style={cardStyle}>
+        <div className="flex items-center gap-2">
+          <Wallet size={16} className="text-accent2" />
+          <h2 className="text-[15px] font-bold">Оплата баллами (скидка)</h2>
+        </div>
+
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input type="checkbox" checked={form.redeem_enabled}
+            onChange={(e) => set("redeem_enabled", e.target.checked)}
+            className="w-4 h-4 accent-accent2 cursor-pointer" />
+          <span className="text-[13px] font-semibold text-text-main">
+            Разрешить списывать баллы в счёт оплаты визита
+          </span>
+        </label>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <NumberField
+            label="Курс балла, ₽"
+            hint="Сколько рублей скидки даёт один балл"
+            value={form.redeem_ruble_per_point}
+            onChange={(v) => set("redeem_ruble_per_point", v)}
+          />
+          <NumberField
+            label="Лимит оплаты баллами, %"
+            hint="Не более этой доли суммы визита можно погасить баллами"
+            value={form.redeem_max_percent}
+            onChange={(v) => set("redeem_max_percent", v)}
+          />
+        </div>
+
+        <div className="text-[12px] text-text-muted rounded-[10px] px-3 py-2"
+          style={{ background: "rgba(91,76,245,0.06)" }}>
+          Пример: курс {String(form.redeem_ruble_per_point)} ₽/балл, лимит {String(form.redeem_max_percent)}% —
+          при визите на 5&nbsp;000&nbsp;₽ баллами можно оплатить до{" "}
+          <b>{Math.round((5000 * (form.redeem_max_percent || 0)) / 100).toLocaleString("ru-RU")}</b> ₽
+          {form.redeem_ruble_per_point > 0 && (
+            <> (≈ {Math.floor((5000 * (form.redeem_max_percent || 0)) / 100 / form.redeem_ruble_per_point).toLocaleString("ru-RU")} баллов)</>
+          )}.
         </div>
 
         <div>

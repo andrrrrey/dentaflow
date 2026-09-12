@@ -438,6 +438,7 @@ async def create_patient(
     passport_issued_by: str | None = None,
     passport_department_code: str | None = None,
     address: str | None = None,
+    referral_code: str | None = None,
     push_to_1denta: bool = True,
 ) -> tuple["PatientCreateResponse", str | None]:
     from app.schemas.patient import PatientCreateResponse
@@ -557,6 +558,17 @@ async def create_patient(
             warning = str(exc)
 
     await db.flush()
+
+    # Реферальный код пригласившего → баллы владельцу кода за приведённого друга.
+    if referral_code and referral_code.strip():
+        from app.services import loyalty_service
+
+        _, ref_warning = await loyalty_service.award_referral_for_new_patient(
+            db, referral_code, patient, commit=False
+        )
+        if ref_warning:
+            warning = f"{warning}\n{ref_warning}" if warning else ref_warning
+        await db.flush()
 
     return PatientCreateResponse(
         id=patient.id,

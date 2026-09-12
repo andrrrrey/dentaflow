@@ -236,6 +236,7 @@ export interface PatientCreatePayload {
   address?: string;
   source_channel?: string;
   referral_source?: string;
+  referral_code?: string;
   tags?: string[];
   push_to_1denta?: boolean;
 }

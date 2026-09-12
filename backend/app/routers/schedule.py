@@ -23,6 +23,7 @@ from app.dependencies import get_current_user
 from app.models.appointment import Appointment
 from app.models.patient import Patient
 from app.models.user import User
+from app.services import loyalty_service
 from app.services.one_denta import OneDentaService
 
 router = APIRouter(prefix="/api/v1/schedule", tags=["schedule"])
@@ -312,6 +313,7 @@ async def get_appointment_detail(
             "discount": float(appt.discount) if appt.discount is not None else None,
             "payment_amount": float(appt.payment_amount) if appt.payment_amount is not None else None,
             "services_data": appt.services_data,
+            "redeemed_points": await loyalty_service.get_appointment_redeemed_points(db, appt.id),
         },
         "patient": None,
     }
@@ -340,6 +342,8 @@ async def get_appointment_detail(
             "representative_phone": patient.representative_phone,
             "representative_relation": patient.representative_relation,
             "raw_1denta_data": patient.raw_1denta_data,
+            "bonus_balance": int(patient.bonus_balance or 0),
+            "referral_code": patient.referral_code,
         }
     return response
 
@@ -428,6 +432,8 @@ async def update_appointment(
 class UpdatePaymentBody(BaseModel):
     discount: float | None = None
     payment_amount: float | None = None
+    # Итоговое число баллов, списываемых в счёт этого визита (0 — снять списание).
+    redeem_points: int | None = None
 
 
 @router.patch("/{appointment_id}/payment")
@@ -435,9 +441,14 @@ async def update_appointment_payment(
     appointment_id: uuid.UUID,
     body: UpdatePaymentBody,
     db: AsyncSession = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Save discount and payment amount locally (1Denta API does not support writing these)."""
+    """Save discount and payment amount locally (1Denta API does not support writing these).
+
+    Дополнительно поддерживает списание баллов лояльности в счёт визита
+    (``redeem_points``): баланс пациента уменьшается, запись попадает в леджер,
+    операция идемпотентна (повторный вызов заменяет предыдущее списание).
+    """
     stmt = select(Appointment).where(Appointment.id == appointment_id)
     result = await db.execute(stmt)
     appt = result.scalar_one_or_none()
@@ -449,11 +460,23 @@ async def update_appointment_payment(
     if body.payment_amount is not None:
         appt.payment_amount = body.payment_amount
 
+    redeem: dict | None = None
+    if body.redeem_points is not None:
+        try:
+            redeem = await loyalty_service.set_appointment_redemption(
+                db, appt, body.redeem_points, created_by=current_user.id, commit=False
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     await db.commit()
     return {
         "id": str(appt.id),
         "discount": float(appt.discount) if appt.discount is not None else None,
         "payment_amount": float(appt.payment_amount) if appt.payment_amount is not None else None,
+        "redeemed_points": redeem["points"] if redeem else None,
+        "redeemed_rubles": redeem["rubles"] if redeem else None,
+        "bonus_balance": redeem["balance"] if redeem else None,
     }
 
 

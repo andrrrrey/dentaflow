@@ -60,6 +60,7 @@ export interface AppointmentDetailResponse {
     discount: number | null;
     payment_amount: number | null;
     services_data: Array<{ id: number; name: string; paySum: number; price: string; discount: number; amount: number }> | null;
+    redeemed_points: number;
   };
   patient: {
     id: string;
@@ -78,6 +79,8 @@ export interface AppointmentDetailResponse {
     representative_phone: string | null;
     representative_relation: string | null;
     raw_1denta_data: Record<string, unknown> | null;
+    bonus_balance: number;
+    referral_code: string | null;
   } | null;
 }
 
@@ -236,16 +239,20 @@ export function useUpdateAppointmentPayment() {
       appointmentId,
       discount,
       payment_amount,
+      redeem_points,
     }: {
       appointmentId: string;
       discount?: number | null;
       payment_amount?: number | null;
+      redeem_points?: number | null;
     }) => {
-      const { data } = await api.patch(`/schedule/${appointmentId}/payment`, { discount, payment_amount });
+      const { data } = await api.patch(`/schedule/${appointmentId}/payment`, { discount, payment_amount, redeem_points });
       return data;
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["appointment-detail", vars.appointmentId] });
+      qc.invalidateQueries({ queryKey: ["patient"] });
+      qc.invalidateQueries({ queryKey: ["loyalty"] });
     },
   });
 }
