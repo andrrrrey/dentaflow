@@ -11,6 +11,7 @@ export interface LoyaltyConfig {
   percent_per_purchase: number;
   referral_points: number;
   review_points: number;
+  video_review_points: number;
   redeem_enabled: boolean;
   redeem_ruble_per_point: number;
   redeem_max_percent: number;

@@ -128,6 +128,11 @@ def describe_earning_rules(config: LoyaltyConfig) -> list[str]:
             f"⭐ {config.review_points} "
             f"{_points_word(config.review_points)} за отзыв о клинике"
         )
+    if getattr(config, "video_review_points", 0):
+        rules.append(
+            f"🎬 {config.video_review_points} "
+            f"{_points_word(config.video_review_points)} за видеоотзыв о клинике"
+        )
     return rules
 
 

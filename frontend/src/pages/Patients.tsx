@@ -15,7 +15,7 @@ const channelLabel: Record<string, string> = {
   telegram: "Telegram",
   site: "Сайт",
   call: "Звонок",
-  max: "Max/VK",
+  max: "Max",
   referral: "Реферал",
 };
 

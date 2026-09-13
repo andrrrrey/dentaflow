@@ -22,7 +22,7 @@ const channelIcon: Record<string, React.ReactNode> = {
 const channelLabel: Record<string, string> = {
   telegram: "Telegram",
   novofon: "Телефония",
-  max: "Max/VK",
+  max: "Max",
 };
 
 const statusDot: Record<string, string> = {

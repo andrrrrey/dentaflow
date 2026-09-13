@@ -21,6 +21,7 @@ const ACTION_LABEL: Record<string, string> = {
   purchase: "Покупка",
   referral: "Рекомендация",
   review: "Отзыв",
+  video_review: "Видеоотзыв",
   redeem: "Оплата баллами",
   manual: "Корректировка",
 };
@@ -46,15 +47,17 @@ export default function LoyaltyBlock({ patientId, referralCode }: {
     });
   }
 
-  function handleAward(actionType: "referral" | "review" | "manual") {
+  function handleAward(actionType: "referral" | "review" | "video_review" | "manual") {
     const defaults: Record<string, number> = {
       referral: config?.referral_points ?? 300,
       review: config?.review_points ?? 200,
+      video_review: config?.video_review_points ?? 2000,
       manual: 0,
     };
     const raw = window.prompt(
       actionType === "referral" ? "Баллы за рекомендацию:"
         : actionType === "review" ? "Баллы за отзыв:"
+        : actionType === "video_review" ? "Баллы за видеоотзыв:"
         : "Корректировка баланса (можно отрицательное число):",
       String(defaults[actionType]),
     );
@@ -120,6 +123,11 @@ export default function LoyaltyBlock({ patientId, referralCode }: {
             className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[12px] font-semibold border-none cursor-pointer"
             style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
             <Plus size={12} /> За отзыв
+          </button>
+          <button onClick={() => handleAward("video_review")}
+            className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[12px] font-semibold border-none cursor-pointer"
+            style={{ background: "rgba(91,76,245,0.08)", color: "#5B4CF5" }}>
+            <Plus size={12} /> За видеоотзыв
           </button>
           <button onClick={() => handleAward("manual")}
             className="flex items-center gap-1.5 px-3 py-[7px] rounded-[10px] text-[12px] font-semibold border-none cursor-pointer"
