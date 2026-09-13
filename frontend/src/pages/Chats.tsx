@@ -24,7 +24,7 @@ const channelIcon: Record<string, React.ReactNode> = {
 
 const channelLabel: Record<string, string> = {
   telegram: "Telegram",
-  max: "Max / VK",
+  max: "Max",
   vk: "ВКонтакте",
 };
 

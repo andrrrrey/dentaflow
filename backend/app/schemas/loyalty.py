@@ -18,6 +18,8 @@ class LoyaltyConfig(BaseModel):
     percent_per_purchase: float = 5
     referral_points: int = 300
     review_points: int = 200
+    # Баллы за видеоотзыв о клинике (начисляет администратор после проверки).
+    video_review_points: int = 2000
     # Списание баллов (оплата баллами как скидка на визите).
     redeem_enabled: bool = True
     # Курс: сколько рублей скидки даёт один балл.

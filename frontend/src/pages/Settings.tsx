@@ -755,7 +755,7 @@ const LEAD_CHANNELS: { key: string; label: string }[] = [
   { key: "site", label: "Сайт" },
   { key: "novofon", label: "Телефония" },
   { key: "telegram", label: "Telegram" },
-  { key: "max", label: "Max/VK" },
+  { key: "max", label: "Max" },
   { key: "vk", label: "ВКонтакте" },
 ];
 

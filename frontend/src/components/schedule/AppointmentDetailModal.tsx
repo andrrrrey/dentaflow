@@ -51,6 +51,18 @@ function formatDt(iso: string | null): string {
   }
 }
 
+function toMin(hhmm: string): number {
+  const [h, m] = (hhmm || "").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function addMinToTime(hhmm: string, min: number): string {
+  const total = ((toMin(hhmm) + (min || 0)) % 1440 + 1440) % 1440;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function calcAge(birthDate: string | null): number | null {
   if (!birthDate) return null;
   try {
@@ -84,10 +96,10 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
 
   const [commentValue, setCommentValue] = useState<string>("");
   const [commentSaved, setCommentSaved] = useState(false);
-  const [editingDateTime, setEditingDateTime] = useState(false);
-  const [dateTimeValue, setDateTimeValue] = useState<string>("");
-  const [editingDuration, setEditingDuration] = useState(false);
-  const [durationValue, setDurationValue] = useState<string>("");
+  const [editingTime, setEditingTime] = useState(false);
+  const [timeDate, setTimeDate] = useState<string>("");
+  const [timeStart, setTimeStart] = useState<string>("");
+  const [timeEnd, setTimeEnd] = useState<string>("");
   const [discountInput, setDiscountInput] = useState<string>("");
   const [paymentInput, setPaymentInput] = useState<string>("");
   const [redeemInput, setRedeemInput] = useState<string>("");
@@ -116,10 +128,11 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
       setRedeemInput(appt.redeemed_points ? String(appt.redeemed_points) : "");
       setPaid(false);
       setCommentSaved(false);
-      setEditingDateTime(false);
-      setDateTimeValue(appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : "");
-      setEditingDuration(false);
-      setDurationValue(String(appt.duration_min ?? 30));
+      setEditingTime(false);
+      const dt = appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : "";
+      setTimeDate(dt ? dt.slice(0, 10) : "");
+      setTimeStart(dt ? dt.slice(11, 16) : "");
+      setTimeEnd(dt ? addMinToTime(dt.slice(11, 16), appt.duration_min ?? 30) : "");
     }
   }, [appt?.id]); // reset only when appointment changes
 
@@ -167,23 +180,18 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
     );
   }
 
-  function handleDateTimeSave() {
-    if (!dateTimeValue) return;
-    const scheduled_at = dateTimeValue.length === 16 ? `${dateTimeValue}:00` : dateTimeValue;
+  function handleTimeSave() {
+    if (!timeDate || !timeStart || !timeEnd) return;
+    const dur = toMin(timeEnd) - toMin(timeStart);
+    if (dur <= 0) return;
+    const scheduled_at = `${timeDate}T${timeStart}:00`;
     updateAppt.mutate(
-      { appointmentId, scheduled_at },
-      { onSuccess: () => setEditingDateTime(false) }
+      { appointmentId, scheduled_at, duration_min: dur },
+      { onSuccess: () => setEditingTime(false) }
     );
   }
 
-  function handleDurationSave() {
-    const mins = Math.round(Number(durationValue));
-    if (!mins || mins < 5) return;
-    updateAppt.mutate(
-      { appointmentId, duration_min: mins },
-      { onSuccess: () => setEditingDuration(false) }
-    );
-  }
+  const visitDurInvalid = !!(timeStart && timeEnd && toMin(timeEnd) - toMin(timeStart) <= 0);
 
   function handlePay() {
     const discount = discountInput !== "" ? parseFloat(discountInput) : null;
@@ -449,94 +457,83 @@ export default function AppointmentDetailModal({ appointmentId, onClose }: Props
             <div className="flex flex-col gap-2 pt-3" style={{ borderTop: "1px solid rgba(91,76,245,0.08)" }}>
               <div className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Запись</div>
               <div className="grid grid-cols-2 gap-3">
-                {/* Date & time — editable */}
-                <div className="flex items-start gap-2">
+                {/* Время визита — редактируемое: дата + «с … по …» */}
+                <div className="flex items-start gap-2 col-span-2">
                   <span className="text-text-muted flex-shrink-0 mt-[1px]"><Calendar size={13} /></span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[10px] text-text-muted">Дата и время</div>
-                    {editingDateTime ? (
-                      <div className="flex flex-col gap-1 mt-1">
+                    <div className="text-[10px] text-text-muted">Время визита</div>
+                    {editingTime ? (
+                      <div className="flex flex-col gap-1.5 mt-1">
                         <input
-                          type="datetime-local"
-                          value={dateTimeValue}
-                          onChange={(e) => setDateTimeValue(e.target.value)}
+                          type="date"
+                          value={timeDate}
+                          onChange={(e) => setTimeDate(e.target.value)}
                           className="w-full text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
                           style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
                         />
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={handleDateTimeSave}
-                            disabled={updateAppt.isPending}
-                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer disabled:opacity-50"
-                            style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
-                          >
-                            {updateAppt.isPending ? "Сохранение..." : "Сохранить"}
-                          </button>
-                          <button
-                            onClick={() => { setEditingDateTime(false); setDateTimeValue(appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : ""); }}
-                            className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer"
-                            style={{ background: "rgba(120,130,150,0.1)", color: "#64748b" }}
-                          >
-                            Отмена
-                          </button>
-                        </div>
-                        <span className="text-[10px] text-text-muted">Синхронизируется с 1Denta</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setEditingDateTime(true)}
-                        className="text-[12.5px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0 text-left"
-                      >
-                        {formatDt(appt.scheduled_at)}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {/* Длительность — редактируемая (локально, без синка в 1Denta) */}
-                <div className="flex items-start gap-2">
-                  <span className="text-text-muted flex-shrink-0 mt-[1px]"><Clock size={13} /></span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] text-text-muted">Длительность</div>
-                    {editingDuration ? (
-                      <div className="flex flex-col gap-1 mt-1">
-                        <div className="flex items-center gap-1">
+                          <span className="text-[12px] text-text-muted">с</span>
                           <input
-                            type="number"
-                            min={5}
-                            max={600}
-                            step={5}
-                            value={durationValue}
-                            onChange={(e) => setDurationValue(e.target.value)}
-                            className="w-[80px] text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                            type="time"
+                            value={timeStart}
+                            onChange={(e) => setTimeStart(e.target.value)}
+                            className="flex-1 min-w-0 text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
                             style={{ borderColor: "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
                           />
-                          <span className="text-[12px] text-text-muted">мин</span>
+                          <span className="text-[12px] text-text-muted">по</span>
+                          <input
+                            type="time"
+                            value={timeEnd}
+                            onChange={(e) => setTimeEnd(e.target.value)}
+                            className="flex-1 min-w-0 text-[12.5px] font-medium px-2 py-[5px] rounded-lg border focus:outline-none focus:ring-2 focus:ring-[#6c5ce7]/30 transition-all"
+                            style={{ borderColor: visitDurInvalid ? "rgba(244,75,110,0.5)" : "rgba(91,76,245,0.2)", background: "rgba(91,76,245,0.03)" }}
+                          />
                         </div>
+                        {visitDurInvalid ? (
+                          <span className="text-[10px]" style={{ color: "#c52048" }}>Время окончания должно быть позже начала</span>
+                        ) : (
+                          <span className="text-[10px] text-text-muted">
+                            Длительность: {Math.max(0, toMin(timeEnd) - toMin(timeStart))} мин
+                          </span>
+                        )}
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={handleDurationSave}
-                            disabled={updateAppt.isPending}
+                            onClick={handleTimeSave}
+                            disabled={updateAppt.isPending || visitDurInvalid}
                             className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer disabled:opacity-50"
                             style={{ background: "rgba(91,76,245,0.1)", color: "#5B4CF5" }}
                           >
                             {updateAppt.isPending ? "Сохранение..." : "Сохранить"}
                           </button>
                           <button
-                            onClick={() => { setEditingDuration(false); setDurationValue(String(appt.duration_min ?? 30)); }}
+                            onClick={() => {
+                              setEditingTime(false);
+                              const dt = appt.scheduled_at ? appt.scheduled_at.slice(0, 16) : "";
+                              setTimeDate(dt ? dt.slice(0, 10) : "");
+                              setTimeStart(dt ? dt.slice(11, 16) : "");
+                              setTimeEnd(dt ? addMinToTime(dt.slice(11, 16), appt.duration_min ?? 30) : "");
+                            }}
                             className="px-3 py-[4px] rounded-lg text-[11px] font-semibold border-none cursor-pointer"
                             style={{ background: "rgba(120,130,150,0.1)", color: "#64748b" }}
                           >
                             Отмена
                           </button>
                         </div>
-                        <span className="text-[10px] text-text-muted">Только в DentaFlow — в 1Denta длительность не передаётся</span>
+                        <span className="text-[10px] text-text-muted">Дата и время начала синхронизируются с 1Denta</span>
                       </div>
                     ) : (
                       <button
-                        onClick={() => setEditingDuration(true)}
-                        className="text-[12.5px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0 text-left"
+                        onClick={() => setEditingTime(true)}
+                        className="text-[12.5px] font-medium text-text-main hover:text-accent2 cursor-pointer border-none bg-transparent p-0 text-left flex items-center gap-1.5"
                       >
-                        {appt.duration_min} мин
+                        {appt.scheduled_at ? (
+                          <>
+                            {formatDt(appt.scheduled_at)}
+                            <span className="text-text-muted">–</span>
+                            {addMinToTime(appt.scheduled_at.slice(11, 16), appt.duration_min ?? 30)}
+                            <span className="text-text-muted inline-flex items-center gap-1"><Clock size={11} />{appt.duration_min} мин</span>
+                          </>
+                        ) : "—"}
                       </button>
                     )}
                   </div>

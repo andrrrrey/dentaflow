@@ -13,6 +13,26 @@ const inputStyle = {
   background: "rgba(255,255,255,0.5)",
 };
 
+/** "HH:mm" → минуты от полуночи. */
+function toMin(hhmm: string): number {
+  const [h, m] = (hhmm || "").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Прибавить минуты к "HH:mm" (в пределах суток) → "HH:mm". */
+function addMinToTime(hhmm: string, min: number): string {
+  const total = ((toMin(hhmm) + min) % 1440 + 1440) % 1440;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Локальная сегодняшняя дата "yyyy-MM-dd" (без сдвига UTC). */
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 interface AddAppointmentModalProps {
   onClose: () => void;
   initialPatientName?: string;
@@ -100,6 +120,33 @@ export default function AddAppointmentModal({
         if (doc) { updated.doctor_id = doc.doctor_id ?? ""; updated.doctor_name = doc.doctor_name; }
       }
       return updated;
+    });
+  }
+
+  // ── Время визита: дата + «с … по …» поверх scheduled_at/duration_min ──
+  const datePart = form.scheduled_at ? form.scheduled_at.slice(0, 10) : "";
+  const startPart = form.scheduled_at ? form.scheduled_at.slice(11, 16) : "";
+  const durationMin = Number(form.duration_min) || 30;
+  const endPart = startPart ? addMinToTime(startPart, durationMin) : "";
+
+  function setDatePart(d: string) {
+    setForm((p) => {
+      const t = (p.scheduled_at ? p.scheduled_at.slice(11, 16) : "") || "09:00";
+      return { ...p, scheduled_at: d ? `${d}T${t}` : "" };
+    });
+  }
+  function setStartPart(t: string) {
+    setForm((p) => {
+      if (!t) return p;
+      const d = p.scheduled_at ? p.scheduled_at.slice(0, 10) : todayStr();
+      return { ...p, scheduled_at: `${d}T${t}` };
+    });
+  }
+  function setEndPart(t: string) {
+    setForm((p) => {
+      if (!p.scheduled_at || !t) return p;
+      const dur = toMin(t) - toMin(p.scheduled_at.slice(11, 16));
+      return dur > 0 ? { ...p, duration_min: dur } : p;
     });
   }
 
@@ -193,20 +240,24 @@ export default function AddAppointmentModal({
               <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium mt-0.5"><RefreshCw size={11} />Запись будет создана в 1Denta</div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Дата и время *</label>
-              <input type="datetime-local" value={form.scheduled_at} onChange={(e) => set("scheduled_at", e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
-              {outOfSchedule && (
-                <div className="text-[11px] text-[#b87200] font-medium mt-0.5">
-                  Время вне графика работы врача — запись не будет создана.
-                </div>
-              )}
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Дата визита *</label>
+            <input type="date" value={datePart} onChange={(e) => setDatePart(e.target.value)} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Время визита *</label>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-muted">с</span>
+              <input type="time" value={startPart} onChange={(e) => setStartPart(e.target.value)} className="flex-1 px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
+              <span className="text-[12px] text-text-muted">по</span>
+              <input type="time" value={endPart} onChange={(e) => setEndPart(e.target.value)} className="flex-1 px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Длительность (мин)</label>
-              <input type="number" value={form.duration_min} onChange={(e) => set("duration_min", Number(e.target.value))} className="px-3 py-[9px] rounded-xl text-[13px] text-text-main outline-none" style={inputStyle} />
-            </div>
+            <div className="text-[11px] text-text-muted mt-0.5">Длительность: {durationMin} мин</div>
+            {outOfSchedule && (
+              <div className="text-[11px] text-[#b87200] font-medium mt-0.5">
+                Время вне графика работы врача — запись не будет создана.
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Комментарий</label>

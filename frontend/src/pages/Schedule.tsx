@@ -338,11 +338,16 @@ export default function Schedule() {
     if (doctorsData?.doctors) {
       for (const d of doctorsData.doctors) names.add(d.doctor_name);
     }
+    // Врачи из раздела «Сотрудники» (график работы), которых может не быть в 1Denta.
+    for (const p of profilesData?.doctors ?? []) {
+      const name = (p.name ?? "").trim();
+      if (name) names.add(name);
+    }
     for (const appt of appointments) {
       if (appt.doctor_name) names.add(appt.doctor_name);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b, "ru"));
-  }, [doctorsData, appointments]);
+  }, [doctorsData, profilesData, appointments]);
 
   const specialtyByDoctor = useMemo(() => {
     const map = new Map<string, string>();
@@ -366,12 +371,31 @@ export default function Schedule() {
     return map;
   }, [profilesData]);
 
+  // Колонки врачей в сетке: врачи с записями на выбранный день + врачи, которые
+  // по графику работы из раздела «Сотрудники» работают в этот день (даже без
+  // записей). Так расписание показывает всех врачей на смене, а не только 1Denta.
+  const doctorColumns = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const [name, appts] of doctorsWithAppointments) map.set(name, appts);
+    for (const p of profilesData?.doctors ?? []) {
+      const name = (p.name ?? "").trim();
+      if (!name) continue;
+      const wd = getWorkingDay(p, dateStr);
+      const worksToday = wd.restricted && wd.segments.length > 0;
+      if (worksToday && !map.has(name)) map.set(name, []);
+    }
+    let entries = Array.from(map.entries());
+    if (filterDoctor) entries = entries.filter(([name]) => name === filterDoctor);
+    entries.sort((a, b) => a[0].localeCompare(b[0], "ru"));
+    return entries;
+  }, [doctorsWithAppointments, profilesData, dateStr, filterDoctor]);
+
   // Нерабочие (серые) интервалы врача на выбранную дату: выходные, время до
   // начала / после конца смены и перерыв. Считаются как дополнение рабочих
   // интервалов графика в пределах часов работы клиники.
   const offIntervalsByDoctor = useMemo(() => {
     const result = new Map<string, { start: number; end: number }[]>();
-    for (const [doctorName] of doctorsWithAppointments) {
+    for (const [doctorName] of doctorColumns) {
       const id = doctorIdByName.get(doctorName);
       const profile = id ? profileByDoctorId.get(id) : null;
       const wd = getWorkingDay(profile, dateStr);
@@ -393,10 +417,10 @@ export default function Schedule() {
       result.set(doctorName, gaps);
     }
     return result;
-  }, [doctorsWithAppointments, doctorIdByName, profileByDoctorId, dateStr]);
+  }, [doctorColumns, doctorIdByName, profileByDoctorId, dateStr]);
 
   const gridHeight = HOURS.length * SLOT_HEIGHT;
-  const doctorCount = doctorsWithAppointments.length;
+  const doctorCount = doctorColumns.length;
 
   // Responsive column width: fit all doctors into the available width, only
   // falling back to horizontal scroll when even MIN_COL_W doesn't fit.
@@ -440,7 +464,7 @@ export default function Schedule() {
     newStartMin = Math.max(CLINIC_START_MIN, Math.min(CLINIC_END_MIN - d.appt.duration_min, newStartMin));
 
     let targetDoctor = d.origDoctor;
-    let origIndex = doctorsWithAppointments.findIndex(([name]) => name === d.origDoctor);
+    let origIndex = doctorColumns.findIndex(([name]) => name === d.origDoctor);
     let targetIndex = origIndex;
     const row = columnsRowRef.current;
     if (row && doctorCount > 0) {
@@ -448,7 +472,7 @@ export default function Schedule() {
       const relX = d.curX - rect.left - TIME_COL_W;
       const idx = Math.floor(relX / colWidth);
       targetIndex = Math.max(0, Math.min(doctorCount - 1, idx));
-      targetDoctor = doctorsWithAppointments[targetIndex]?.[0] ?? d.origDoctor;
+      targetDoctor = doctorColumns[targetIndex]?.[0] ?? d.origDoctor;
     }
     if (origIndex < 0) origIndex = targetIndex;
 
@@ -460,7 +484,7 @@ export default function Schedule() {
       dxPx: (targetIndex - origIndex) * colWidth,
       dyPx: ((newStartMin - d.origStartMin) / 60) * SLOT_HEIGHT,
     };
-  }, [doctorsWithAppointments, doctorCount, colWidth]);
+  }, [doctorColumns, doctorCount, colWidth]);
 
   const preview = drag && drag.moved ? computePreview(drag) : null;
 
@@ -655,7 +679,7 @@ export default function Schedule() {
           <div className="flex-1 min-h-0">
           {isLoading ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Загрузка данных...</div>
-          ) : doctorsWithAppointments.length === 0 ? (
+          ) : doctorColumns.length === 0 ? (
             <div className="text-center text-text-muted py-20 text-[13px]">Нет записей на выбранную дату</div>
           ) : (
             <div ref={scrollRef} className="h-full overflow-auto">
@@ -666,7 +690,7 @@ export default function Schedule() {
                     className="flex-shrink-0 sticky left-0 z-50"
                     style={{ width: TIME_COL_W, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)" }}
                   />
-                  {doctorsWithAppointments.map(([doctorName, appts]) => {
+                  {doctorColumns.map(([doctorName, appts]) => {
                     const specialty = specialtyByDoctor.get(doctorName);
                     const initials = doctorName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
                     return (
@@ -740,7 +764,7 @@ export default function Schedule() {
                   </div>
 
                   {/* Doctor columns */}
-                  {doctorsWithAppointments.map(([doctorName, doctorAppts], colIdx) => (
+                  {doctorColumns.map(([doctorName, doctorAppts], colIdx) => (
                     <div
                       key={doctorName}
                       className="relative"
@@ -849,7 +873,7 @@ export default function Schedule() {
                           colWidth={colWidth}
                           onDragStart={handleDragStart}
                           preview={preview && preview.apptId === appt.id ? preview : null}
-                          expandLeft={colIdx === doctorsWithAppointments.length - 1 && doctorsWithAppointments.length > 1}
+                          expandLeft={colIdx === doctorColumns.length - 1 && doctorColumns.length > 1}
                           onClick={() => {
                             if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                             setSelectedAppointmentId(appt.id);

@@ -139,6 +139,15 @@ export default function LoyaltySettings() {
           />
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <NumberField
+            label="Баллов за видеоотзыв"
+            hint="Начисляет администратор после проверки видеоотзыва"
+            value={form.video_review_points ?? 0}
+            onChange={(v) => set("video_review_points", v)}
+          />
+        </div>
+
         <div className="text-[12px] text-text-muted rounded-[10px] px-3 py-2"
           style={{ background: "rgba(91,76,245,0.06)" }}>
           {mode === "percent" ? (

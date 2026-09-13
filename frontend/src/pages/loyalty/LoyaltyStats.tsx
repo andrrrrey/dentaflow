@@ -12,6 +12,7 @@ const ACTION_LABEL: Record<string, string> = {
   purchase: "За покупки",
   referral: "За рекомендации",
   review: "За отзывы",
+  video_review: "За видеоотзывы",
   redeem: "Оплата баллами",
   manual: "Ручные корректировки",
 };

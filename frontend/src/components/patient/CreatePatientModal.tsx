@@ -72,7 +72,7 @@ const CHANNELS: [string, string][] = [
   ["telegram", "Telegram"],
   ["call", "Звонок"],
   ["site", "Сайт"],
-  ["max", "Max / VK"],
+  ["max", "Max"],
   ["referral", "Реферал"],
 ];
 
