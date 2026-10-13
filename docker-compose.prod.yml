@@ -67,7 +67,9 @@ services:
     environment:
       # Отображаемый лимит параллельных звонков в /stats (не блокирует звонки —
       # реальный контроль в celery_worker_ai --concurrency и max_concurrent кампании).
-      MAX_CONCURRENT_CALLS: "20"
+      # Этот VPS имеет 4 ГБ RAM. Оставляем четыре слота для звонков; пятый
+      # процесс Celery ниже зарезервирован для диспетчера кампаний.
+      MAX_CONCURRENT_CALLS: "4"
     volumes:
       - aicallrobot_data:/app/data
       - aicallrobot_kb:/app/knowledge_base
@@ -121,8 +123,8 @@ services:
 
   # Выделенный воркер ИИ-обзвона (очередь "ai"). place_call держит слот всё время
   # разговора (опрос до 300с), поэтому concurrency ≈ максимум одновременных звонков.
-  # В эту же очередь идёт диспетчер tick_campaigns — поэтому берём +1 слот (20 звонков
-  # + 1 для диспетчера), иначе при 20 активных звонках диспетчеру не хватит слота.
+  # В эту же очередь идёт диспетчер tick_campaigns — поэтому берём +1 слот (4 звонка
+  # + 1 для диспетчера). Для 20 параллельных звонков нужен сервер минимум с 8 ГБ RAM.
   # Согласуйте с RTP-портами (asterisk/etc/rtp.conf) и лимитом каналов тарифа Novofon.
   celery_worker_ai:
     image: dentaflow-backend:latest
@@ -131,7 +133,7 @@ services:
       - postgres
       - redis
     restart: always
-    command: celery -A app.tasks.celery_app worker --loglevel=info -Q ai --concurrency=21
+    command: celery -A app.tasks.celery_app worker --loglevel=info -Q ai --concurrency=5
     logging: *default-logging
 
   celery_beat:
@@ -142,16 +144,6 @@ services:
       - redis
     restart: always
     command: celery -A app.tasks.celery_app beat --loglevel=info
-    logging: *default-logging
-
-  telegram_bot:
-    image: dentaflow-backend:latest
-    env_file: .env
-    depends_on:
-      - postgres
-      - redis
-    restart: always
-    command: python -m app.services.telegram_bot
     logging: *default-logging
 
   postgres:
