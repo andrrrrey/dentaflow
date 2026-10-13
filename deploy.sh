@@ -28,7 +28,9 @@ if [ $FRONT_ONLY -eq 0 ]; then
   # Собираем образ один раз через backend, остальные сервисы используют тот же image.
   # aicallrobot (ИИ обзвон) — отдельный образ, собираем его явно.
   $COMPOSE build backend aicallrobot asterisk
-  $COMPOSE up -d --remove-orphans aicallrobot asterisk backend celery_worker celery_beat telegram_bot
+  $COMPOSE up -d --remove-orphans \
+    aicallrobot asterisk backend \
+    celery_worker celery_worker_segments celery_worker_ai celery_beat
 fi
 
 # ── Frontend ───────────────────────────────────────────
